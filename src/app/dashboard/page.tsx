@@ -38,7 +38,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
           description={`${t("dash.session")} ${session.displayName} — ${formatMonthLabel(month)}`}
           actions={
             <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-              <ReportGenerator role="SA" username={session.displayName} />
+              <ReportGenerator role="SA" username={session.displayName} dashboardMonth={month} />
               <span className="badge badge-success">{published.length} {t("dash.itemsPublished")}</span>
             </div>
           }        />
@@ -161,7 +161,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
           gridTemplateColumns: "1fr 1fr",
           gap: "14px",
         }}>
-          <ReportGenerator role={role} username={session.displayName} />
+          <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
           <MonthlyReviewModal month={month} username={session.displayName} data={reviewData} variant="dashboard" />
         </div>
       )}
@@ -169,7 +169,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", marginBottom: "12px" }}>
           <RequestPricesBanner categories={categories} items={items} simulate={searchParams?.simulate === "true"} />
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <ReportGenerator role={role} username={session.displayName} />
+            <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
           </div>
         </div>
       )}

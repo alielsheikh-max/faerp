@@ -1450,6 +1450,37 @@ export function getSalesCatalog(month: string, categoryId?: number) {
     }>;
 }
 
+export function getSalesCatalogForMonths(startMonth: string, endMonth: string) {
+  return database()
+    .prepare(`
+      SELECT
+        i.id as item_id,
+        i.name as item_name,
+        i.unit,
+        c.name as category_name,
+        MIN(sp.sell_min) as sell_min,
+        MAX(sp.sell_max) as sell_max,
+        sp.strategy,
+        sp.markup_type
+      FROM items i
+      JOIN categories c ON c.id = i.category_id
+      JOIN selling_prices sp ON sp.item_id = i.id
+      WHERE sp.month >= @startMonth AND sp.month <= @endMonth AND sp.sell_min IS NOT NULL
+      GROUP BY i.id, i.name, i.unit, c.name
+      ORDER BY c.name, i.name
+    `)
+    .all({ startMonth, endMonth }) as Array<{
+      item_id: number;
+      item_name: string;
+      unit: string;
+      category_name: string;
+      sell_min: number;
+      sell_max: number;
+      strategy: string | null;
+      markup_type: string | null;
+    }>;
+}
+
 export function getAdminSnapshot() {
   const db = database();
 

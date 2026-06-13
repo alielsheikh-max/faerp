@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { formatCurrency, formatMonthLabel, formatDateTime, currentMonth } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import * as XLSX from "xlsx-js-style";
@@ -19,6 +19,16 @@ type ReportPreset = {
 
 const PRESETS: ReportPreset[] = [
   // SC presets
+  {
+    id: "published_selling_prices",
+    icon: "💰",
+    titleEn: "Published Selling Prices",
+    titleAr: "أسعار البيع المنشورة للمبيعات",
+    descEn: "Min and max published selling prices for the selected month or range of months",
+    descAr: "أسعار البيع الدنيا والقصوى المعتمدة والمنشورة للشهر المحدد أو نطاق الأشهر",
+    roles: ["SC"],
+    color: "#059669",
+  },
   {
     id: "market_overview",
     icon: "📊",
@@ -163,14 +173,41 @@ function footer(username: string) {
 }
 
 // ── Report data fetcher + renderer ────────────────────────────────────────────
-async function generateReport(presetId: string, month: string, username: string, locale: string) {
-  const res = await fetch(`/api/report-data?preset=${presetId}&month=${month}`);
+async function generateReport(presetId: string, startMonth: string, endMonth: string, username: string, locale: string) {
+  const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
   if (!res.ok) { alert("Failed to load report data."); return; }
   const data = await res.json();
   const isAr = locale === "ar";
   const bodyClass = isAr ? ' class="rtl"' : "";
+  const month = startMonth;
 
   switch (presetId) {
+    case "published_selling_prices": {
+      const { catalog } = data;
+      const byCategory: Record<string, any[]> = {};
+      for (const row of catalog) {
+        if (!byCategory[row.category_name]) byCategory[row.category_name] = [];
+        byCategory[row.category_name].push(row);
+      }
+      const catHtml = Object.entries(byCategory).map(([cat, rows]) => {
+        const rowsHtml = rows.map((r: any) => `<tr class="highlight-row">
+          <td>${r.item_name}</td><td class="muted">${r.unit}</td>
+          <td class="num best">${formatCurrency(r.sell_min)}</td>
+          <td class="num" style="color:#6366f1;font-weight:800">${formatCurrency(r.sell_max)}</td>
+          <td style="text-align:center"><span class="badge">${(r.strategy || "AVG").toUpperCase()}</span></td>
+        </tr>`).join("");
+        return `<div class="cat-header">${cat}</div><table><thead><tr><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "أدنى سعر بيع" : "Min Sell"}</th><th class="num">${isAr ? "أقصى سعر بيع" : "Max Sell"}</th><th style="text-align:center">${isAr ? "الاستراتيجية" : "Strategy"}</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+      }).join("");
+      const monthLabel = startMonth === endMonth ? formatMonthLabel(startMonth) : `${formatMonthLabel(startMonth)} → ${formatMonthLabel(endMonth)}`;
+      const html = `<body${bodyClass}>${header(
+        isAr ? "تقرير أسعار البيع المنشورة للمبيعات" : "Published Selling Prices Report",
+        monthLabel,
+        startMonth,
+        { [isAr ? "الأصناف المنشورة" : "Published Items"]: catalog.length }
+      )}${catHtml}${footer(username)}</body>`;
+      printWindow(html, `Published Prices - ${startMonth}_to_${endMonth}`);
+      break;
+    }
     case "market_overview": {
       const { metrics, comparisonRows, suppliers } = data;
       const supplierCols = suppliers.map((s: any) => `<th class="num">${s.name}</th>`).join("");
@@ -382,19 +419,29 @@ async function generateReport(presetId: string, month: string, username: string,
 // (defined below as a separate file)
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function ReportGenerator({ role, username }: { role: string; username: string }) {
+export default function ReportGenerator({ role, username, dashboardMonth }: { role: string; username: string; dashboardMonth?: string }) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
   const [generatingExcel, setGeneratingExcel] = useState<string | null>(null);
-  const month = currentMonth();
+  const [startMonth, setStartMonth] = useState(dashboardMonth || currentMonth());
+  const [endMonth, setEndMonth] = useState(dashboardMonth || currentMonth());
+
+  useEffect(() => {
+    if (dashboardMonth) {
+      setStartMonth(dashboardMonth);
+      setEndMonth(dashboardMonth);
+    }
+  }, [dashboardMonth]);
+
+  const month = startMonth;
 
   const visiblePresets = PRESETS.filter(p => p.roles.includes(role));
 
   const handleGenerate = async (presetId: string) => {
     setGenerating(presetId);
     try {
-      await generateReport(presetId, month, username, locale);
+      await generateReport(presetId, startMonth, endMonth, username, locale);
     } finally {
       setGenerating(null);
     }
@@ -403,7 +450,7 @@ export default function ReportGenerator({ role, username }: { role: string; user
   const handleExportExcel = async (presetId: string) => {
     setGeneratingExcel(presetId);
     try {
-      const res = await fetch(`/api/report-data?preset=${presetId}&month=${month}`);
+      const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
       if (!res.ok) { alert("Failed to load report data."); return; }
       const data = await res.json();
       const isAr = locale === "ar";
@@ -539,6 +586,24 @@ export default function ReportGenerator({ role, username }: { role: string; user
           r.unit,
           r.sell_min,
           r.sell_max
+        ]);
+      } else if (presetId === "published_selling_prices") {
+        const { catalog } = data;
+        headers = [
+          isAr ? "الفئة" : "Category",
+          isAr ? "المنتج" : "Product",
+          isAr ? "الوحدة" : "Unit",
+          isAr ? "أدنى سعر بيع" : "Min Sell Price",
+          isAr ? "أقصى سعر بيع" : "Max Sell Price",
+          isAr ? "الاستراتيجية" : "Strategy"
+        ];
+        rows = catalog.map((r: any) => [
+          r.category_name,
+          r.item_name,
+          r.unit,
+          r.sell_min,
+          r.sell_max,
+          r.strategy || "AVG"
         ]);
       }
 
@@ -779,6 +844,55 @@ export default function ReportGenerator({ role, username }: { role: string; user
             </p>
           </div>
           <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "20px", cursor: "pointer", padding: "4px 8px", borderRadius: "6px", lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Month Selection Range */}
+        <div style={{
+          padding: "12px 24px",
+          background: "var(--bg-subtle)",
+          borderBottom: "1px solid var(--border-light)",
+          display: "flex",
+          gap: "16px",
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)" }}>
+            {locale === "ar" ? "نطاق الأشهر للتقرير:" : "Report Month Range:"}
+          </span>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <input
+              type="month"
+              value={startMonth}
+              onChange={(e) => setStartMonth(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                background: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+                fontSize: "13px"
+              }}
+            />
+            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{locale === "ar" ? "إلى" : "to"}</span>
+            <input
+              type="month"
+              value={endMonth}
+              onChange={(e) => setEndMonth(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                background: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+                fontSize: "13px"
+              }}
+            />
+          </div>
+          {startMonth !== endMonth && (
+            <span className="badge badge-success" style={{ fontSize: "10px" }}>
+              {locale === "ar" ? "تقرير متعدد الأشهر" : "Multi-month range"}
+            </span>
+          )}
         </div>
 
         {/* Report presets */}

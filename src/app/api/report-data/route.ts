@@ -4,6 +4,7 @@ import {
   getMonthlyReport,
   getSuppliers,
   getSalesCatalog,
+  getSalesCatalogForMonths,
   getAllPriceEntries,
   getMonthlyMetrics,
 } from "@/lib/db";
@@ -18,6 +19,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const preset = searchParams.get("preset") || "";
   const month = searchParams.get("month") || currentMonth();
+  const startMonth = searchParams.get("startMonth") || month;
+  const endMonth = searchParams.get("endMonth") || month;
 
   const report = getMonthlyReport(month);
   const suppliers = getSuppliers();
@@ -43,6 +46,11 @@ export async function GET(request: Request) {
     case "selling_price_list":
     case "sales_catalog": {
       const catalog = getSalesCatalog(month);
+      return NextResponse.json({ catalog, metrics });
+    }
+
+    case "published_selling_prices": {
+      const catalog = getSalesCatalogForMonths(startMonth, endMonth);
       return NextResponse.json({ catalog, metrics });
     }
 
