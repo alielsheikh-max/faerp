@@ -1,0 +1,402 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { addPriceEntry, saveSellingPrice, getRecommendation } from "@/lib/db";
+import { asNumber, asString } from "@/lib/format";
+
+export async function createBatchPriceEntries(formData: FormData) {
+  const itemId = asNumber(formData.get("itemId"));
+  const month = asString(formData.get("month"));
+  const collectedBy = asString(formData.get("collectedBy")) || "WH Purchasing";
+  const collectedRole = asString(formData.get("collectedRole")) || "WH";
+
+  if (itemId === null || !month) {
+    redirect(`/dashboard/purchasing?error=missing`);
+  }
+
+  const entries: { supplierId: number; price: number; notes: string }[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("price_")) {
+      const supplierId = Number(key.replace("price_", ""));
+      const price = asNumber(value);
+      if (!isNaN(supplierId) && supplierId > 0 && price !== null && price > 0) {
+        const notes = asString(formData.get(`notes_${supplierId}`));
+        entries.push({ supplierId, price, notes });
+      }
+    }
+  }
+
+  if (entries.length === 0) {
+    redirect(`/dashboard/purchasing?error=missing`);
+  }
+
+  for (const entry of entries) {
+    addPriceEntry({
+      itemId,
+      supplierId: entry.supplierId,
+      month,
+      price: entry.price,
+      collectedBy,
+      collectedRole,
+      notes: entry.notes,
+    });
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/purchasing");
+  revalidatePath("/dashboard/manager");
+
+  redirect(`/dashboard/purchasing?month=${month}&saved=1`);
+}
+
+/**
+ * Same as createBatchPriceEntries but returns a result instead of redirecting.
+ * Used when called imperatively from client-side JS (mixed new+change submit flow).
+ */
+export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const itemId = asNumber(formData.get("itemId"));
+    const month = asString(formData.get("month"));
+    const collectedBy = asString(formData.get("collectedBy")) || "WH Purchasing";
+    const collectedRole = asString(formData.get("collectedRole")) || "WH";
+
+    if (itemId === null || !month) return { ok: false, error: "Missing item or month." };
+
+    const entries: { supplierId: number; price: number; notes: string }[] = [];
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith("price_")) {
+        const supplierId = Number(key.replace("price_", ""));
+        const price = asNumber(value);
+        if (!isNaN(supplierId) && supplierId > 0 && price !== null && price > 0) {
+          const notes = asString(formData.get(`notes_${supplierId}`));
+          entries.push({ supplierId, price, notes });
+        }
+      }
+    }
+
+    if (entries.length === 0) return { ok: false, error: "No valid prices provided." };
+
+    for (const entry of entries) {
+      addPriceEntry({
+        itemId,
+        supplierId: entry.supplierId,
+        month,
+        price: entry.price,
+        collectedBy,
+        collectedRole,
+        notes: entry.notes,
+      });
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
+export async function createPriceEntry(formData: FormData) {
+  const itemId = asNumber(formData.get("itemId"));
+  const supplierId = asNumber(formData.get("supplierId"));
+  const month = asString(formData.get("month"));
+  const price = asNumber(formData.get("price"));
+  const collectedBy = asString(formData.get("collectedBy")) || "WH Purchasing";
+  const collectedRole = asString(formData.get("collectedRole")) || "WH";
+  const notes = asString(formData.get("notes"));
+
+  if (itemId === null || supplierId === null || !month || price === null) {
+    redirect(`/dashboard/purchasing?month=${month || ""}&error=missing`);
+  }
+
+  addPriceEntry({ itemId, supplierId, month, price, collectedBy, collectedRole, notes });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/purchasing");
+  revalidatePath("/dashboard/manager");
+
+  redirect(`/dashboard/purchasing?month=${month}&saved=1`);
+}
+
+export async function publishSellingPrice(formData: FormData) {
+  const itemId = asNumber(formData.get("itemId"));
+  const month = asString(formData.get("month"));
+  const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg";
+  const markupTypeRaw = asString(formData.get("markupType")) || "percent";
+  const markupType = (markupTypeRaw === "amount" ? "amount" : "percent") as "percent" | "amount";
+  const markupMin = asNumber(formData.get("markupMin"));
+  const markupMax = asNumber(formData.get("markupMax"));
+  const createdBy = asString(formData.get("createdBy")) || "SC Manager";
+  const changeReason = asString(formData.get("changeReason")) || undefined;
+  const redirectTo =
+    asString(formData.get("redirectTo")) ||
+    `/dashboard?month=${month}&itemId=${itemId}&saved=1`;
+  const errorRedirect =
+    asString(formData.get("errorRedirect")) ||
+    `/dashboard?month=${month || ""}&error=pricing`;
+
+  if (
+    itemId === null ||
+    !month ||
+    markupMin === null ||
+    markupMax === null ||
+    !["min", "max", "avg"].includes(strategy)
+  ) {
+    redirect(errorRedirect);
+  }
+
+  if (markupMax < markupMin) {
+    redirect(errorRedirect);
+  }
+
+  try {
+    saveSellingPrice({
+      itemId,
+      month,
+      strategy,
+      markupType,
+      markupMin,
+      markupMax,
+      createdBy,
+      changeReason,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.startsWith("FLOOR_VIOLATION:")) {
+      // Extract the floor value from the error message for URL param
+      const parts = msg.split(":");
+      const floorPct = parts[1] ?? "0";
+      redirect(`${errorRedirect}&floorViolation=1&floor=${floorPct}`);
+    }
+    redirect(errorRedirect);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/manager");
+  revalidatePath("/dashboard/sales");
+
+  redirect(redirectTo);
+}
+
+export async function saveSellingPriceInline(input: {
+  itemId: number;
+  month: string;
+  sellMin: number;
+  sellMax: number;
+  createdBy: string;
+  changeReason?: string;
+}): Promise<{ ok: boolean; error?: string; floorViolation?: boolean; floorPct?: number }> {
+  try {
+    const rec = getRecommendation(input.month, input.itemId);
+    if (rec.buyAvg === null) return { ok: false, error: "No quotes found" };
+
+    const base = rec.buyAvg;
+    const markupMin = base > 0 ? ((input.sellMin / base) - 1) * 100 : 0;
+    const markupMax = base > 0 ? ((input.sellMax / base) - 1) * 100 : 0;
+
+    saveSellingPrice({
+      itemId: input.itemId,
+      month: input.month,
+      strategy: "avg",
+      markupType: "percent",
+      markupMin: Math.max(0, markupMin),
+      markupMax: Math.max(0, markupMax),
+      createdBy: input.createdBy,
+      changeReason: input.changeReason,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/manager");
+    revalidatePath("/dashboard/sales");
+
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Save failed";
+    if (msg.startsWith("FLOOR_VIOLATION:")) {
+      const parts = msg.split(":");
+      return {
+        ok: false,
+        floorViolation: true,
+        floorPct: parseFloat(parts[1] ?? "0"),
+        error: parts.slice(2).join(":"),
+      };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
+// ── New server action for margin floor management (SC Admin only) ────────────
+import { upsertMarginFloor, deleteMarginFloor } from "@/lib/db";
+import { requireRole } from "@/lib/auth";
+
+export async function setMarginFloorAction(formData: FormData): Promise<void> {
+  requireRole(["SC"]);
+  const floorType = asString(formData.get("floorType")) as "item" | "category";
+  const itemId = asNumber(formData.get("itemId")) ?? undefined;
+  const categoryId = asNumber(formData.get("categoryId")) ?? undefined;
+  const minMarkupPct = asNumber(formData.get("minMarkupPct")) ?? 5;
+  const setBy = asString(formData.get("setBy")) || "SC Manager";
+  const notes = asString(formData.get("notes")) || undefined;
+
+  upsertMarginFloor({ floorType, itemId, categoryId, minMarkupPct, setBy, notes });
+
+  revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteMarginFloorAction(formData: FormData): Promise<void> {
+  requireRole(["SC"]);
+  const id = asNumber(formData.get("id"));
+  if (id !== null) deleteMarginFloor(id);
+  revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard");
+}
+
+// ── Task 1: Category Bulk Markup ─────────────────────────────────────────────
+import {
+  applyCategoryMarkup,
+  submitPriceChangeRequest,
+  approvePriceChangeRequest,
+  rejectPriceChangeRequest,
+  hasConfirmedPrice,
+} from "@/lib/db";
+import { currentMonth } from "@/lib/format";
+
+export async function applyCategoryMarkupAction(formData: FormData): Promise<{
+  ok: boolean;
+  applied?: number;
+  skipped?: number;
+  errors?: string[];
+  error?: string;
+}> {
+  try {
+    requireRole(["SC"]);
+    const categoryId  = asNumber(formData.get("categoryId"));
+    const month       = asString(formData.get("month"));
+    const strategy    = (asString(formData.get("strategy")) || "avg") as "min" | "avg" | "max";
+    const markupTypeR = asString(formData.get("markupType")) || "percent";
+    const markupType  = (markupTypeR === "amount" ? "amount" : "percent") as "percent" | "amount";
+    const markupMin   = asNumber(formData.get("markupMin")) ?? 8;
+    const markupMax   = asNumber(formData.get("markupMax")) ?? 14;
+    const createdBy   = asString(formData.get("createdBy")) || "SC Manager";
+
+    if (!categoryId || !month) return { ok: false, error: "Category and month are required." };
+    if (markupMax < markupMin) return { ok: false, error: "Max markup must be ≥ min markup." };
+
+    const result = applyCategoryMarkup({
+      categoryId, month, strategy, markupType, markupMin, markupMax, createdBy,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/manager");
+    revalidatePath("/dashboard/sales");
+
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+// ── Task 2: Price Change Request workflow ─────────────────────────────────────
+export async function submitPriceChangeRequestAction(formData: FormData): Promise<{
+  ok: boolean; error?: string; directSaved?: boolean;
+}> {
+  try {
+    const itemId      = asNumber(formData.get("itemId"));
+    const supplierId  = asNumber(formData.get("supplierId"));
+    const month       = asString(formData.get("month"));
+    const oldPrice    = asNumber(formData.get("oldPrice"));
+    const newPrice    = asNumber(formData.get("newPrice"));
+    const reason      = asString(formData.get("reason"));
+    const requestedBy = asString(formData.get("requestedBy")) || "WH Purchasing";
+
+    if (!itemId || !supplierId || !month || oldPrice === null || newPrice === null || !reason.trim()) {
+      return { ok: false, error: "All fields are required including reason." };
+    }
+    if (newPrice <= 0) return { ok: false, error: "New price must be greater than zero." };
+
+    // Enforce: change requests only allowed for current month
+    if (month !== currentMonth()) {
+      return { ok: false, error: "Price change requests can only be submitted for the current month. Past months are locked." };
+    }
+
+    if (!hasConfirmedPrice(itemId, supplierId, month)) {
+      addPriceEntry({
+        itemId,
+        supplierId,
+        month,
+        price: newPrice,
+        collectedBy: requestedBy,
+        collectedRole: "WH",
+        notes: reason,
+      });
+
+      revalidatePath("/dashboard/purchasing");
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/manager");
+      return { ok: true, directSaved: true };
+    }
+
+    submitPriceChangeRequest({ itemId, supplierId, month, oldPrice, newPrice, reason, requestedBy });
+
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+export async function approvePriceChangeRequestAction(formData: FormData): Promise<void> {
+  requireRole(["SC"]);
+  const requestId  = asNumber(formData.get("requestId"));
+  const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+  const reviewNote = asString(formData.get("reviewNote")) || undefined;
+
+  if (requestId === null) return;
+  approvePriceChangeRequest({ requestId, reviewedBy, reviewNote });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/purchasing");
+  revalidatePath("/dashboard/manager");
+}
+
+export async function rejectPriceChangeRequestAction(formData: FormData): Promise<void> {
+  requireRole(["SC"]);
+  const requestId  = asNumber(formData.get("requestId"));
+  const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+  const reviewNote = asString(formData.get("reviewNote")) || undefined;
+
+  if (requestId === null) return;
+  rejectPriceChangeRequest({ requestId, reviewedBy, reviewNote });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/purchasing");
+}
+
+// ── SC-only: Extend previous month prices to current month ──────────────────
+import { extendPreviousMonthPrices } from "@/lib/db";
+
+export async function extendPreviousMonthPricesAction(input: {
+  itemId: number;
+  supplierIds?: number[];
+  extendedBy: string;
+}): Promise<{ ok: boolean; created?: number; error?: string }> {
+  try {
+    requireRole(["SC"]);
+    const created = extendPreviousMonthPrices({
+      itemId: input.itemId,
+      supplierIds: input.supplierIds,
+      extendedBy: input.extendedBy,
+    });
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+    return { ok: true, created };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+  }
+}
