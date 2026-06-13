@@ -15,9 +15,8 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
   const report = getMonthlyReport(month, categoryId);
 
   return (
-    <html lang="en">
-      <body style={{ margin: 0, fontFamily: "Segoe UI, sans-serif", background: "#fff", color: "#10213a" }}>
-        <main style={{ padding: "32px", maxWidth: "1100px", margin: "0 auto" }}>
+    <div className="print-page-wrapper" style={{ minHeight: "100vh", background: "#fff", color: "#10213a", fontFamily: "Segoe UI, sans-serif" }}>
+      <main style={{ padding: "32px", maxWidth: "1100px", margin: "0 auto" }}>
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
             <div>
               <p style={{ margin: 0, color: "#4b6b97", textTransform: "uppercase", letterSpacing: "0.12em", fontSize: "12px" }}>
@@ -102,7 +101,6 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
             </table>
           </section>
         </main>
-      </body>
-    </html>
+    </div>
   );
 }

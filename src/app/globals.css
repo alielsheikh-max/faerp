@@ -1656,3 +1656,30 @@ select option { background: #fff; color: #111827; }
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   PRINT PREVIEW PAGE OVERRIDES
+   Hides sidebar and stretches layout when in report print mode.
+   Enforces clean styles in print preview and during browser print.
+═══════════════════════════════════════════════════════════════ */
+body:has(.print-page-wrapper) .sidebar {
+  display: none !important;
+}
+
+body:has(.print-page-wrapper) .app-shell {
+  display: block !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+}
+
+body:has(.print-page-wrapper) .content-area {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+@media print {
+  body:has(.print-page-wrapper) button,
+  body:has(.print-page-wrapper) .no-print {
+    display: none !important;
+  }
+}
