@@ -152,25 +152,25 @@ flowchart TD
     classDef sa fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#78350f;
     classDef sys fill:#faf5ff,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
 
-    Start([Month Start]) --> WH[1. WH / Purchasing collects supplier quotes]:::wh
-    WH --> CheckConfirmed{Price already<n>confirmed?}:::sys
+    Start([Month Start]) --> WH["1. WH / Purchasing collects supplier quotes"]:::wh
+    WH --> CheckConfirmed{"Price already<br/>confirmed?"}:::sys
     
-    CheckConfirmed -- Yes --> Request[Submit Price Change Request<n>with mandatory justification]:::wh
-    CheckConfirmed -- No --> SaveDirect[Direct Save to Database]:::sys
+    CheckConfirmed -- Yes --> Request["Submit Price Change Request<br/>with mandatory justification"]:::wh
+    CheckConfirmed -- No --> SaveDirect["Direct Save to Database"]:::sys
     
-    Request --> SCReview[2. SC Manager reviews Change Request]:::sc
+    Request --> SCReview["2. SC Manager reviews Change Request"]:::sc
     SCReview -- Approve --> SaveDirect
-    SCReview -- Reject --> RejectNotify[Original Price Stays Active]:::sc
+    SCReview -- Reject --> RejectNotify["Original Price Stays Active"]:::sc
     
-    SaveDirect --> SCMargin[3. SC Manager sets Resell Margins]:::sc
-    SCMargin --> FloorCheck{Margin &ge; Floor?}:::sys
+    SaveDirect --> SCMargin["3. SC Manager sets Resell Margins"]:::sc
+    SCMargin --> FloorCheck{"Margin >= Floor?"}:::sys
     
-    FloorCheck -- No --> Block[🚫 Blocked: Floor Violation<n>Submit Disabled]:::sc
-    FloorCheck -- Yes --> Publish[Publish Approved Selling Catalog]:::sc
+    FloorCheck -- No --> Block["🚫 Blocked: Floor Violation<br/>Submit Disabled"]:::sc
+    FloorCheck -- Yes --> Publish["Publish Approved Selling Catalog"]:::sc
     
-    Publish --> SA[4. Sales Agents view approved ranges]:::sa
-    SA --> DealSim[Interactive Deal Simulator<n>with instant warnings]:::sa
-    DealSim --> CopyQuote[Copy formatted Client Quote]:::sa
+    Publish --> SA["4. Sales Agents view approved ranges"]:::sa
+    SA --> DealSim["Interactive Deal Simulator<br/>with instant warnings"]:::sa
+    DealSim --> CopyQuote["Copy formatted Client Quote"]:::sa
     CopyQuote --> End([Deal Completed])
         </pre>
       </div>
