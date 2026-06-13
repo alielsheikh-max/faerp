@@ -46,7 +46,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "قائمة أسعار البيع المعتمدة",
     descEn: "Published min/max selling prices by category and item for this month",
     descAr: "أسعار البيع الدنيا والقصوى المنشورة حسب الفئة والصنف لهذا الشهر",
-    roles: ["SC", "SA"],
+    roles: ["SA"],
     color: "#10b981",
   },
   {
@@ -173,7 +173,7 @@ function footer(username: string) {
 }
 
 // ── Report data fetcher + renderer ────────────────────────────────────────────
-async function generateReport(presetId: string, startMonth: string, endMonth: string, username: string, locale: string) {
+async function generateReport(presetId: string, startMonth: string, endMonth: string, username: string, locale: string, role: string) {
   const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
   if (!res.ok) { alert("Failed to load report data."); return; }
   const data = await res.json();
@@ -248,14 +248,16 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         if (!byCategory[row.category_name]) byCategory[row.category_name] = [];
         byCategory[row.category_name].push(row);
       }
+      const isSA = role === "SA";
       const catHtml = Object.entries(byCategory).map(([cat, rows]) => {
         const rowsHtml = rows.map((r: any) => r.sell_min !== null ? `<tr class="highlight-row">
           <td>${r.item_name}</td><td class="muted">${r.unit}</td>
           <td class="num best">${formatCurrency(r.sell_min)}</td>
           <td class="num" style="color:#6366f1;font-weight:800">${formatCurrency(r.sell_max)}</td>
-          <td style="text-align:center"><span class="badge">${(r.strategy || "").toUpperCase()}</span></td>
-        </tr>` : `<tr class="pending-row"><td>${r.item_name}</td><td class="muted">${r.unit}</td><td colspan="3" class="muted" style="text-align:center">${isAr ? "قيد الانتظار" : "Pending"}</td></tr>`).join("");
-        return `<div class="cat-header">${cat}</div><table><thead><tr><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "أدنى سعر بيع" : "Min Sell"}</th><th class="num">${isAr ? "أقصى سعر بيع" : "Max Sell"}</th><th style="text-align:center">${isAr ? "الاستراتيجية" : "Strategy"}</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+          ${isSA ? "" : `<td style="text-align:center"><span class="badge">${(r.strategy || "").toUpperCase()}</span></td>`}
+        </tr>` : `<tr class="pending-row"><td>${r.item_name}</td><td class="muted">${r.unit}</td><td colspan="${isSA ? "2" : "3"}" class="muted" style="text-align:center">${isAr ? "قيد الانتظار" : "Pending"}</td></tr>`).join("");
+        const strategyHeader = isSA ? "" : `<th style="text-align:center">${isAr ? "الاستراتيجية" : "Strategy"}</th>`;
+        return `<div class="cat-header">${cat}</div><table><thead><tr><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "أدنى سعر بيع" : "Min Sell"}</th><th class="num">${isAr ? "أقصى سعر بيع" : "Max Sell"}</th>${strategyHeader}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
       }).join("");
       const published = catalog.filter((r: any) => r.sell_min !== null).length;
       const html = `<body${bodyClass}>${header(
@@ -441,7 +443,7 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
   const handleGenerate = async (presetId: string) => {
     setGenerating(presetId);
     try {
-      await generateReport(presetId, startMonth, endMonth, username, locale);
+      await generateReport(presetId, startMonth, endMonth, username, locale, role);
     } finally {
       setGenerating(null);
     }
@@ -481,24 +483,44 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
         });
       } else if (presetId === "selling_price_list") {
         const { catalog } = data;
-        headers = [
-          isAr ? "الفئة" : "Category",
-          isAr ? "الصنف" : "Item",
-          isAr ? "الوحدة" : "Unit",
-          isAr ? "أدنى سعر بيع" : "Min Sell",
-          isAr ? "أقصى سعر بيع" : "Max Sell",
-          isAr ? "الاستراتيجية" : "Strategy",
-          isAr ? "الحالة" : "Status"
-        ];
-        rows = catalog.map((r: any) => [
-          r.category_name,
-          r.item_name,
-          r.unit,
-          r.sell_min !== null ? r.sell_min : "",
-          r.sell_max !== null ? r.sell_max : "",
-          r.strategy || "",
-          r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
-        ]);
+        const isSA = role === "SA";
+        if (isSA) {
+          headers = [
+            isAr ? "الفئة" : "Category",
+            isAr ? "الصنف" : "Item",
+            isAr ? "الوحدة" : "Unit",
+            isAr ? "أدنى سعر بيع" : "Min Sell",
+            isAr ? "أقصى سعر بيع" : "Max Sell",
+            isAr ? "الحالة" : "Status"
+          ];
+          rows = catalog.map((r: any) => [
+            r.category_name,
+            r.item_name,
+            r.unit,
+            r.sell_min !== null ? r.sell_min : "",
+            r.sell_max !== null ? r.sell_max : "",
+            r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
+          ]);
+        } else {
+          headers = [
+            isAr ? "الفئة" : "Category",
+            isAr ? "الصنف" : "Item",
+            isAr ? "الوحدة" : "Unit",
+            isAr ? "أدنى سعر بيع" : "Min Sell",
+            isAr ? "أقصى سعر بيع" : "Max Sell",
+            isAr ? "الاستراتيجية" : "Strategy",
+            isAr ? "الحالة" : "Status"
+          ];
+          rows = catalog.map((r: any) => [
+            r.category_name,
+            r.item_name,
+            r.unit,
+            r.sell_min !== null ? r.sell_min : "",
+            r.sell_max !== null ? r.sell_max : "",
+            r.strategy || "",
+            r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
+          ]);
+        }
       } else if (presetId === "supplier_comparison") {
         const { comparisonRows, suppliers } = data;
         headers = [

@@ -400,3 +400,57 @@ export async function extendPreviousMonthPricesAction(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Failed" };
   }
 }
+
+export async function publishSellingPriceAction(formData: FormData): Promise<{ ok: boolean; error?: string; floorViolation?: boolean; floorPct?: number }> {
+  try {
+    requireRole(["SC"]);
+    const itemId = asNumber(formData.get("itemId"));
+    const month = asString(formData.get("month"));
+    const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg";
+    const markupTypeRaw = asString(formData.get("markupType")) || "percent";
+    const markupType = (markupTypeRaw === "amount" ? "amount" : "percent") as "percent" | "amount";
+    const markupMin = asNumber(formData.get("markupMin"));
+    const markupMax = asNumber(formData.get("markupMax"));
+    const createdBy = asString(formData.get("createdBy")) || "SC Manager";
+    const changeReason = asString(formData.get("changeReason")) || undefined;
+
+    if (
+      itemId === null ||
+      !month ||
+      markupMin === null ||
+      markupMax === null ||
+      !["min", "max", "avg"].includes(strategy)
+    ) {
+      return { ok: false, error: "Missing required fields" };
+    }
+
+    if (markupMax < markupMin) {
+      return { ok: false, error: "Max markup must be greater than or equal to min markup" };
+    }
+
+    saveSellingPrice({
+      itemId,
+      month,
+      strategy,
+      markupType,
+      markupMin,
+      markupMax,
+      createdBy,
+      changeReason,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/manager");
+    revalidatePath("/dashboard/sales");
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.startsWith("FLOOR_VIOLATION:")) {
+      const parts = msg.split(":");
+      const floorPct = parts[1] ?? "0";
+      return { ok: false, floorViolation: true, floorPct: parseFloat(floorPct), error: parts.slice(2).join(":") };
+    }
+    return { ok: false, error: msg || "Failed to publish prices" };
+  }
+}

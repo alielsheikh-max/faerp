@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import PricingCalculator from "@/components/pricing-calculator";
 import { useI18n } from "@/lib/i18n-context";
@@ -50,6 +51,7 @@ export default function InteractiveDashboard({
   priceHistory = [],
 }: Props) {
   const { t } = useI18n();
+  const router = useRouter();
 
   // ── Selection state ──────────────────────────────────────────────
   const [catId, setCatId] = useState<number | "">(
@@ -586,6 +588,10 @@ export default function InteractiveDashboard({
                   existing={existingSell}
                   redirectTo={redirectTo}
                   errorRedirect={errorRedirect}
+                  onSuccess={() => {
+                    setIsPricingOpen(false);
+                    router.refresh();
+                  }}
                 />
               ) : (
                 <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)" }}>

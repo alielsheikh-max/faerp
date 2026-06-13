@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { publishSellingPrice } from "@/app/actions/pricing";
+import { publishSellingPriceAction } from "@/app/actions/pricing";
 import { formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
 import type { SellingPriceHistoryRow } from "@/lib/db";
 
@@ -27,6 +27,7 @@ type PricingCalculatorProps = {
   } | null | undefined;
   redirectTo?: string;
   errorRedirect?: string;
+  onSuccess?: () => void;
 };
 
 export default function PricingCalculator({
@@ -41,6 +42,7 @@ export default function PricingCalculator({
   existing,
   redirectTo,
   errorRedirect,
+  onSuccess,
 }: PricingCalculatorProps) {
   const [strategy, setStrategy] = useState<"min" | "avg" | "max">(
     (existing?.strategy as "min" | "avg" | "max") || "avg"
@@ -53,6 +55,32 @@ export default function PricingCalculator({
   const [basePrice, setBasePrice] = useState<number>(buyAvg);
   const [changeReason, setChangeReason] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsPending(true);
+    setErrorMsg(null);
+    const formData = new FormData(e.currentTarget);
+    try {
+      const res = await publishSellingPriceAction(formData);
+      if (res.ok) {
+        alert("Selling prices published successfully!");
+        if (onSuccess) onSuccess();
+      } else {
+        if (res.floorViolation) {
+          setErrorMsg(`Floor violation! Selling price must respect the minimum margin floor of ${res.floorPct}%.`);
+        } else {
+          setErrorMsg(res.error || "An error occurred while publishing.");
+        }
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to publish selling prices.");
+    } finally {
+      setIsPending(false);
+    }
+  };
 
   useEffect(() => {
     const selectedBase = strategy === "min" ? buyMin : strategy === "max" ? buyMax : buyAvg;
@@ -136,7 +164,12 @@ export default function PricingCalculator({
   const isUpdate = !!existing;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {errorMsg && (
+        <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", padding: "10px 14px", borderRadius: "8px", fontSize: "12px", margin: 0 }}>
+          <strong>Error:</strong> {errorMsg}
+        </div>
+      )}
 
       {/* ── Base Price Card ─────────────────────────────────────────────────── */}
       <div className="summary-card accent-card" style={{ padding: "14px 16px" }}>
@@ -274,7 +307,7 @@ export default function PricingCalculator({
 
       {/* ── Action Form ────────────────────────────────────────────────────── */}
       <form
-        action={publishSellingPrice}
+        onSubmit={handleSubmit}
         className="form-grid compact-form"
         style={{ display: "flex", flexDirection: "column", gap: "16px" }}
       >
@@ -387,15 +420,15 @@ export default function PricingCalculator({
         <div style={{ marginTop: "4px" }}>
           <button
             type="submit"
-            disabled={floorViolated}
+            disabled={floorViolated || isPending}
             className="button button-primary button-block"
             style={{
-              padding: "10px", fontSize: "13px", cursor: floorViolated ? "not-allowed" : "pointer",
-              opacity: floorViolated ? 0.5 : 1,
+              padding: "10px", fontSize: "13px", cursor: (floorViolated || isPending) ? "not-allowed" : "pointer",
+              opacity: (floorViolated || isPending) ? 0.5 : 1,
             }}
             title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : undefined}
           >
-            {isUpdate ? "Update Selling Prices" : "Publish Selling Prices to Sales"}
+            {isPending ? "Publishing..." : isUpdate ? "Update Selling Prices" : "Publish Selling Prices to Sales"}
           </button>
           {floorViolated && (
             <p style={{ textAlign: "center", fontSize: "11px", color: "var(--danger)", marginTop: "6px", fontWeight: 600 }}>

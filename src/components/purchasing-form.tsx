@@ -629,7 +629,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                   🔍 Review & Edit Submitted Prices
                 </h3>
                 <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>
-                  Month: <strong>{formatMonthLabel(month)}</strong> · Total items: <strong>{items.length}</strong> · Sample Item: <code style={{ fontSize: "10px", background: "var(--bg-elevated)", padding: "2px 4px" }}>{items[0] ? JSON.stringify(items[0]) : "none"}</code>
+                  Month: <strong>{formatMonthLabel(month)}</strong> · Total items: <strong>{items.length}</strong>
                 </p>
               </div>
               <button
