@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAERP — Client Overview & Setup Guide</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            heading: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            primary: {
+              50: '#f5f8ff',
+              100: '#ebf1fe',
+              500: '#2563eb',
+              600: '#1d4ed8',
+              900: '#1e3a8a',
+            },
+            success: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              600: '#16a34a',
+              900: '#14532d',
+            },
+            warning: {
+              50: '#fffbeb',
+              100: '#fef3c7',
+              600: '#d97706',
+              900: '#78350f',
+            },
+            danger: {
+              50: '#fef2f2',
+              100: '#fee2e2',
+              600: '#dc2626',
+              900: '#7f1d1d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Mermaid.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      securityLevel: 'loose',
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true
+      }
+    });
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1, h2, h3, h4 {
+      font-family: 'Outfit', sans-serif;
+    }
+    @media print {
+      body {
+        background-color: #ffffff;
+        color: #000000;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break-before {
+        page-break-before: always;
+      }
+      .page-break-inside-avoid {
+        page-break-inside: avoid;
+      }
+      .print-border {
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: none !important;
+      }
+      .print-shadow-none {
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-4xl mx-auto space-y-8">
+    
+    <!-- Top Action Bar (hidden when printing) -->
+    <div class="no-print bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Document Viewer</p>
+        <h3 class="text-sm font-semibold text-slate-800">Print / Export Presentation Guide</h3>
+      </div>
+      <button onclick="window.print()" class="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition duration-150 shadow-sm shadow-primary-100 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+        Save / Print as PDF
+      </button>
+    </div>
+
+    <!-- MAIN HEADER -->
+    <header class="bg-primary-900 text-white rounded-3xl p-8 sm:p-12 shadow-xl relative overflow-hidden print-shadow-none">
+      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary-600/30 via-transparent to-transparent"></div>
+      <div class="relative z-10 space-y-4">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/20 text-blue-200 border border-primary-500/30">
+          Enterprise Price &amp; Margin Management System
+        </span>
+        <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight">FAERP Overview &amp; Guide</h1>
+        <p class="text-slate-300 max-w-2xl leading-relaxed text-sm sm:text-base">
+          FAERP is a secure, high-performance web platform designed to streamline monthly supplier price collections, enforce strict profit margin controls, and provide real-time pricing intelligence for sales agents.
+        </p>
+      </div>
+    </header>
+
+    <!-- SECTION 1: Workflow -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 print-border page-break-inside-avoid">
+      <div class="border-b border-slate-100 pb-4 mb-6">
+        <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Collaborative Lifecycle</span>
+        <h2 class="text-2xl font-bold text-slate-800">1. High-Level Business Workflow</h2>
+      </div>
+      
+      <p class="text-slate-600 mb-8 text-sm leading-relaxed">
+        Below is the lifecycle showing how different roles collaborate throughout the monthly cycle to ensure price accuracy and margin protection.
+      </p>
+
+      <!-- Flowchart Container -->
+      <div class="flex justify-center p-4 bg-slate-50 rounded-2xl border border-slate-100 print-shadow-none overflow-x-auto">
+        <pre class="mermaid text-center bg-transparent">
+flowchart TD
+    %% Styling
+    classDef default fill:#f9fafb,stroke:#d1d5db,stroke-width:1.5px,color:#1f2937;
+    classDef wh fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef sc fill:#f0fdf4,stroke:#10b981,stroke-width:2px,color:#064e3b;
+    classDef sa fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#78350f;
+    classDef sys fill:#faf5ff,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+
+    Start([Month Start]) --> WH[1. WH / Purchasing collects supplier quotes]:::wh
+    WH --> CheckConfirmed{Price already<n>confirmed?}:::sys
+    
+    CheckConfirmed -- Yes --> Request[Submit Price Change Request<n>with mandatory justification]:::wh
+    CheckConfirmed -- No --> SaveDirect[Direct Save to Database]:::sys
+    
+    Request --> SCReview[2. SC Manager reviews Change Request]:::sc
+    SCReview -- Approve --> SaveDirect
+    SCReview -- Reject --> RejectNotify[Original Price Stays Active]:::sc
+    
+    SaveDirect --> SCMargin[3. SC Manager sets Resell Margins]:::sc
+    SCMargin --> FloorCheck{Margin &ge; Floor?}:::sys
+    
+    FloorCheck -- No --> Block[🚫 Blocked: Floor Violation<n>Submit Disabled]:::sc
+    FloorCheck -- Yes --> Publish[Publish Approved Selling Catalog]:::sc
+    
+    Publish --> SA[4. Sales Agents view approved ranges]:::sa
+    SA --> DealSim[Interactive Deal Simulator<n>with instant warnings]:::sa
+    DealSim --> CopyQuote[Copy formatted Client Quote]:::sa
+    CopyQuote --> End([Deal Completed])
+        </pre>
+      </div>
+    </section>
+
+    <!-- SECTION 2: Core Features -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 print-border page-break-before page-break-inside-avoid">
+      <div class="border-b border-slate-100 pb-4 mb-6">
+        <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Capabilities</span>
+        <h2 class="text-2xl font-bold text-slate-800">2. Core Features Offered</h2>
+        <p class="text-slate-500 text-xs mt-1">Structured role-based modules for clean separation of duties.</p>
+      </div>
+
+      <div class="space-y-6">
+        <!-- WH Module -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+          <h3 class="text-lg font-bold text-primary-900 flex items-center gap-2 mb-3">
+            <span class="text-2xl">📦</span> A. Warehouse &amp; Purchasing Module (Data Collection)
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Guided Step-by-Step Collection:</strong> A clean, two-step wizard where users select a product category, then select specific items to record pricing.</li>
+            <li><strong>Smart Duplication Warning (Change Requests):</strong> If a purchasing officer attempts to alter a price that has already been submitted and confirmed for the month, the app forces them to submit a <strong>Price Change Request</strong> with a mandatory business justification.</li>
+            <li><strong>Contextual Historical Matrix:</strong> While entering prices, the input screen displays a 3-month, 6-month, or full history comparison grid for each supplier so purchasing agents can immediately spot vendor inflation or anomalies.</li>
+          </ul>
+        </div>
+
+        <!-- SC Module -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+          <h3 class="text-lg font-bold text-success-900 flex items-center gap-2 mb-3">
+            <span class="text-2xl">📊</span> B. Supply Chain Management Module (Controls &amp; Analytics)
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Real-time Pricing Engine:</strong> Allows managers to dynamically calculate selling prices based on the cheapest, average, or highest supplier quote for the month.</li>
+            <li><strong>Flexible Margin Modes:</strong> Supports setting margins as a <strong>Percentage (%)</strong> of cost or a <strong>Fixed Amount (EGP)</strong>.</li>
+            <li><strong>Margin Floor Enforcement:</strong> Enforces a strict profit floor configured at either the Category level or Item level (which overrides the category floor). The UI blocks publishing if the proposed price drops below the minimum acceptable markup.</li>
+            <li><strong>Independent Market Intelligence:</strong> High-end charts and analytical gauges to track:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>Supplier Scorecard:</strong> Identifies cost leaders and vendor participation/coverage rates.</li>
+                <li><strong>Month-over-Month Breakdowns:</strong> Visualizes volatility spread (Min, Max, Avg) per month.</li>
+                <li><strong>Markup Strategy Advisor:</strong> Suggests markup strategies based on calculated volatility levels.</li>
+              </ul>
+            </li>
+            <li><strong>Approval Dashboard:</strong> An inbox containing all price changes submitted by the warehouse. The SC Manager can approve or reject with a custom review note.</li>
+            <li><strong>Inline Monthly Review:</strong> A collapsible, side-by-side dashboard modal showing every item in the catalog. Managers can quickly inspect all supplier quotes and submit selling prices item-by-item without leaving the screen.</li>
+          </ul>
+        </div>
+
+        <!-- SA Module -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+          <h3 class="text-lg font-bold text-warning-900 flex items-center gap-2 mb-3">
+            <span class="text-2xl">🏷</span> C. Sales Agent Module (Quoting &amp; Deal Simulation)
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Secure Price Catalog:</strong> Agents can view approved min/max selling prices for the month. To protect purchasing leverage, <strong>raw buy costs are completely hidden</strong> from sales agents.</li>
+            <li><strong>Interactive Deal Simulator:</strong> Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately.</li>
+            <li><strong>Visual Compliance Indicators:</strong> Displays green (compliant), yellow (above maximum), and red (below minimum allowed margin) warnings in real-time as agents type their pricing.</li>
+            <li><strong>Active Session Deal Board:</strong> Allows agents to combine multiple item quotes into a single deal board, check total profitability, and copy a formatted text summary to their clipboard for instant WhatsApp/email delivery to clients.</li>
+          </ul>
+        </div>
+
+        <!-- Core Utilities -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+          <h3 class="text-lg font-bold text-slate-850 flex items-center gap-2 mb-3">
+            <span class="text-2xl">🌐</span> D. Core System Utilities
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Multilingual RTL Support:</strong> Fully localized in English and Arabic. RTL layout adjustments (aligned grids, padding, and font sizes) are applied automatically on language toggle.</li>
+            <li><strong>Theme Customizer:</strong> Toggle between clean light mode and premium dark mode interfaces.</li>
+            <li><strong>Zero-Dependency PDF &amp; Excel Generation:</strong>
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li>Export dynamic price requests for vendors with zebra-striped, auto-fitting columns.</li>
+                <li>Export manager spreadsheets with emerald headers, formatted currencies, and highlighted input fields.</li>
+                <li>On-screen print layouts optimized for physical archiving.</li>
+              </ul>
+            </li>
+            <li><strong>Automated Audit History:</strong> Collapsible visual timeline showing every past price modification, who made it, and the stated reason.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: Future Roadmap -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 print-border page-break-inside-avoid">
+      <div class="border-b border-slate-100 pb-4 mb-6">
+        <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Future Roadmap</span>
+        <h2 class="text-2xl font-bold text-slate-800">3. Future Roadmap &amp; Scaling Features</h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/40">
+          <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span>🔌</span> Phase 1: Supplier Self-Service
+          </h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            <strong>Direct Supplier Portals:</strong> Secure, tokenized email link for vendors to input their prices directly.<br>
+            <strong>Auto-Reminder Workflows:</strong> Automatic email/SMS alerts triggered on the 25th of the month.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/40">
+          <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span>🧠</span> Phase 2: AI Pricing &amp; Forecasting
+          </h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            <strong>Predictive Volatility Alerts:</strong> Machine learning models that analyze historical patterns to predict seasonal price spikes.<br>
+            <strong>AI Margin Optimization:</strong> Algorithms that automatically suggest the optimal markup range.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/40">
+          <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span>🌍</span> Phase 3: Global Capabilities
+          </h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            <strong>Multi-Currency Support:</strong> Convert raw quotes in USD, EUR, or RMB into EGP using real-time API exchange rates.<br>
+            <strong>Multi-Warehouse Routing:</strong> Support regional inventory centers and localized margin floors.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/40">
+          <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span>⛓</span> Phase 4: Integrations &amp; APIs
+          </h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            <strong>ERP Connectors:</strong> Direct sync endpoints to push approved selling catalogs directly to SAP, Oracle, or Odoo.<br>
+            <strong>E-Commerce Sync:</strong> Update Shopify/WooCommerce storefronts with the new approved selling prices instantly.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4 & 5: VS Code & PDF Instructions -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 print-border page-break-before page-break-inside-avoid">
+      <div class="border-b border-slate-100 pb-4 mb-6">
+        <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Viewing &amp; Exporting</span>
+        <h2 class="text-2xl font-bold text-slate-800">4. VS Code &amp; PDF Printing Instructions</h2>
+      </div>
+
+      <div class="space-y-6">
+        <div>
+          <h3 class="font-bold text-slate-800 text-base mb-2">How to View the Flowchart properly in VS Code</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-3">
+            By default, VS Code's built-in Markdown preview window does not render Mermaid diagram syntax. Follow these steps:
+          </p>
+          <ol class="list-decimal pl-5 text-xs text-slate-600 space-y-1.5">
+            <li>Open VS Code and navigate to the Extensions tab on the left sidebar (or press <kbd class="px-1.5 py-0.5 bg-slate-100 border rounded text-[10px]">Ctrl+Shift+X</kbd>).</li>
+            <li>Search for <strong>"Markdown Preview Mermaid Support"</strong> (published by Matt Bierner) and click <strong>Install</strong>.</li>
+            <li>Open <code class="px-1 py-0.5 bg-slate-100 rounded text-red-600">CLIENT_OVERVIEW.md</code>.</li>
+            <li>Press <kbd class="px-1.5 py-0.5 bg-slate-100 border rounded text-[10px]">Ctrl+K V</kbd> (or open the Command Palette with <kbd class="px-1.5 py-0.5 bg-slate-100 border rounded text-[10px]">Ctrl+Shift+P</kbd> and search for <em>"Markdown: Open Preview to the Side"</em>).</li>
+            <li>The flowchart under Section 1 will render dynamically inside the preview tab on the side.</li>
+          </ol>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100">
+          <h3 class="font-bold text-slate-800 text-base mb-2">How to Convert this Document &amp; Flowchart to PDF</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-3">
+            We have engineered this standalone HTML file to render everything in vector clarity. To save as a PDF:
+          </p>
+          <ol class="list-decimal pl-5 text-xs text-slate-600 space-y-1.5">
+            <li>Double-click <code class="px-1 py-0.5 bg-slate-100 rounded text-blue-600">CLIENT_OVERVIEW.html</code> to open it in Chrome, Edge, Safari, or Firefox.</li>
+            <li>Press <kbd class="px-1.5 py-0.5 bg-slate-100 border rounded text-[10px]">Ctrl+P</kbd> (Windows) or <kbd class="px-1.5 py-0.5 bg-slate-100 border rounded text-[10px]">Cmd+P</kbd> (macOS) to open the print dialog.</li>
+            <li>Set the **Destination** to <strong>"Save as PDF"</strong>.</li>
+            <li>Set **Layout** to <strong>"Portrait"</strong>.</li>
+            <li>Under **More Settings**, tick the box for <strong>"Background graphics"</strong> (CRITICAL to ensure color backgrounds and flowchart blocks load correctly).</li>
+            <li>Click **Save** and select your local output folder.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 6: First-Time Setup -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 print-border page-break-inside-avoid">
+      <div class="border-b border-slate-100 pb-4 mb-6">
+        <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Installation Guide</span>
+        <h2 class="text-2xl font-bold text-slate-800">5. Setup Guide for First-Time Use</h2>
+      </div>
+
+      <div class="space-y-6">
+        <div>
+          <h3 class="font-semibold text-slate-850 text-sm mb-2">📋 System Prerequisites</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Ensure **Node.js (v18.0.0 or higher)** is installed on your local machine. NPM is included automatically with Node.js.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-slate-850 text-sm mb-2">🚀 Step-by-Step Installation</h3>
+          <ol class="list-decimal pl-5 text-xs text-slate-600 space-y-2">
+            <li>
+              <strong>Unzip / Extract:</strong> Ensure all project folders (including <code class="px-1 py-0.5 bg-slate-100 rounded">src</code>, <code class="px-1 py-0.5 bg-slate-100 rounded">package.json</code>, etc.) are in your local workspace.
+            </li>
+            <li>
+              <strong>Install Dependencies:</strong> Open a terminal inside the root directory and run:
+              <pre class="mt-1.5 p-2.5 bg-slate-900 text-slate-200 rounded-lg font-mono text-[11px] overflow-x-auto">npm install</pre>
+            </li>
+            <li>
+              <strong>Launch App:</strong> Start the Next.js development server:
+              <pre class="mt-1.5 p-2.5 bg-slate-900 text-slate-200 rounded-lg font-mono text-[11px] overflow-x-auto">npm run dev</pre>
+              <p class="mt-1 text-[11px] text-slate-500 italic">
+                *The application automatically creates the SQLite database at `data/faerp.sqlite` and seeds the tables with default products, categories, suppliers, and historical quotes on first boot.*
+              </p>
+            </li>
+            <li>
+              <strong>Access the App:</strong> Open your web browser and navigate to:
+              <a href="http://localhost:3000" target="_blank" class="text-primary-500 hover:underline font-semibold font-mono text-[11px]">http://localhost:3000</a>
+            </li>
+          </ol>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-slate-850 text-sm mb-2">🔑 Seeded Demo Credentials</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-2.5">
+            Log in with the following default credentials to test each specific view:
+          </p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50">
+                  <th class="p-2.5 font-bold text-slate-700">Role</th>
+                  <th class="p-2.5 font-bold text-slate-700">Username</th>
+                  <th class="p-2.5 font-bold text-slate-700">Password</th>
+                  <th class="p-2.5 font-bold text-slate-700">Scope of Access</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-b border-slate-100">
+                  <td class="p-2.5 font-medium text-primary-900">Supply Chain Manager (SC)</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`sc`</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`sc123`</td>
+                  <td class="p-2.5 text-slate-600">Full control. Review pricing requests, set selling rates/margins, configure floors, manage system CRUD, execute database purges.</td>
+                </tr>
+                <tr class="border-b border-slate-100">
+                  <td class="p-2.5 font-medium text-success-900">Warehouse / Purchasing (WH)</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`wh`</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`wh123`</td>
+                  <td class="p-2.5 text-slate-600">Supplier collections. Input new monthly costs, view cost history comparison, submit price change requests with justifications.</td>
+                </tr>
+                <tr class="border-b border-slate-100">
+                  <td class="p-2.5 font-medium text-warning-900">Sales Agent (SA)</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`sa`</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`sa123`</td>
+                  <td class="p-2.5 text-slate-600">Client quoting. Search monthly active selling rates, run calculations on Deal Simulator, copy formatted quotes. Cost prices are hidden.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-danger-900 text-sm mb-2 flex items-center gap-1.5">
+            <span>🛡️</span> Administrative Database Purge Function
+          </h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-3">
+            A password-protected database purge panel is built in to allow administrators to clean the system for a fresh pricing cycle. This deletes all catalog inventory, suppliers, quotes, price requests, and margins, while retaining user authentication records.
+          </p>
+          <div class="bg-danger-50 border border-danger-100 p-4 rounded-xl text-xs space-y-2">
+            <p class="text-danger-900 font-semibold">To execute a database wipe:</p>
+            <ol class="list-decimal pl-5 text-danger-900/80 space-y-1">
+              <li>Log in with the Supply Chain Manager account (<code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">sc</code> / <code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">sc123</code>).</li>
+              <li>Navigate to the Admin Panel (<a href="http://localhost:3000/dashboard/admin" target="_blank" class="underline hover:text-danger-900">/dashboard/admin</a>).</li>
+              <li>Scroll to the bottom of the page to find the <strong>Dangerous Zone</strong>.</li>
+              <li>Type the purge confirmation password: <strong class="bg-danger-100/70 px-1.5 py-0.5 rounded font-mono border border-danger-200/50">17012911</strong></li>
+              <li>Click <strong>Wipe All Data Except Users</strong>. Double-confirm the browser prompt.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="no-print text-center text-xs text-slate-400 py-6 border-t border-slate-200">
+      FAERP Price &amp; Margin Management Engine &bull; Confidential Client Presentation Guide
+    </footer>
+  </div>
+</body>
+</html>

@@ -97,3 +97,80 @@ To transition this application from a single-site solution to an enterprise-wide
 ### ⛓ Phase 4: System Integration & APIs
 * **ERP Connectors**: Pre-built sync endpoints to connect directly with tier-1 systems (SAP, Oracle, Odoo, or Microsoft Dynamics) to push approved selling catalogs directly to invoicing modules.
 * **E-Commerce Sync**: Direct hook to update your client-facing Shopify, WooCommerce, or custom storefronts with the new approved selling prices instantly.
+
+---
+
+## 4. How to View the Flowchart in VS Code
+
+VS Code does not natively render Mermaid diagrams inside its default Markdown preview. To view the flowchart properly:
+
+1. **Install a Mermaid Extension**:
+   - Open VS Code.
+   - Click the Extensions icon on the left sidebar (or press `Ctrl+Shift+X`).
+   - Search for **Markdown Preview Mermaid Support** (by Matt Bierner) and click **Install**.
+   - Alternatively, you can install **Markdown Preview Enhanced** (by Yihua Shuyi) for advanced rendering options.
+2. **Open the Preview Panel**:
+   - Open `CLIENT_OVERVIEW.md` in VS Code.
+   - Open the Command Palette (`Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS).
+   - Search for and select: **Markdown: Open Preview to the Side** (or press `Ctrl+K V`).
+   - The preview window will open next to your code editor, and the Mermaid flowchart under Section 1 will render dynamically into a beautiful flowchart.
+
+---
+
+## 5. How to Convert this Overview to PDF
+
+To share this overview and the flowchart with clients or stakeholders as a PDF:
+
+1. Locate the standalone **`CLIENT_OVERVIEW.html`** file in the root directory.
+2. **Open in Browser**: Double-click `CLIENT_OVERVIEW.html` to open it in Google Chrome, Microsoft Edge, Safari, or Mozilla Firefox.
+3. **Print to PDF**:
+   - Press `Ctrl+P` (Windows/Linux) or `Cmd+P` (macOS) to open the print dialog.
+   - Select **Save as PDF** as the destination printer.
+   - Set **Layout** to **Portrait**.
+   - Under *More Settings*, ensure **Background graphics** is checked (this preserves colors, badges, and the flowchart colors).
+   - Click **Save** and select your destination folder.
+   - The output PDF will render the fonts, colors, and Mermaid workflow diagram in high definition, ready for client delivery.
+
+---
+
+## 6. Setup Guide for First-Time Use
+
+This application is designed for quick, self-contained installation with no external database dependencies.
+
+### 📋 Prerequisites
+- **Node.js** (v18.0.0 or higher)
+- **NPM** (installed automatically with Node.js)
+
+### 🚀 Step-by-Step Installation
+1. **Unzip/Clone the Project**: Ensure the project directory is extracted on your local machine.
+2. **Install Dependencies**: Open a terminal inside the project directory and run:
+   ```bash
+   npm install
+   ```
+3. **Launch the Application**: Run the development server:
+   ```bash
+   npm run dev
+   ```
+   *The SQLite database file will automatically create itself at `data/faerp.sqlite` and seed all default categories, items, suppliers, and historical pricing matrix data on first run.*
+4. **Access the App**: Open your browser and navigate to:
+   ```text
+   http://localhost:3000
+   ```
+
+### 🔑 Default Demo User Credentials
+You can log in to test different workflow perspectives:
+
+| Role | Username | Password | Purpose & Capabilities |
+| :--- | :--- | :--- | :--- |
+| **Supply Chain Manager (SC)** | `sc` | `sc123` | Approves price changes, manages selling catalogs, sets margin floors, accesses the Admin Panel, and executes database purges. |
+| **Warehouse Purchasing (WH)** | `wh` | `wh123` | Inputs monthly supplier quotes, files price change justifications, exports collection spreadsheets. |
+| **Sales Agent (SA)** | `sa` | `sa123` | Uses the Deal Simulator, reads active selling price ranges, generates client quotes. |
+
+### 🛡️ Administrative Database Purge Function
+If you need to wipe all transaction records, supplier quotes, catalog categories/items, and margin configurations to start a clean cycle, follow these steps:
+1. Log in as the Supply Chain Manager (`sc` / `sc123`).
+2. Navigate to the Admin Panel (`/dashboard/admin` via the sidebar or top header).
+3. Scroll to the bottom to the **Dangerous Zone**.
+4. Enter the administrator purge password: `17012911`
+5. Click **Wipe All Data Except Users**.
+6. All catalog and transaction history is immediately wiped; the user database is preserved so your login credentials remain active.

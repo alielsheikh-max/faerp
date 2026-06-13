@@ -14,9 +14,11 @@ import {
   updateCategory,
   updateItem,
   updateSupplier,
-  updateUser
+  updateUser,
+  purgeAllDataExceptUsers
 } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
+import { requireRole } from "@/lib/auth";
 
 function fail(message: string): never {
   redirect(`/dashboard/admin?error=${encodeURIComponent(message)}`);
@@ -222,4 +224,20 @@ export async function deleteItemAction(formData: FormData) {
   }
 
   done("Item deleted.");
+}
+
+export async function purgeDataAction(formData: FormData) {
+  requireRole(["SC"]);
+  const password = asString(formData.get("password"));
+  if (password !== "17012911") {
+    fail("Incorrect purge protection password.");
+  }
+
+  try {
+    purgeAllDataExceptUsers();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "Database purge failed.");
+  }
+
+  done("Database purged successfully. All transaction, pricing, and catalog records have been wiped.");
 }

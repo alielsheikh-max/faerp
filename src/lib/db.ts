@@ -2568,3 +2568,22 @@ export function countPendingRequestsByUser(requestedBy: string): number {
   ).get(requestedBy) as { cnt: number };
   return row.cnt;
 }
+
+export function purgeAllDataExceptUsers() {
+  const db = database();
+  db.exec(`
+    DELETE FROM price_change_requests;
+    DELETE FROM margin_floors;
+    DELETE FROM selling_price_history;
+    DELETE FROM selling_prices;
+    DELETE FROM price_entries;
+    DELETE FROM items;
+    DELETE FROM categories;
+    DELETE FROM suppliers;
+    DELETE FROM sqlite_sequence WHERE name IN (
+      'categories', 'items', 'suppliers', 'price_entries', 'selling_prices', 
+      'selling_price_history', 'margin_floors', 'price_change_requests'
+    );
+  `);
+}
+
