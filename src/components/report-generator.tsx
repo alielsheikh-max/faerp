@@ -405,10 +405,21 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
             <th class="num">${isAr ? "أقصى سعر" : "Max Price"}</th>
           </tr></thead><tbody>${rowsHtml}</tbody></table>`;
       }).join("");
+
+      const uniqueCategories = new Set(published.map((r: any) => r.category_name)).size;
+      const monthLabel = startMonth === endMonth ? formatMonthLabel(startMonth) : `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
+
+      const statsObj = {
+        [isAr ? "الأصناف المتاحة" : "Available Items"]: published.length,
+        [isAr ? "الفترة الزمنية" : "Period"]: monthLabel,
+        [isAr ? "فئات المنتجات" : "Categories"]: uniqueCategories,
+        [isAr ? "حالة الكتالوج" : "Catalog Status"]: isAr ? "معتمد" : "Approved"
+      };
+
       const html = `<body${bodyClass}>${header(
         isAr ? "كتالوج أسعار المبيعات" : "Sales Price Catalog",
-        formatMonthLabel(month), month,
-        { [isAr ? "أصناف متاحة" : "Available Items"]: published.length }
+        monthLabel, month,
+        statsObj
       )}<p style="color:#6b7280;font-size:11px;margin-bottom:16px">${isAr ? "جميع الأسعار بالجنيه المصري · للاستخدام الداخلي فقط" : "All prices in EGP · For internal use only"}</p>
       ${catHtml}${footer(username)}</body>`;
       printWindow(html, `Sales Catalog - ${month}`);
