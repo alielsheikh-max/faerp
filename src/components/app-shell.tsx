@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useState, useEffect } from "react";
 import { ROLE_PROFILES, RoleCode } from "@/lib/constants";
-import { logout } from "@/app/actions/auth";
 import UniversalSearch from "@/components/universal-search";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -168,11 +167,19 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
           </button>
 
           {/* Sign out */}
-          <form action={logout}>
-            <button type="submit" className="button button-secondary button-block" style={{ fontSize: "13px", padding: "10px", background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.22)", color: "#ffffff" }}>
-              {t("sidebar.signOut")}
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/logout", { method: "POST" });
+              } catch (e) {}
+              window.location.href = "/";
+            }}
+            className="button button-secondary button-block"
+            style={{ fontSize: "13px", padding: "10px", background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.22)", color: "#ffffff", cursor: "pointer" }}
+          >
+            {t("sidebar.signOut")}
+          </button>
         </div>
       </aside>
 
