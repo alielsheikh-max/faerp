@@ -1,5 +1,6 @@
 import { getMonthlyReport } from "@/lib/db";
 import { formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
+import PrintButton from "@/components/print-button";
 
 type PrintPageProps = {
   searchParams?: {
@@ -24,20 +25,7 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
               </p>
               <h1 style={{ margin: "8px 0 0", fontSize: "32px" }}>{formatMonthLabel(month)}</h1>
             </div>
-            <button
-              onClick={() => window.print()}
-              style={{
-                border: 0,
-                borderRadius: "12px",
-                padding: "12px 18px",
-                background: "#2f6fed",
-                color: "#fff",
-                fontWeight: 700,
-                cursor: "pointer"
-              }}
-            >
-              Print
-            </button>
+            <PrintButton />
           </header>
 
           <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
