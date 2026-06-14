@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ═══════════════════════════════════════════════════════════════
    DESIGN TOKENS — ERP Professional (Light Default)
@@ -29,10 +29,10 @@
   --text-muted:     #9ca3af;
   --text-dim:       #d1d5db;
 
-  /* Brand — SAP-like Blue-Indigo */
-  --primary:        #3b4bdb;
-  --primary-hover:  #2d3ac0;
-  --primary-light:  rgba(59,75,219,0.08);
+  /* Brand — Deep Blue Branding */
+  --primary:        #1e3a8a;
+  --primary-hover:  #162e6e;
+  --primary-light:  rgba(30,58,138,0.08);
   --indigo-400:     #818cf8;
   --indigo-500:     #6366f1;
   --indigo-600:     #4f46e5;
@@ -111,9 +111,9 @@
   --text-secondary: #94a3b8;
   --text-muted:     #4b5873;
   --text-dim:       rgba(241,245,249,0.3);
-  --primary:        #6366f1;
-  --primary-hover:  #818cf8;
-  --primary-light:  rgba(99,102,241,0.12);
+  --primary:        #3b82f6;
+  --primary-hover:  #60a5fa;
+  --primary-light:  rgba(59,130,246,0.12);
   --success:        #10b981;
   --success-light:  rgba(16,185,129,0.12);
   --danger:         #f43f5e;
@@ -156,8 +156,8 @@
 [data-theme="dark"] .data-table th   { background: rgba(255,255,255,0.03); }
 [data-theme="dark"] .data-table tbody tr:hover { background: rgba(99,102,241,0.05); }
 [data-theme="dark"] .login-page {
-  background: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(99,102,241,0.18), transparent 55%),
-              radial-gradient(ellipse 60% 60% at 100% 100%, rgba(139,92,246,0.14), transparent 55%), #06090f;
+  background: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(59,130,246,0.18), transparent 55%),
+              radial-gradient(ellipse 60% 60% at 100% 100%, rgba(147,197,253,0.14), transparent 55%), #06090f;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -202,7 +202,7 @@ img { display: block; max-width: 100%; }
    SIDEBAR — #058861 green, light fonts
 ═══════════════════════════════════════════════════════════════ */
 .sidebar {
-  background: #046b4c;
+  background: #1e3a8a;
   border-right: 1px solid rgba(0,0,0,0.15);
   padding: 0;
   display: flex;
@@ -210,7 +210,7 @@ img { display: block; max-width: 100%; }
   height: 100vh;
   overflow: hidden;
   z-index: 10;
-  box-shadow: 2px 0 12px rgba(4,107,76,0.30);
+  box-shadow: 2px 0 12px rgba(30,58,138,0.30);
 }
 
 /* Scrollable middle section so footer (sign out etc.) is always visible */
@@ -880,14 +880,14 @@ select option { background: #fff; color: #111827; }
 .login-page {
   display: flex; align-items: center; justify-content: center;
   min-height: 100vh; padding: 24px;
-  background: radial-gradient(circle at 10% 20%, var(--bg-base) 0%, rgba(99,102,241,0.04) 90%), var(--bg-base);
+  background: radial-gradient(circle at 10% 20%, var(--bg-base) 0%, rgba(30,58,138,0.04) 90%), var(--bg-base);
   position: relative; overflow: hidden;
 }
 .login-page::before {
   content: ''; position: absolute;
   width: 500px; height: 500px; top: -100px; right: -100px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(99,102,241,0.06), transparent 70%);
+  background: radial-gradient(circle, rgba(30,58,138,0.06), transparent 70%);
   filter: blur(40px); pointer-events: none;
 }
 
@@ -903,7 +903,7 @@ select option { background: #fff; color: #111827; }
 /* Hero Branding Side */
 .hero-copy {
   padding: 56px 48px;
-  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #0f1d44 100%);
   display: flex; flex-direction: column; justify-content: space-between;
   position: relative; overflow: hidden;
 }
@@ -911,18 +911,18 @@ select option { background: #fff; color: #111827; }
   content: ''; position: absolute;
   bottom: -50px; left: -50px;
   width: 200px; height: 200px; border-radius: 50%;
-  background: rgba(99,102,241,0.08); filter: blur(30px);
+  background: rgba(255,255,255,0.08); filter: blur(30px);
 }
 .hero-brand {
   display: flex; align-items: center; gap: 12px;
 }
 .hero-brand-logo {
   width: 40px; height: 40px;
-  background: linear-gradient(135deg, #4f63e7 0%, #3b4bdb 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   color: #ffffff; font-weight: 800; font-size: 18px;
-  box-shadow: 0 4px 12px rgba(59,75,219,0.3);
+  box-shadow: 0 4px 12px rgba(30,58,138,0.3);
   animation: floatIcon 3.5s ease-in-out infinite;
 }
 .hero-brand-name {
@@ -936,7 +936,7 @@ select option { background: #fff; color: #111827; }
   color: #ffffff; letter-spacing: -0.02em; margin-bottom: 16px;
 }
 .hero-main-content h1 span {
-  background: linear-gradient(to right, #818cf8, #a5b4fc);
+  background: linear-gradient(to right, #60a5fa, #93c5fd);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
 .hero-main-content p {
@@ -949,7 +949,7 @@ select option { background: #fff; color: #111827; }
   font-size: 13.5px; color: #d1d5db; display: flex; align-items: center; gap: 10px;
 }
 .hero-feature-item::before {
-  content: '✓'; color: #818cf8; font-weight: 700; font-size: 14px;
+  content: '✓'; color: #60a5fa; font-weight: 700; font-size: 14px;
 }
 .hero-footer {
   font-size: 12px; color: #6b7280;
@@ -1072,11 +1072,11 @@ select option { background: #fff; color: #111827; }
 @keyframes floatIcon {
   0%, 100% {
     transform: translateY(0) scale(1);
-    box-shadow: 0 4px 12px rgba(59,75,219,0.3);
+    box-shadow: 0 4px 12px rgba(30,58,138,0.3);
   }
   50% {
     transform: translateY(-5px) scale(1.04);
-    box-shadow: 0 10px 24px rgba(59,75,219,0.55);
+    box-shadow: 0 10px 24px rgba(30,58,138,0.55);
   }
 }
 
@@ -1682,4 +1682,16 @@ body:has(.print-page-wrapper) .content-area {
   body:has(.print-page-wrapper) .no-print {
     display: none !important;
   }
+}
+
+/* Apply outfit font to headers */
+h1, h2, h3, h4, h5, h6,
+.brand-block h1,
+.brand-mark,
+.hero-brand-name,
+.hero-main-content h1,
+.glass-panel .panel-header h2,
+.section-intro h1,
+.stat-card strong {
+  font-family: 'Outfit', var(--font-sans);
 }
