@@ -260,11 +260,19 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         return `<div class="cat-header">${cat}</div><table><thead><tr><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "أدنى سعر بيع" : "Min Sell"}</th><th class="num">${isAr ? "أقصى سعر بيع" : "Max Sell"}</th>${strategyHeader}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
       }).join("");
       const published = catalog.filter((r: any) => r.sell_min !== null).length;
+      const uniqueCategories = new Set(catalog.map((r: any) => r.category_name)).size;
+      const monthLabel = startMonth === endMonth ? formatMonthLabel(startMonth) : `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
+      const statsObj = {
+        [isAr ? "الأصناف المنشورة" : "Published Items"]: published,
+        [isAr ? "الإجمالي" : "Total Items"]: catalog.length,
+        [isAr ? "الفترة الزمنية" : "Period"]: monthLabel,
+        [isAr ? "فئات المنتجات" : "Categories"]: uniqueCategories,
+      };
       const html = `<body${bodyClass}>${header(
         isAr ? "قائمة أسعار البيع المعتمدة" : "Approved Selling Price List",
-        formatMonthLabel(month),
+        monthLabel,
         month,
-        { [isAr ? "الأصناف المنشورة" : "Published"]: published, [isAr ? "الإجمالي" : "Total Items"]: catalog.length }
+        statsObj
       )}${catHtml}${footer(username)}</body>`;
       printWindow(html, `Selling Prices - ${month}`);
       break;
