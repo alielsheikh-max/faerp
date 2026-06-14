@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { loginAs } from "@/app/actions/auth";
 import { QUICK_LOGIN_CREDENTIALS, ROLE_PROFILES } from "@/lib/constants";
 import { useI18n } from "@/lib/i18n-context";
@@ -78,7 +78,7 @@ export default function LoginPageClient({ error }: { error?: string }) {
           <div className="hero-main-content">
             <h1>
               {t("login.heroTitle").split("&").map((part, i) =>
-                i === 0 ? part : <><span key={i}>&</span>{part}</>
+                i === 0 ? part : <Fragment key={i}><span>&</span>{part}</Fragment>
               )}
             </h1>
             <p>{t("login.heroDesc")}</p>
