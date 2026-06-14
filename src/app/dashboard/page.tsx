@@ -11,6 +11,8 @@ import MonthlyReviewModal from "@/components/monthly-review-modal";
 import ReportGenerator from "@/components/report-generator";
 import RequestPricesBanner from "@/components/request-prices-banner";
 import { getServerT } from "@/lib/locale-server";
+import ClientQuotingSimulator from "@/components/client-quoting-simulator";
+
 
 type SearchParams = { month?: string; categoryId?: string; itemId?: string; saved?: string; error?: string; simulate?: string };
 
@@ -42,6 +44,8 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               <span className="badge badge-success">{published.length} {t("dash.itemsPublished")}</span>
             </div>
           }        />
+        <ClientQuotingSimulator initialRows={catalog} month={formatMonthLabel(month)} />
+
         {published.length === 0 ? (
           <section className="panel" style={{ padding: "48px 32px", textAlign: "center" }}>
             <div style={{ fontSize: "40px", marginBottom: "16px" }}>📋</div>
