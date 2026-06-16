@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n-context";
 
 type Category    = { id: number; name: string; description: string };
 type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
-type Supplier    = { id: number; name: string; contact_person?: string; phone?: string; category_ids: number[] };
+type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
 type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null };
 type HistoryFilter = "3" | "6" | "all";
 
@@ -1069,11 +1069,16 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                     {/* Supplier identity + Notes stacked below */}
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
                       <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0, marginTop: "2px" }}>
-                        {supplier.name.charAt(0)}
+                        {(supplier.fame_name || supplier.name).charAt(0)}
                       </span>
                       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: "13px" }}>{supplier.name}</div>
+                          <div style={{ fontWeight: 700, fontSize: "13px" }}>
+                            {supplier.fame_name || supplier.name}
+                          </div>
+                          {supplier.fame_name && supplier.fame_name !== supplier.name && (
+                            <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{supplier.name}</div>
+                          )}
                           {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
                           {thisEntry && (
                             <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>

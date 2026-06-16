@@ -7,6 +7,7 @@ import { getSupplierQuotesHistoryAction } from "@/app/actions/admin";
 type Supplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
   contact_person: string | null;
   phone: string | null;
   code: string | null;

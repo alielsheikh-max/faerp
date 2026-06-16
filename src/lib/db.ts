@@ -222,10 +222,28 @@ function initializeSchema(db: Db) {
     "ALTER TABLE suppliers ADD COLUMN email TEXT",
     "ALTER TABLE suppliers ADD COLUMN region TEXT",
     "ALTER TABLE suppliers ADD COLUMN address TEXT",
+    "ALTER TABLE suppliers ADD COLUMN fame_name TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
   }
+
+  // Auto-populate fame_name for any supplier that doesn't have one yet
+  function autoFameName(name: string): string {
+    const dashIdx = name.lastIndexOf(" - ");
+    if (dashIdx !== -1) {
+      const afterDash = name.substring(dashIdx + 3).trim();
+      if (afterDash.length > 0 && afterDash.length <= 25) return afterDash;
+    }
+    if (name.length <= 20) return name;
+    const words = name.split(/\s+/).filter(Boolean);
+    return words.slice(0, 2).join(" ");
+  }
+  const suppliersNoFame = db.prepare(
+    "SELECT id, name FROM suppliers WHERE fame_name IS NULL OR TRIM(fame_name) = ''"
+  ).all() as Array<{ id: number; name: string }>;
+  const setFame = db.prepare("UPDATE suppliers SET fame_name = ? WHERE id = ?");
+  for (const s of suppliersNoFame) setFame.run(autoFameName(s.name), s.id);
 
   // Safe table migrations — CREATE IF NOT EXISTS is idempotent; safe to run every startup
   db.exec(`
@@ -617,9 +635,10 @@ export function getCategories() {
 export function getSuppliers() {
   const db = database();
   const rows = db
-    .prepare("SELECT id, name, contact_person, phone, code, contact_job_title, represented_products, email, region, address FROM suppliers ORDER BY name")
+    .prepare("SELECT id, name, fame_name, contact_person, phone, code, contact_job_title, represented_products, email, region, address FROM suppliers ORDER BY name")
     .all() as Array<{
-      id: number; name: string; contact_person: string; phone: string;
+      id: number; name: string; fame_name: string | null;
+      contact_person: string; phone: string;
       code: string | null; contact_job_title: string | null;
       represented_products: string | null; email: string | null;
       region: string | null; address: string | null;
@@ -869,6 +888,7 @@ export function deleteCategory(id: number) {
 
 export function createSupplier(input: {
   name: string;
+  fameName?: string;
   contactPerson: string;
   phone: string;
   code?: string;
@@ -881,14 +901,15 @@ export function createSupplier(input: {
   database()
     .prepare(`
       INSERT INTO suppliers (
-        name, contact_person, phone, code, contact_job_title, represented_products, email, region, address
+        name, fame_name, contact_person, phone, code, contact_job_title, represented_products, email, region, address
       )
       VALUES (
-        @name, @contact_person, @phone, @code, @contact_job_title, @represented_products, @email, @region, @address
+        @name, @fame_name, @contact_person, @phone, @code, @contact_job_title, @represented_products, @email, @region, @address
       )
     `)
     .run({
       name: input.name,
+      fame_name: input.fameName || null,
       contact_person: input.contactPerson,
       phone: input.phone,
       code: input.code || null,
@@ -903,6 +924,7 @@ export function createSupplier(input: {
 export function updateSupplier(input: {
   id: number;
   name: string;
+  fameName?: string;
   contactPerson: string;
   phone: string;
   code?: string;
@@ -917,6 +939,7 @@ export function updateSupplier(input: {
       UPDATE suppliers
       SET
         name = @name,
+        fame_name = @fame_name,
         contact_person = @contact_person,
         phone = @phone,
         code = @code,
@@ -930,6 +953,7 @@ export function updateSupplier(input: {
     .run({
       id: input.id,
       name: input.name,
+      fame_name: input.fameName || null,
       contact_person: input.contactPerson,
       phone: input.phone,
       code: input.code || null,
@@ -1078,8 +1102,10 @@ export function getRecentPriceEntries(limit = 10) {
         pe.notes,
         pe.recorded_at,
         i.name as item_name,
+        i.id as item_id,
         c.name as category_name,
-        s.name as supplier_name
+        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_display_name
       FROM price_entries pe
       JOIN items i ON i.id = pe.item_id
       JOIN categories c ON c.id = i.category_id
@@ -1095,8 +1121,10 @@ export function getRecentPriceEntries(limit = 10) {
       notes: string;
       recorded_at: string;
       item_name: string;
+      item_id: number;
       category_name: string;
       supplier_name: string;
+      supplier_display_name: string;
     }>;
 }
 
@@ -1757,7 +1785,7 @@ export function getAdminSnapshot() {
   const suppliers = (() => {
     const rows = db.prepare(`
       SELECT
-        s.id, s.name, s.contact_person, s.phone, s.code, s.contact_job_title,
+        s.id, s.name, s.fame_name, s.contact_person, s.phone, s.code, s.contact_job_title,
         s.represented_products, s.email, s.region, s.address,
         COUNT(pe.id) as quote_count,
         GROUP_CONCAT(DISTINCT i.name) as quoted_item_names,
@@ -1766,11 +1794,12 @@ export function getAdminSnapshot() {
       LEFT JOIN price_entries pe ON pe.supplier_id = s.id
       LEFT JOIN items i ON pe.item_id = i.id
       LEFT JOIN supplier_categories sc ON sc.supplier_id = s.id
-      GROUP BY s.id, s.name, s.contact_person, s.phone, s.code,
+      GROUP BY s.id, s.name, s.fame_name, s.contact_person, s.phone, s.code,
                s.contact_job_title, s.represented_products, s.email, s.region, s.address
       ORDER BY s.name
     `).all() as Array<{
-      id: number; name: string; contact_person: string; phone: string;
+      id: number; name: string; fame_name: string | null;
+      contact_person: string; phone: string;
       code: string | null; contact_job_title: string | null;
       represented_products: string | null; email: string | null;
       region: string | null; address: string | null;

@@ -35,6 +35,7 @@ type Category = {
 type Supplier = {
   id: number;
   name: string;
+  fame_name: string | null;
   contact_person: string;
   phone: string;
   quote_count: number;
@@ -971,8 +972,12 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
 
           <form action={createSupplierAction} className="form-grid">
             <label className="field">
-              <span>Supplier Name</span>
-              <input name="name" type="text" placeholder="Supplier name" required />
+              <span>Commercial Name (Full)</span>
+              <input name="name" type="text" placeholder="Full official/commercial name" required />
+            </label>
+            <label className="field">
+              <span>Fame Name (Short Display Name)</span>
+              <input name="fameName" type="text" placeholder="Short name shown in dropdowns & price forms" />
             </label>
             <label className="field">
               <span>Contact Person</span>
@@ -1009,8 +1014,12 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 <form key={supplier.id} action={updateSupplierAction} className="inline-editor">
                   <input type="hidden" name="id" value={supplier.id} />
                   <label className="field">
-                    <span>Name</span>
+                    <span>Commercial Name (Full)</span>
                     <input name="name" defaultValue={supplier.name} required />
+                  </label>
+                  <label className="field">
+                    <span>Fame Name <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>(short display name)</span></span>
+                    <input name="fameName" defaultValue={supplier.fame_name ?? ""} placeholder="Auto-generated if blank" />
                   </label>
                   <label className="field">
                     <span>Contact person</span>

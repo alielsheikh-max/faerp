@@ -203,6 +203,7 @@ export async function deleteCategoryAction(formData: FormData) {
 export async function createSupplierAction(formData: FormData) {
   requireRole(["AD"]);
   const name = asString(formData.get("name"));
+  const fameName = asString(formData.get("fameName"));
   const contactPerson = asString(formData.get("contactPerson"));
   const phone = asString(formData.get("phone"));
   const code = asString(formData.get("code"));
@@ -216,17 +217,7 @@ export async function createSupplierAction(formData: FormData) {
     fail("Supplier name is required.");
   }
 
-  createSupplier({
-    name,
-    contactPerson,
-    phone,
-    code,
-    contactJobTitle,
-    representedProducts,
-    email,
-    region,
-    address
-  });
+  createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
   done("Supplier created.");
 }
 
@@ -234,6 +225,7 @@ export async function updateSupplierAction(formData: FormData) {
   requireRole(["AD"]);
   const id = asNumber(formData.get("id"));
   const name = asString(formData.get("name"));
+  const fameName = asString(formData.get("fameName"));
   const contactPerson = asString(formData.get("contactPerson"));
   const phone = asString(formData.get("phone"));
   const code = asString(formData.get("code"));
@@ -247,18 +239,7 @@ export async function updateSupplierAction(formData: FormData) {
     fail("Supplier update is incomplete.");
   }
 
-  updateSupplier({
-    id,
-    name,
-    contactPerson,
-    phone,
-    code,
-    contactJobTitle,
-    representedProducts,
-    email,
-    region,
-    address
-  });
+  updateSupplier({ id, name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
   done("Supplier updated.");
 }
 
