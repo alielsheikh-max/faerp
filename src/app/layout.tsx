@@ -30,14 +30,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
                   else document.documentElement.setAttribute('data-theme', 'light');
                   var locale = localStorage.getItem('faerp-locale');
+                  // Set Readex Pro Variable for all locales — handles Arabic + Latin equally
+                  document.documentElement.style.setProperty('--font-sans', "'Readex Pro Variable', -apple-system, sans-serif");
                   if (locale === 'ar') {
                     document.documentElement.setAttribute('dir', 'rtl');
                     document.documentElement.setAttribute('lang', 'ar');
-                    // AR locale: Readex Pro leads — handles both Arabic + Latin glyphs
-                    document.documentElement.style.setProperty('--font-sans', "'Readex Pro Variable', 'Inter', -apple-system, sans-serif");
-                  } else {
-                    // EN locale: Inter for Latin; Readex Pro auto-routes Arabic via unicode-range
-                    document.documentElement.style.setProperty('--font-sans', "'Inter', 'Readex Pro Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
                   }
                 } catch (e) {}
               })();

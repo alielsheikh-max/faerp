@@ -1,14 +1,14 @@
-/* ── Google Fonts: Inter (EN body), Outfit (headings), JetBrains Mono (code) ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-/* ── Readex Pro Variable — self-hosted Arabic font, no CDN, no fallback ── */
+/* ── Readex Pro Variable — bilingual Arabic + Latin, self-hosted, no CDN ── */
 @import '@fontsource-variable/readex-pro';
+/* ── JetBrains Mono — monospace/code display only ── */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ═══════════════════════════════════════════════════════════════
    DESIGN TOKENS — ERP Professional (Light Default)
 ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* Inter for Latin, Readex Pro auto-activates for Arabic via unicode-range — script-based, locale-independent */
-  --font-sans: 'Inter', 'Readex Pro Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Single font for all text and scripts — Arabic and Latin */
+  --font-sans: 'Readex Pro Variable', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
 
   /* Surface Layers */
@@ -1688,7 +1688,7 @@ body:has(.print-page-wrapper) .content-area {
   }
 }
 
-/* ── Headings: Outfit for EN Latin, Readex Pro auto-activates for Arabic via unicode-range ── */
+/* ── Headings use Readex Pro Variable — consistent with body font ── */
 h1, h2, h3, h4, h5, h6,
 .brand-block h1,
 .brand-mark,
@@ -1697,21 +1697,5 @@ h1, h2, h3, h4, h5, h6,
 .glass-panel .panel-header h2,
 .section-intro h1,
 .stat-card strong {
-  font-family: 'Outfit', 'Readex Pro Variable', var(--font-sans);
-}
-
-/*
- * Script-based Arabic font — Readex Pro activates automatically for Arabic codepoints
- * via unicode-range in @font-face, regardless of UI locale.
- * For AR locale: swap font order so Readex Pro leads the full UI.
- */
-[lang="ar"] body,
-[dir="rtl"] body {
-  font-family: 'Readex Pro Variable', 'Inter', -apple-system, sans-serif;
-}
-[lang="ar"] h1, [lang="ar"] h2, [lang="ar"] h3,
-[lang="ar"] h4, [lang="ar"] h5, [lang="ar"] h6,
-[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3,
-[dir="rtl"] h4, [dir="rtl"] h5, [dir="rtl"] h6 {
-  font-family: 'Readex Pro Variable', 'Outfit', -apple-system, sans-serif;
+  font-family: 'Readex Pro Variable', -apple-system, sans-serif;
 }
