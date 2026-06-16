@@ -15,7 +15,8 @@ import {
   updateItem,
   updateSupplier,
   updateUser,
-  purgeAllDataExceptUsers
+  purgeAllDataExceptUsers,
+  setSupplierCategories
 } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 import { requireRole } from "@/lib/auth";
@@ -31,6 +32,31 @@ function done(message: string): never {
   revalidatePath("/dashboard/manager");
   revalidatePath("/dashboard/sales");
   redirect(`/dashboard/admin?success=${encodeURIComponent(message)}`);
+}
+
+/**
+ * Assign categories to a supplier. Returns a result object (no redirect)
+ * so client components can show inline success/error feedback.
+ */
+export async function assignSupplierCategoriesAction(
+  formData: FormData
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const session = requireRole(["AD"]);
+  const supplierId = Number(formData.get("supplier_id"));
+  if (!supplierId || isNaN(supplierId)) {
+    return { success: false, error: "Invalid supplier ID." };
+  }
+  const rawIds = formData.getAll("category_ids");
+  const categoryIds = rawIds.map(Number).filter(n => !isNaN(n) && n > 0);
+  try {
+    setSupplierCategories(supplierId, categoryIds, session.displayName);
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/admin");
+    revalidatePath("/dashboard/admin/suppliers");
+    return { success: true, message: `Categories updated (${categoryIds.length} assigned).` };
+  } catch (e) {
+    return { success: false, error: "Failed to update supplier categories." };
+  }
 }
 
 export async function createUserAction(formData: FormData) {

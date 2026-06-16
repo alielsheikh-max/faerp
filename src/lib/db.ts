@@ -73,6 +73,14 @@ function initializeSchema(db: Db) {
       address TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS supplier_categories (
+      supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      assigned_by TEXT,
+      assigned_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (supplier_id, category_id)
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
@@ -607,20 +615,41 @@ export function getCategories() {
 }
 
 export function getSuppliers() {
-  return database()
+  const db = database();
+  const rows = db
     .prepare("SELECT id, name, contact_person, phone, code, contact_job_title, represented_products, email, region, address FROM suppliers ORDER BY name")
     .all() as Array<{
-      id: number;
-      name: string;
-      contact_person: string;
-      phone: string;
-      code: string | null;
-      contact_job_title: string | null;
-      represented_products: string | null;
-      email: string | null;
-      region: string | null;
-      address: string | null;
+      id: number; name: string; contact_person: string; phone: string;
+      code: string | null; contact_job_title: string | null;
+      represented_products: string | null; email: string | null;
+      region: string | null; address: string | null;
     }>;
+
+  // Attach category_ids per supplier from the junction table
+  const catRows = db.prepare(
+    "SELECT supplier_id, category_id FROM supplier_categories"
+  ).all() as Array<{ supplier_id: number; category_id: number }>;
+
+  const catMap = new Map<number, number[]>();
+  for (const r of catRows) {
+    if (!catMap.has(r.supplier_id)) catMap.set(r.supplier_id, []);
+    catMap.get(r.supplier_id)!.push(r.category_id);
+  }
+
+  return rows.map(s => ({ ...s, category_ids: catMap.get(s.id) ?? [] }));
+}
+
+/** Replace all category assignments for a supplier (transactional). */
+export function setSupplierCategories(supplierId: number, categoryIds: number[], assignedBy: string): void {
+  const db = database();
+  const del = db.prepare("DELETE FROM supplier_categories WHERE supplier_id = ?");
+  const ins = db.prepare(
+    "INSERT OR IGNORE INTO supplier_categories (supplier_id, category_id, assigned_by) VALUES (?, ?, ?)"
+  );
+  db.transaction(() => {
+    del.run(supplierId);
+    for (const catId of categoryIds) ins.run(supplierId, catId, assignedBy);
+  })();
 }
 
 export function getUsers() {
@@ -1725,39 +1754,34 @@ export function getAdminSnapshot() {
     item_count: number;
   }>;
 
-  const suppliers = db.prepare(`
-    SELECT
-      s.id,
-      s.name,
-      s.contact_person,
-      s.phone,
-      s.code,
-      s.contact_job_title,
-      s.represented_products,
-      s.email,
-      s.region,
-      s.address,
-      COUNT(pe.id) as quote_count,
-      GROUP_CONCAT(DISTINCT i.name) as quoted_item_names
-    FROM suppliers s
-    LEFT JOIN price_entries pe ON pe.supplier_id = s.id
-    LEFT JOIN items i ON pe.item_id = i.id
-    GROUP BY s.id, s.name, s.contact_person, s.phone, s.code, s.contact_job_title, s.represented_products, s.email, s.region, s.address
-    ORDER BY s.name
-  `).all() as Array<{
-    id: number;
-    name: string;
-    contact_person: string;
-    phone: string;
-    code: string | null;
-    contact_job_title: string | null;
-    represented_products: string | null;
-    email: string | null;
-    region: string | null;
-    address: string | null;
-    quote_count: number;
-    quoted_item_names: string | null;
-  }>;
+  const suppliers = (() => {
+    const rows = db.prepare(`
+      SELECT
+        s.id, s.name, s.contact_person, s.phone, s.code, s.contact_job_title,
+        s.represented_products, s.email, s.region, s.address,
+        COUNT(pe.id) as quote_count,
+        GROUP_CONCAT(DISTINCT i.name) as quoted_item_names,
+        GROUP_CONCAT(DISTINCT sc.category_id) as category_ids_str
+      FROM suppliers s
+      LEFT JOIN price_entries pe ON pe.supplier_id = s.id
+      LEFT JOIN items i ON pe.item_id = i.id
+      LEFT JOIN supplier_categories sc ON sc.supplier_id = s.id
+      GROUP BY s.id, s.name, s.contact_person, s.phone, s.code,
+               s.contact_job_title, s.represented_products, s.email, s.region, s.address
+      ORDER BY s.name
+    `).all() as Array<{
+      id: number; name: string; contact_person: string; phone: string;
+      code: string | null; contact_job_title: string | null;
+      represented_products: string | null; email: string | null;
+      region: string | null; address: string | null;
+      quote_count: number; quoted_item_names: string | null;
+      category_ids_str: string | null;
+    }>;
+    return rows.map(s => ({
+      ...s,
+      category_ids: s.category_ids_str ? s.category_ids_str.split(',').map(Number) : [] as number[],
+    }));
+  })();
 
   const month = currentMonth();
   const items = db.prepare(`

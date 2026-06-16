@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n-context";
 
 type Category    = { id: number; name: string; description: string };
 type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
-type Supplier    = { id: number; name: string; contact_person?: string; phone?: string };
+type Supplier    = { id: number; name: string; contact_person?: string; phone?: string; category_ids: number[] };
 type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null };
 type HistoryFilter = "3" | "6" | "all";
 
@@ -294,6 +294,13 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
     [selectedCategoryId, items]
   );
 
+  // Filter suppliers to only those assigned to the selected item's category
+  const filteredSuppliers = useMemo(() => {
+    const catId = Number(selectedCategoryId);
+    if (!catId) return suppliers;
+    return suppliers.filter(s => s.category_ids.includes(catId));
+  }, [suppliers, selectedCategoryId]);
+
   useEffect(() => {
     if (filteredItems.length > 0) {
       const valid = filteredItems.some(i => String(i.id) === selectedItemId);
@@ -475,8 +482,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
   // Suppliers that have a prev-month price but NO current-month price (extendable)
   const suppliersExtendable = useMemo(
-    () => suppliers.filter(s => prevMonthPriceMap[s.id] != null && !currentMonthEntriesBySupplier.has(s.id)).map(s => s.id),
-    [suppliers, prevMonthPriceMap, currentMonthEntriesBySupplier]
+    () => filteredSuppliers.filter(s => prevMonthPriceMap[s.id] != null && !currentMonthEntriesBySupplier.has(s.id)).map(s => s.id),
+    [filteredSuppliers, prevMonthPriceMap, currentMonthEntriesBySupplier]
   );
 
   // Count suppliers that are "new" (no confirmed price this month) vs "change" mode
@@ -1005,7 +1012,31 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
             {/* Supplier rows */}
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
-              {suppliers.map((supplier, idx) => {
+
+              {/* Empty state: no suppliers configured for this category */}
+              {filteredSuppliers.length === 0 && (
+                <div style={{
+                  padding: "24px 20px",
+                  borderRadius: "10px",
+                  border: "1.5px dashed var(--border-medium)",
+                  background: "var(--bg-subtle)",
+                  textAlign: "center",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: "8px",
+                }}>
+                  <span style={{ fontSize: "28px" }}>🔒</span>
+                  <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>
+                    {isAr ? "لا يوجد موردون مخصصون لهذه الفئة" : "No suppliers configured for this category"}
+                  </div>
+                  <div style={{ fontSize: "11.5px", color: "var(--text-muted)", maxWidth: "360px" }}>
+                    {isAr
+                      ? "يرجى التواصل مع المسؤول لتخصيص موردين لهذه الفئة في صفحة إدارة الموردين."
+                      : "Contact your Admin to assign suppliers to this category in the Suppliers admin page."
+                    }
+                  </div>
+                </div>
+              )}
+
+              {filteredSuppliers.map((supplier, idx) => {
                 const color = COLORS[idx % COLORS.length];
                 const currentPrice = supplierPrices[supplier.id] ?? "";
                 const lastEntry  = latestMap[`${supplier.id}_${shiftMonth(month, -1)}`];
