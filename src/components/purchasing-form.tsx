@@ -1057,8 +1057,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
                 return (
                   <div key={supplier.id} style={{
-                    display: "grid", gridTemplateColumns: "auto 1fr 120px 160px auto",
-                    gap: "12px", alignItems: "center", padding: "14px 16px",
+                    display: "grid", gridTemplateColumns: "1fr 120px 160px auto",
+                    gap: "12px", alignItems: "start", padding: "14px 16px",
                     borderRadius: "var(--radius)",
                     border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color + "55" : "var(--border)"}`,
                     background: isChangeMode ? "var(--warning-light)" : currentPrice ? `${color}08` : "var(--bg-elevated)",
@@ -1066,36 +1066,36 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                     position: "relative",
                   }}>
 
-
-                    {/* Supplier identity */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "180px" }}>
-                      <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0 }}>
+                    {/* Supplier identity + Notes stacked below */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                      <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0, marginTop: "2px" }}>
                         {supplier.name.charAt(0)}
                       </span>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: "13px" }}>{supplier.name}</div>
-                        {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
-                        {thisEntry && (
-                          <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>
-                            {isChangeMode
-                              ? `Current confirmed price: ${formatCurrency(thisEntry.price)}`
-                              : `Current price: ${formatCurrency(thisEntry.price)}`}
-                          </div>
-                        )}
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "13px" }}>{supplier.name}</div>
+                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
+                          {thisEntry && (
+                            <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>
+                              {isChangeMode
+                                ? `Current confirmed price: ${formatCurrency(thisEntry.price)}`
+                                : `Current price: ${formatCurrency(thisEntry.price)}`}
+                            </div>
+                          )}
+                        </div>
+                        {/* Notes below the name — consistent width for every row */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
+                          <input
+                            type="text"
+                            name={isConfirmed ? undefined : `notes_${supplier.id}`}
+                            placeholder={t("purch.notesOptional")}
+                            value={supplierNotes[supplier.id] ?? ""}
+                            onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                            style={{ padding: "6px 10px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "34px" }}
+                          />
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Notes */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
-                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
-                      <input
-                        type="text"
-                        name={isConfirmed ? undefined : `notes_${supplier.id}`}
-                        placeholder={t("purch.notesOptional")}
-                        value={supplierNotes[supplier.id] ?? ""}
-                        onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                        style={{ padding: "8px 12px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "38px" }}
-                      />
                     </div>
 
                     {/* Transportation Cost (Read-Only) */}
