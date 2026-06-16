@@ -185,6 +185,12 @@ export default function PricingCalculator({
     const calculatedMarkupMax = buyAvg > 0 ? ((baseMax / buyAvg) - 1) * 100 : 0;
 
     const formData = new FormData(e.currentTarget);
+    // Inject required server-side fields from props (no hidden inputs needed)
+    formData.set("itemId", String(itemId));
+    formData.set("month", month);
+    formData.set("createdBy", createdBy);
+    if (redirectTo) formData.set("redirectTo", redirectTo);
+    if (errorRedirect) formData.set("errorRedirect", errorRedirect);
     formData.set("strategy", "avg");
     formData.set("markupType", "percent");
     formData.set("markupMin", String(Math.max(0, calculatedMarkupMin)));
@@ -566,24 +572,32 @@ export default function PricingCalculator({
                   </div>
                 )}
 
-                {/* Transportation & Other Expenses Row */}
-
-                <div style={{ display: "flex", gap: "12px", borderTop: "1px dashed var(--border-light)", paddingTop: "14px" }}>
-                  <label className="field" style={{ flex: 1 }}>
-                    <span>Fixed Transportation/Unit (Admin)</span>
-                    <input
-                      type="text"
-                      readOnly
-                      value={formatCurrency(transportation)}
-                      style={{
-                        padding: "8px 12px", borderRadius: "8px", fontSize: "13px",
-                        border: "1px solid var(--border)", background: "var(--bg-subtle)",
-                        color: "var(--text-secondary)", cursor: "not-allowed"
-                      }}
-                    />
-                  </label>
-                  <label className="field" style={{ flex: 1 }}>
-                    <span>Other Expenses / Special Charges (EGP)</span>
+                {/* ── Transportation & Other Expenses ────────────────────────── */}
+                <div style={{ borderTop: "1px dashed var(--border-light)", paddingTop: "14px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {transportation > 0 && (
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: "12px",
+                      padding: "10px 14px",
+                      background: "linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(251,191,36,0.07) 100%)",
+                      border: "1.5px solid rgba(245,158,11,0.35)",
+                      borderRadius: "10px",
+                    }}>
+                      <span style={{ fontSize: "20px", lineHeight: 1 }}>🚚</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "10px", fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                          {locale === "ar" ? "تكلفة النقل الثابتة / وحدة" : "Fixed Transportation / Unit"}
+                        </div>
+                        <div style={{ fontSize: "9.5px", color: "#92400e", marginTop: "1px" }}>
+                          {locale === "ar" ? "محددة من الإدارة — تُضاف بعد الخصم" : "Set by Admin — added after discount, not subject to tiers"}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "18px", fontWeight: 900, color: "#d97706", whiteSpace: "nowrap" }}>
+                        {formatCurrency(transportation)}
+                      </div>
+                    </div>
+                  )}
+                  <label className="field">
+                    <span style={{ fontSize: "11px" }}>Other Expenses / Special Charges (EGP)</span>
                     <input
                       type="number"
                       min="0"
@@ -599,14 +613,27 @@ export default function PricingCalculator({
                   </label>
                 </div>
 
-                {/* MOQ Info Banner */}
+                {/* ── MOQ highlighted card ─────────────────────────────── */}
                 {moq > 0 && (
                   <div style={{
-                    fontSize: "11px", color: "var(--text-muted)",
-                    background: "var(--bg-subtle)", padding: "8px 12px",
-                    borderRadius: "6px", border: "1px solid var(--border-light)"
+                    display: "flex", alignItems: "center", gap: "12px",
+                    padding: "10px 14px",
+                    background: "linear-gradient(135deg, rgba(59,130,246,0.10) 0%, rgba(99,102,241,0.07) 100%)",
+                    border: "1.5px solid rgba(59,130,246,0.35)",
+                    borderRadius: "10px",
                   }}>
-                    ℹ️ Minimum Order Quantity (MOQ) for this item is <strong>{moq} units</strong>.
+                    <span style={{ fontSize: "20px", lineHeight: 1 }}>📦</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "10px", fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                        {locale === "ar" ? "الحد الأدنى لكمية الطلب (MOQ)" : "Minimum Order Quantity (MOQ)"}
+                      </div>
+                      <div style={{ fontSize: "9.5px", color: "#1e40af", marginTop: "1px" }}>
+                        {locale === "ar" ? "لا يمكن الطلب بأقل من هذه الكمية من هذا المورد" : "Clients must order at least this many units per order"}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "18px", fontWeight: 900, color: "var(--primary)", whiteSpace: "nowrap" }}>
+                      {moq.toLocaleString()} <span style={{ fontSize: "11px", fontWeight: 600 }}>units</span>
+                    </div>
                   </div>
                 )}
 
