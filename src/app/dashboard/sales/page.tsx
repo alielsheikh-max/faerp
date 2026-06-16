@@ -1,9 +1,10 @@
 import { SectionIntro, StatCard } from "@/components/app-shell";
 import SalesList from "@/components/sales-list";
 import { requireRole } from "@/lib/auth";
-import { getCategories, getMonthlyMetrics, getSalesCatalog } from "@/lib/db";
+import { getCategories, getMonthlyMetrics, getSalesCatalog, getRecentPriceUpdates } from "@/lib/db";
 import { currentMonth, formatDateTime, formatMonthLabel } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
+import PriceUpdateAlerts from "@/components/price-update-alerts";
 
 export default function SalesPage({ searchParams }: { searchParams?: { month?: string; categoryId?: string } }) {
   const session = requireRole(["SA", "SC"]);
@@ -15,6 +16,7 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
   const rows = getSalesCatalog(month, categoryId);
   const metrics = getMonthlyMetrics(month);
   const publishedRows = rows.filter((row) => row.sell_min !== null);
+  const recentUpdates = getRecentPriceUpdates(month);
 
   return (
     <div className="page-stack">
@@ -24,6 +26,8 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
         description={t("sales.desc")}
         actions={<span className="badge badge-strong">{session.displayName}</span>}
       />
+
+      <PriceUpdateAlerts recentUpdates={recentUpdates} />
 
       <section className="stat-grid">
         <StatCard label={t("sales.published")}   value={publishedRows.length}       note={t("sales.readyToQuote")} />
@@ -53,7 +57,7 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
         </form>
       </div>
 
-      <SalesList initialRows={publishedRows} categories={categories} month={month} />
+      <SalesList initialRows={rows} categories={categories} month={month} />
     </div>
   );
 }

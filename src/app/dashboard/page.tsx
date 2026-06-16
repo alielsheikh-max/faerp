@@ -1,8 +1,11 @@
 import { requireRole } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   getCategories, getItems, getSuppliers, getAllPriceEntries,
   getSalesCatalog, getMonthlyReviewData,
   getEffectiveFloorForItem, getSellingPriceHistory,
+  countPendingRequests, getRecentPriceUpdates,
 } from "@/lib/db";
 import { currentMonth, formatCurrency, formatMonthLabel } from "@/lib/format";
 import { SectionIntro } from "@/components/app-shell";
@@ -12,7 +15,9 @@ import ReportGenerator from "@/components/report-generator";
 import RequestPricesBanner from "@/components/request-prices-banner";
 import { getServerT } from "@/lib/locale-server";
 import ClientQuotingSimulator from "@/components/client-quoting-simulator";
-
+import PriceUpdateAlerts from "@/components/price-update-alerts";
+import UsdRateCard from "@/components/usd-rate-card";
+import UsdPricePanel from "@/components/usd-price-panel";
 
 type SearchParams = { month?: string; categoryId?: string; itemId?: string; saved?: string; error?: string; simulate?: string };
 
@@ -20,7 +25,13 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
   const session = requireRole();
   const t = getServerT();
   const role = session.role;
+
+  if (role === "AD") {
+    redirect("/dashboard/admin");
+  }
+
   const month = searchParams?.month || currentMonth();
+  const pendingCount = role === "SC" ? countPendingRequests() : 0;
 
   // ── SA: read-only approved catalog ──
   if (role === "SA") {
@@ -31,6 +42,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
       if (!grouped[row.category_name]) grouped[row.category_name] = [];
       grouped[row.category_name].push(row);
     }
+    const recentUpdates = getRecentPriceUpdates(month);
 
     return (
       <div className="page-stack">
@@ -44,6 +56,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               <span className="badge badge-success">{published.length} {t("dash.itemsPublished")}</span>
             </div>
           }        />
+        <PriceUpdateAlerts recentUpdates={recentUpdates} />
         <ClientQuotingSimulator initialRows={catalog} month={formatMonthLabel(month)} />
 
         {published.length === 0 ? (
@@ -68,6 +81,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                     <tr>
                       <th>{t("dash.product")}</th>
                       <th>{t("dash.unit")}</th>
+                      <th style={{ textAlign: "center" }}>{t("gen.moq")}</th>
                       <th style={{ textAlign: "center" }}>{t("dash.minSell")}</th>
                       <th style={{ textAlign: "center" }}>{t("dash.maxSell")}</th>
                     </tr>
@@ -77,6 +91,20 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                       <tr key={row.item_id}>
                         <td style={{ fontWeight: 700, maxWidth: "340px" }}>{row.item_name}</td>
                         <td><span className="badge">{row.unit}</span></td>
+                        <td style={{ textAlign: "center" }}>
+                          <span style={{ 
+                            fontSize: "12px", 
+                            fontWeight: "bold", 
+                            color: "var(--warning)", 
+                            backgroundColor: "rgba(245, 158, 11, 0.15)", 
+                            border: "1px solid var(--warning)", 
+                            padding: "4px 8px", 
+                            borderRadius: "6px", 
+                            display: "inline-block" 
+                          }}>
+                            {row.moq} {row.unit}
+                          </span>
+                        </td>
                         <td style={{ textAlign: "center" }}>
                           <strong style={{ fontSize: "15px", color: "var(--success)" }}>{formatCurrency(row.sell_min)}</strong>
                         </td>
@@ -158,17 +186,52 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
         }
       />
 
-      {/* ── Action toolbar — PDF Reports + Monthly Review ───────────────────── */}
+      {/* ── Price Change Requests — link to approvals page ───────────────── */}
       {role === "SC" && (
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "14px",
-        }}>
-          <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
-          <MonthlyReviewModal month={month} username={session.displayName} data={reviewData} variant="dashboard" />
-        </div>
+        <section className="panel animate-fade-in" style={{ padding: "18px 24px", marginBottom: "14px", borderLeft: "4px solid var(--warning)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+            <div>
+              <p className="eyebrow" style={{ fontSize: "10px", marginBottom: "4px" }}>Workflow Approvals</p>
+              <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0 }}>Pending Price Change Requests</h2>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                Review price change requests submitted by WH Purchasing officers.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              {pendingCount > 0 ? (
+                <span className="badge badge-warning" style={{ fontSize: "12px", padding: "5px 12px", animation: "pulse-ring 2s ease-out infinite" }}>
+                  ⏳ {pendingCount} pending
+                </span>
+              ) : (
+                <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>✓ All clear</span>
+              )}
+              <Link href="/dashboard/approvals" className="button button-primary" style={{ padding: "9px 18px", fontSize: "13px" }}>
+                {pendingCount > 0 ? `Review ${pendingCount} Request${pendingCount > 1 ? "s" : ""} →` : "View Approvals →"}
+              </Link>
+            </div>
+          </div>
+        </section>
       )}
+
+      {/* ── Action toolbar — PDF Reports + Monthly Review + USD Rate ── */}
+      {role === "SC" && (
+        <>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "14px",
+            marginBottom: "14px",
+          }}>
+            <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
+            <MonthlyReviewModal month={month} username={session.displayName} data={reviewData} variant="dashboard" />
+            <UsdRateCard />
+          </div>
+          <div style={{ marginBottom: "14px" }}>
+            <UsdPricePanel catalog={salesCatalog} month={month} username={session.displayName} />
+          </div>
+        </>
+      )}
+
       {role === "WH" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", marginBottom: "12px" }}>
           <RequestPricesBanner categories={categories} items={items} simulate={searchParams?.simulate === "true"} />

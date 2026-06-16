@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import PricingCalculator from "@/components/pricing-calculator";
+import CategoryMarkupPanel from "@/components/category-markup-panel";
 import { useI18n } from "@/lib/i18n-context";
 import type { SellingPriceHistoryRow } from "@/lib/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Category  = { id: number; name: string; description: string | null };
-type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number };
+type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number; transportation_per_unit?: number; moq?: number; is_tiered?: number; tier1_max?: number; tier1_discount?: number; tier2_max?: number; tier2_discount?: number; tier3_max?: number; tier3_discount?: number; tier4_max?: number; tier4_discount?: number };
 type Supplier  = { id: number; name: string; contact_person: string | null; phone: string | null };
 type PriceEntry = {
   id: number; item_id: number; supplier_id: number; month: string; price: number;
@@ -60,6 +61,7 @@ export default function InteractiveDashboard({
   const [itemId, setItemId] = useState<number>(initialItemId ?? 0);
   const [window, setWindow] = useState<3|6|12>(6);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [pricingTab, setPricingTab] = useState<"item" | "category">("item");
   const [hoveredDot, setHoveredDot] = useState<{x:number;y:number;price:number;month:string;supplier:string}|null>(null);
 
   const filteredItems = useMemo(
@@ -74,7 +76,7 @@ export default function InteractiveDashboard({
     if (!valid || itemId === 0) setItemId(filteredItems[0].id);
   }, [catId, filteredItems]);
 
-  useEffect(() => { if (error === "pricing") setIsPricingOpen(true); }, [error]);
+  useEffect(() => { if (error === "pricing") { setPricingTab("item"); setIsPricingOpen(true); } }, [error]);
 
   const selectedItem = items.find(i => i.id === itemId);
 
@@ -126,7 +128,8 @@ export default function InteractiveDashboard({
     if (!rec || rec.sell_min === null) return null;
     return { strategy: rec.strategy || "avg", markup_type: rec.markup_type || "percent",
       markup_min: rec.markup_min || 0, markup_max: rec.markup_max || 0,
-      sell_min: rec.sell_min, sell_max: rec.sell_max, created_at: rec.created_at || "" };
+      sell_min: rec.sell_min, sell_max: rec.sell_max, created_at: rec.created_at || "",
+      transportation: rec.transportation || 0, other_expenses: rec.other_expenses || 0 };
   }, [salesCatalog, itemId]);
 
   // ── Supplier stats for current latest month ──────────────────────
@@ -231,10 +234,10 @@ export default function InteractiveDashboard({
 
         {/* SC: Pricing Engine */}
         {role === "SC" && (
-          <button type="button" onClick={() => setIsPricingOpen(true)}
+          <button type="button" onClick={() => { setPricingTab("item"); setIsPricingOpen(true); }}
             className="button button-primary"
             style={{ padding: "9px 18px", fontSize: "13px", gap: "6px", marginLeft: "auto", whiteSpace: "nowrap" }}>
-            ⚙️ {t("idash.setSellingPrices")}
+            ⚙️ Pricing Engine
           </button>
         )}
       </div>
@@ -277,8 +280,8 @@ export default function InteractiveDashboard({
                   <div key={row.supplier.id} style={{
                     display: "flex", alignItems: "center", gap: "12px",
                     padding: "10px 14px", borderRadius: "var(--radius)",
-                    background: isBest ? "var(--success-light)" : "var(--bg-elevated)",
-                    border: `1.5px solid ${isBest ? "rgba(16,185,129,0.35)" : "var(--border-light)"}`,
+                    background: isBest ? "var(--info-light)" : "var(--bg-elevated)",
+                    border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}`,
                     transition: "all 150ms",
                   }}>
                     <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
@@ -286,12 +289,12 @@ export default function InteractiveDashboard({
                       {row.supplier.name}
                     </span>
                     {isBest && (
-                      <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--success)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>
+                      <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>
                     )}
                     <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
                       {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
                     </span>
-                    <strong style={{ fontSize: "15px", fontWeight: 800, color: isBest ? "var(--success)" : "var(--text-primary)", flexShrink: 0 }}>
+                    <strong style={{ fontSize: "15px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)", flexShrink: 0 }}>
                       {formatCurrency(row.price)}
                     </strong>
                   </div>
@@ -495,8 +498,8 @@ export default function InteractiveDashboard({
                         <td key={m} style={{
                           padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap",
                           fontWeight: isBest ? 800 : 400,
-                          color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)",
-                          background: isBest ? "rgba(16,185,129,0.08)" : mi === 0 ? "rgba(99,102,241,0.03)" : "transparent",
+                          color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)",
+                          background: isBest ? "rgba(2,132,199,0.08)" : mi === 0 ? "rgba(99,102,241,0.03)" : "transparent",
                         }}>
                           {entry ? formatCurrency(entry.price) : <span style={{ color: "var(--text-dim)" }}>—</span>}
                         </td>
@@ -560,51 +563,111 @@ export default function InteractiveDashboard({
 
       {/* ═══ PRICING ENGINE MODAL (SC only) ══════════════════════════ */}
       {role === "SC" && isPricingOpen && (
-        <div className="modal-overlay" onClick={() => setIsPricingOpen(false)}>
-          <div className="modal-container" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: "900px", width: "95%" }}>
+            <div className="modal-header" style={{ paddingBottom: "12px" }}>
+              <div style={{ width: "100%" }}>
                 <p className="eyebrow" style={{ margin: 0, fontSize: "10px" }}>Pricing Engine</p>
-                <h3 style={{ margin: "2px 0 0" }}>Set Selling Prices — {selectedItem?.name}</h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginTop: "4px" }}>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
+                    {pricingTab === "item" ? `Configure Item Pricing` : `Bulk Category Pricing`}
+                  </h3>
+                  <div style={{ display: "flex", gap: "4px", background: "var(--bg-elevated)", padding: "2px", borderRadius: "8px", border: "1px solid var(--border)", marginInlineEnd: "16px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setPricingTab("item")}
+                      style={{
+                        padding: "6px 12px", fontSize: "11px", fontWeight: 700, borderRadius: "6px", border: "none", cursor: "pointer",
+                        background: pricingTab === "item" ? "var(--primary)" : "transparent",
+                        color: pricingTab === "item" ? "#fff" : "var(--text-muted)",
+                        transition: "all 150ms",
+                      }}
+                    >
+                      📦 Item
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPricingTab("category")}
+                      style={{
+                        padding: "6px 12px", fontSize: "11px", fontWeight: 700, borderRadius: "6px", border: "none", cursor: "pointer",
+                        background: pricingTab === "category" ? "var(--primary)" : "transparent",
+                        color: pricingTab === "category" ? "#fff" : "var(--text-muted)",
+                        transition: "all 150ms",
+                      }}
+                    >
+                      📁 Category
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button className="modal-close-btn" onClick={() => setIsPricingOpen(false)}>×</button>
+              <button className="modal-close-btn" onClick={() => setIsPricingOpen(false)} style={{ alignSelf: "center" }}>×</button>
             </div>
             <div className="modal-body">
-              {error === "pricing" && (
-                <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", marginBottom: "16px" }}>
-                  <strong>Error:</strong> Max markup must be ≥ min markup.
-                </div>
-              )}
-              {currentMonthQuotes ? (
-                <PricingCalculator
-                  month={month ?? ""}
-                  itemId={itemId}
-                  createdBy={username ?? "SC Manager"}
-                  buyMin={currentMonthQuotes.buyMin}
-                  buyMax={currentMonthQuotes.buyMax}
-                  buyAvg={currentMonthQuotes.buyAvg}
-                  floorPct={floorPct}
-                  history={priceHistory}
-                  existing={existingSell}
-                  redirectTo={redirectTo}
-                  errorRedirect={errorRedirect}
-                  onSuccess={() => {
-                    setIsPricingOpen(false);
-                    router.refresh();
-                  }}
-                />
+              {pricingTab === "item" ? (
+                <>
+                  {error === "pricing" && (
+                    <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", marginBottom: "16px" }}>
+                      <strong>Error:</strong> Max markup must be ≥ min markup.
+                    </div>
+                  )}
+                  <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--text-secondary)" }}>
+                    Configure pricing details for item: <strong style={{ color: "var(--text-primary)" }}>{selectedItem?.name}</strong>
+                  </div>
+                  {currentMonthQuotes ? (
+                    <PricingCalculator
+                      month={month ?? ""}
+                      itemId={itemId}
+                      createdBy={username ?? "SC Manager"}
+                      buyMin={currentMonthQuotes.buyMin}
+                      buyMax={currentMonthQuotes.buyMax}
+                      buyAvg={currentMonthQuotes.buyAvg}
+                      floorPct={floorPct}
+                      history={priceHistory}
+                      existing={existingSell}
+                      redirectTo={redirectTo}
+                      errorRedirect={errorRedirect}
+                      transportation={selectedItem?.transportation_per_unit ?? 0}
+                      moq={selectedItem?.moq ?? 0}
+                      isTiered={selectedItem?.is_tiered === 1}
+                      tier1Max={selectedItem?.tier1_max}
+                      tier1Discount={selectedItem?.tier1_discount}
+                      tier2Max={selectedItem?.tier2_max}
+                      tier2Discount={selectedItem?.tier2_discount}
+                      tier3Discount={selectedItem?.tier3_discount}
+                      onSuccess={() => {
+                        setIsPricingOpen(false);
+                        router.refresh();
+                      }}
+                      priceEntries={priceEntries}
+                      suppliers={suppliers}
+                    />
+                  ) : (
+                    <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)" }}>
+                      No supplier quotes exist for {selectedItem?.name} in {formatMonthLabel(month ?? latestMonth)}. Ask WH to record prices first.
+                    </div>
+                  )}
+                  {existingSell && (
+                    <div style={{ marginTop: "14px", padding: "10px 12px", background: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-light)", fontSize: "12px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--text-muted)" }}>Current:</span>
+                      <span style={{ fontWeight: 700, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
+                      <span style={{ color: "var(--text-muted)" }}>–</span>
+                      <span style={{ fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
+                      <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)" }}>
-                  No supplier quotes exist for {selectedItem?.name} in {formatMonthLabel(month ?? latestMonth)}. Ask WH to record prices first.
-                </div>
-              )}
-              {existingSell && (
-                <div style={{ marginTop: "14px", padding: "10px 12px", background: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-light)", fontSize: "12px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Current:</span>
-                  <span style={{ fontWeight: 700, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
-                  <span style={{ color: "var(--text-muted)" }}>–</span>
-                  <span style={{ fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
-                  <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                    Apply a bulk markup to all active items in the category.
+                  </div>
+                  <CategoryMarkupPanel
+                    categories={categories.map(c => ({ id: c.id, name: c.name }))}
+                    items={items}
+                    month={month ?? ""}
+                    username={username ?? "SC Manager"}
+                    defaultCategoryId={catId ? String(catId) : undefined}
+                  />
                 </div>
               )}
             </div>

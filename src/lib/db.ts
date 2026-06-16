@@ -26,11 +26,12 @@ function openDatabase() {
   const db = new Database(databasePath);
   db.pragma("journal_mode = WAL");
   initializeSchema(db);
+  migrateItemTiers(db);
   seedDatabase(db);
   return db;
 }
 
-function database() {
+export function database() {
   if (!global.__faerpDb) {
     global.__faerpDb = openDatabase();
   }
@@ -53,6 +54,8 @@ function initializeSchema(db: Db) {
       unit TEXT NOT NULL,
       description TEXT,
       active INTEGER NOT NULL DEFAULT 1,
+      transportation_per_unit REAL NOT NULL DEFAULT 0.0,
+      moq INTEGER NOT NULL DEFAULT 0,
       UNIQUE(category_id, name),
       FOREIGN KEY (category_id) REFERENCES categories(id)
     );
@@ -61,7 +64,13 @@ function initializeSchema(db: Db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       contact_person TEXT,
-      phone TEXT
+      phone TEXT,
+      code TEXT,
+      contact_job_title TEXT,
+      represented_products TEXT,
+      email TEXT,
+      region TEXT,
+      address TEXT
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -103,6 +112,9 @@ function initializeSchema(db: Db) {
       sell_max REAL NOT NULL,
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      transportation REAL NOT NULL DEFAULT 0.0,
+      other_expenses REAL NOT NULL DEFAULT 0.0,
+      tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
       UNIQUE(item_id, month),
       FOREIGN KEY (item_id) REFERENCES items(id)
     );
@@ -120,6 +132,8 @@ function initializeSchema(db: Db) {
       prev_markup_min REAL,
       prev_markup_max REAL,
       prev_strategy   TEXT,
+      prev_transportation REAL,
+      prev_other_expenses REAL,
       -- new values being written
       new_sell_min  REAL    NOT NULL,
       new_sell_max  REAL    NOT NULL,
@@ -128,6 +142,9 @@ function initializeSchema(db: Db) {
       new_strategy  TEXT    NOT NULL,
       new_markup_type TEXT  NOT NULL,
       new_buy_avg   REAL    NOT NULL,
+      new_transportation REAL NOT NULL DEFAULT 0.0,
+      new_other_expenses REAL NOT NULL DEFAULT 0.0,
+      new_tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
       -- who / when
       changed_by    TEXT    NOT NULL,
       changed_at    TEXT    NOT NULL,
@@ -182,6 +199,21 @@ function initializeSchema(db: Db) {
   // Safe migrations for columns added after initial release
   const migrations = [
     "ALTER TABLE selling_prices ADD COLUMN markup_type TEXT NOT NULL DEFAULT 'percent'",
+    "ALTER TABLE selling_prices ADD COLUMN transportation REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_prices ADD COLUMN other_expenses REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_transportation REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_other_expenses REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_transportation REAL",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_other_expenses REAL",
+    "ALTER TABLE selling_prices ADD COLUMN tier_pricing_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_tier_pricing_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_tier_pricing_enabled INTEGER",
+    "ALTER TABLE suppliers ADD COLUMN code TEXT",
+    "ALTER TABLE suppliers ADD COLUMN contact_job_title TEXT",
+    "ALTER TABLE suppliers ADD COLUMN represented_products TEXT",
+    "ALTER TABLE suppliers ADD COLUMN email TEXT",
+    "ALTER TABLE suppliers ADD COLUMN region TEXT",
+    "ALTER TABLE suppliers ADD COLUMN address TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -243,21 +275,70 @@ function initializeSchema(db: Db) {
       FOREIGN KEY (item_id)     REFERENCES items(id),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
+
+    CREATE TABLE IF NOT EXISTS monthly_settings (
+      month TEXT PRIMARY KEY,
+      tier_pricing_enabled INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS item_tiers (
+      item_id INTEGER PRIMARY KEY,
+      is_tiered INTEGER NOT NULL DEFAULT 0,
+      tier1_max INTEGER NOT NULL DEFAULT 100,
+      tier1_discount REAL NOT NULL DEFAULT 0.0,
+      tier2_max INTEGER NOT NULL DEFAULT 200,
+      tier2_discount REAL NOT NULL DEFAULT 5.0,
+      tier3_max INTEGER NOT NULL DEFAULT 300,
+      tier3_discount REAL NOT NULL DEFAULT 10.0,
+      tier4_max INTEGER NOT NULL DEFAULT 0,
+      tier4_discount REAL NOT NULL DEFAULT 0.0,
+      FOREIGN KEY (item_id) REFERENCES items(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      currency   TEXT    NOT NULL,
+      rate       REAL    NOT NULL,
+      source     TEXT,
+      fetched_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+}
+
+// ── Migrate existing item_tiers table to add tier3_max / tier4 columns ──────
+function migrateItemTiers(db: Db) {
+  const cols = (db.prepare("PRAGMA table_info(item_tiers)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!cols.includes("tier3_max"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier3_max INTEGER NOT NULL DEFAULT 300").run();
+  if (!cols.includes("tier4_max"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_max INTEGER NOT NULL DEFAULT 0").run();
+  if (!cols.includes("tier4_discount"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_discount REAL NOT NULL DEFAULT 0.0").run();
 }
 
 function seedDatabase(db: Db) {
   const checkItem = db.prepare("SELECT name FROM items LIMIT 1").get() as { name: string } | undefined;
   
-  if (!checkItem || !checkItem.name.match(/[\u0600-\u06FF]/)) {
-    // Drop existing items/categories/suppliers/quotes data to allow a clean migration to the Arabic dataset
+  if (checkItem && !checkItem.name.match(/[\u0600-\u06FF]/)) {
+    // Drop existing data in FK-safe order (children before parents) to allow
+    // a clean migration to the Arabic seed dataset
     db.exec(`
-      DELETE FROM price_entries;
+      DELETE FROM price_change_requests;
+      DELETE FROM selling_price_history;
       DELETE FROM selling_prices;
+      DELETE FROM price_entries;
+      DELETE FROM item_tiers;
+      DELETE FROM margin_floors;
+      DELETE FROM monthly_settings;
       DELETE FROM items;
       DELETE FROM categories;
       DELETE FROM suppliers;
-      DELETE FROM sqlite_sequence WHERE name IN ('categories', 'items', 'suppliers', 'price_entries', 'selling_prices');
+      DELETE FROM sqlite_sequence WHERE name IN (
+        'categories', 'items', 'suppliers',
+        'price_entries', 'selling_prices', 'selling_price_history',
+        'price_change_requests', 'item_tiers', 'margin_floors'
+      );
     `);
   }
 
@@ -292,16 +373,22 @@ function seedDatabase(db: Db) {
   const users = [
     { username: "wh", password: "wh123", role: "WH", display_name: "WH Purchasing" },
     { username: "sc", password: "sc123", role: "SC", display_name: "SC Manager" },
-    { username: "sa", password: "sa123", role: "SA", display_name: "SA Sales" }
+    { username: "sa", password: "sa123", role: "SA", display_name: "SA Sales" },
+    { username: "admin", password: "admin123", role: "AD", display_name: "System Admin" }
   ];
 
   if (userCount.count === 0) {
     users.forEach((user) => insertUser.run(user));
+  } else {
+    // If users already seeded, ensure admin user exists
+    const adminExists = db.prepare("SELECT COUNT(*) as count FROM users WHERE username = 'admin'").get() as { count: number };
+    if (adminExists.count === 0) {
+      insertUser.run({ username: "admin", password: "admin123", role: "AD", display_name: "System Admin" });
+    }
   }
 
-  if (categoryCount.count > 0) {
-    return;
-  }
+  // We no longer seed mock categories, items, suppliers, or price entries
+  return;
 
   const categories = [
     { name: "بالتات (طبليات)", description: "بالتات خشبية، بلاستيكية، ومعدنية بمختلف المقاسات والحمولات والألوان." },
@@ -521,8 +608,19 @@ export function getCategories() {
 
 export function getSuppliers() {
   return database()
-    .prepare("SELECT id, name, contact_person, phone FROM suppliers ORDER BY name")
-    .all() as Array<{ id: number; name: string; contact_person: string; phone: string }>;
+    .prepare("SELECT id, name, contact_person, phone, code, contact_job_title, represented_products, email, region, address FROM suppliers ORDER BY name")
+    .all() as Array<{
+      id: number;
+      name: string;
+      contact_person: string;
+      phone: string;
+      code: string | null;
+      contact_job_title: string | null;
+      represented_products: string | null;
+      email: string | null;
+      region: string | null;
+      address: string | null;
+    }>;
 }
 
 export function getUsers() {
@@ -605,9 +703,21 @@ export function getItems(categoryId?: number) {
         i.description,
         i.active,
         i.category_id,
-        c.name as category_name
+        c.name as category_name,
+        i.transportation_per_unit,
+        i.moq,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount
       FROM items i
       JOIN categories c ON c.id = i.category_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
       ORDER BY i.active DESC, c.name, i.name
     `)
@@ -619,6 +729,17 @@ export function getItems(categoryId?: number) {
       active: number;
       category_id: number;
       category_name: string;
+      transportation_per_unit: number;
+      moq: number;
+      is_tiered: number;
+      tier1_max: number;
+      tier1_discount: number;
+      tier2_max: number;
+      tier2_discount: number;
+      tier3_max: number;
+      tier3_discount: number;
+      tier4_max: number;
+      tier4_discount: number;
     }>;
 }
 
@@ -721,16 +842,32 @@ export function createSupplier(input: {
   name: string;
   contactPerson: string;
   phone: string;
+  code?: string;
+  contactJobTitle?: string;
+  representedProducts?: string;
+  email?: string;
+  region?: string;
+  address?: string;
 }) {
   database()
     .prepare(`
-      INSERT INTO suppliers (name, contact_person, phone)
-      VALUES (@name, @contact_person, @phone)
+      INSERT INTO suppliers (
+        name, contact_person, phone, code, contact_job_title, represented_products, email, region, address
+      )
+      VALUES (
+        @name, @contact_person, @phone, @code, @contact_job_title, @represented_products, @email, @region, @address
+      )
     `)
     .run({
       name: input.name,
       contact_person: input.contactPerson,
-      phone: input.phone
+      phone: input.phone,
+      code: input.code || null,
+      contact_job_title: input.contactJobTitle || null,
+      represented_products: input.representedProducts || null,
+      email: input.email || null,
+      region: input.region || null,
+      address: input.address || null
     });
 }
 
@@ -739,6 +876,12 @@ export function updateSupplier(input: {
   name: string;
   contactPerson: string;
   phone: string;
+  code?: string;
+  contactJobTitle?: string;
+  representedProducts?: string;
+  email?: string;
+  region?: string;
+  address?: string;
 }) {
   database()
     .prepare(`
@@ -746,14 +889,26 @@ export function updateSupplier(input: {
       SET
         name = @name,
         contact_person = @contact_person,
-        phone = @phone
+        phone = @phone,
+        code = @code,
+        contact_job_title = @contact_job_title,
+        represented_products = @represented_products,
+        email = @email,
+        region = @region,
+        address = @address
       WHERE id = @id
     `)
     .run({
       id: input.id,
       name: input.name,
       contact_person: input.contactPerson,
-      phone: input.phone
+      phone: input.phone,
+      code: input.code || null,
+      contact_job_title: input.contactJobTitle || null,
+      represented_products: input.representedProducts || null,
+      email: input.email || null,
+      region: input.region || null,
+      address: input.address || null
     });
 }
 
@@ -774,17 +929,21 @@ export function createItem(input: {
   name: string;
   unit: string;
   description: string;
+  transportationPerUnit: number;
+  moq: number;
 }) {
   database()
     .prepare(`
-      INSERT INTO items (category_id, name, unit, description, active)
-      VALUES (@category_id, @name, @unit, @description, 1)
+      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq)
+      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq)
     `)
     .run({
       category_id: input.categoryId,
       name: input.name,
       unit: input.unit,
-      description: input.description
+      description: input.description,
+      transportation_per_unit: input.transportationPerUnit,
+      moq: input.moq
     });
 }
 
@@ -795,6 +954,8 @@ export function updateItem(input: {
   unit: string;
   description: string;
   active: boolean;
+  transportationPerUnit: number;
+  moq: number;
 }) {
   database()
     .prepare(`
@@ -804,7 +965,9 @@ export function updateItem(input: {
         name = @name,
         unit = @unit,
         description = @description,
-        active = @active
+        active = @active,
+        transportation_per_unit = @transportation_per_unit,
+        moq = @moq
       WHERE id = @id
     `)
     .run({
@@ -813,7 +976,9 @@ export function updateItem(input: {
       name: input.name,
       unit: input.unit,
       description: input.description,
-      active: input.active ? 1 : 0
+      active: input.active ? 1 : 0,
+      transportation_per_unit: input.transportationPerUnit,
+      moq: input.moq
     });
 }
 
@@ -1195,7 +1360,8 @@ export function getRecommendation(month: string, itemId: number) {
       sell_min,
       sell_max,
       created_by,
-      created_at
+      created_at,
+      tier_pricing_enabled
     FROM selling_prices
     WHERE month = ? AND item_id = ?
   `).get(month, itemId) as {
@@ -1210,6 +1376,7 @@ export function getRecommendation(month: string, itemId: number) {
     sell_max: number;
     created_by: string;
     created_at: string;
+    tier_pricing_enabled: number;
   } | undefined;
 
   return {
@@ -1246,6 +1413,8 @@ export function saveSellingPrice(input: {
   markupMax: number;
   createdBy: string;
   changeReason?: string;
+  otherExpenses: number;
+  tierPricingEnabled?: number;
 }) {
   const db = database();
   const recommendation = getRecommendation(input.month, input.itemId);
@@ -1265,13 +1434,21 @@ export function saveSellingPrice(input: {
         ? recommendation.buyMax
         : recommendation.buyAvg;
 
-  const sellMin = input.markupType === "amount"
+  // Retrieve the item's fixed transportation cost
+  const itemRow = db.prepare("SELECT transportation_per_unit FROM items WHERE id = ?").get(input.itemId) as { transportation_per_unit: number } | undefined;
+  const transportation = itemRow?.transportation_per_unit ?? 0;
+
+  const baseSellMin = input.markupType === "amount"
     ? strategyBase + input.markupMin
     : strategyBase * (1 + input.markupMin / 100);
 
-  const sellMax = input.markupType === "amount"
+  const baseSellMax = input.markupType === "amount"
     ? strategyBase + input.markupMax
     : strategyBase * (1 + input.markupMax / 100);
+
+  // The final prices to be published to SA:
+  const sellMin = baseSellMin + transportation + input.otherExpenses;
+  const sellMax = baseSellMax + transportation + input.otherExpenses;
 
   // ── Improvement #3: Margin floor enforcement ──────────────────────────────
   // Resolve effective floor: item-level overrides category-level
@@ -1314,14 +1491,16 @@ export function saveSellingPrice(input: {
     }
   }
 
-  // ── Improvement #2: Snapshot existing price before overwriting ────────────
   const existingRow = db.prepare(`
-    SELECT sell_min, sell_max, markup_min, markup_max, strategy
+    SELECT sell_min, sell_max, markup_min, markup_max, strategy, transportation, other_expenses, tier_pricing_enabled
     FROM selling_prices WHERE item_id = ? AND month = ?
   `).get(input.itemId, input.month) as {
     sell_min: number; sell_max: number;
     markup_min: number; markup_max: number;
     strategy: string;
+    transportation: number;
+    other_expenses: number;
+    tier_pricing_enabled: number;
   } | undefined;
 
   const now = new Date().toISOString();
@@ -1331,14 +1510,18 @@ export function saveSellingPrice(input: {
     INSERT INTO selling_price_history (
       item_id, month,
       prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+      prev_transportation, prev_other_expenses, prev_tier_pricing_enabled,
       new_sell_min, new_sell_max, new_markup_min, new_markup_max,
       new_strategy, new_markup_type, new_buy_avg,
+      new_transportation, new_other_expenses, new_tier_pricing_enabled,
       changed_by, changed_at, change_reason, is_update
     ) VALUES (
       @item_id, @month,
       @prev_sell_min, @prev_sell_max, @prev_markup_min, @prev_markup_max, @prev_strategy,
+      @prev_transportation, @prev_other_expenses, @prev_tier_pricing_enabled,
       @new_sell_min, @new_sell_max, @new_markup_min, @new_markup_max,
       @new_strategy, @new_markup_type, @new_buy_avg,
+      @new_transportation, @new_other_expenses, @new_tier_pricing_enabled,
       @changed_by, @changed_at, @change_reason, @is_update
     )
   `).run({
@@ -1349,6 +1532,9 @@ export function saveSellingPrice(input: {
     prev_markup_min:  existingRow?.markup_min  ?? null,
     prev_markup_max:  existingRow?.markup_max  ?? null,
     prev_strategy:    existingRow?.strategy    ?? null,
+    prev_transportation: existingRow?.transportation ?? null,
+    prev_other_expenses: existingRow?.other_expenses ?? null,
+    prev_tier_pricing_enabled: existingRow?.tier_pricing_enabled ?? null,
     new_sell_min:     sellMin,
     new_sell_max:     sellMax,
     new_markup_min:   input.markupMin,
@@ -1356,6 +1542,9 @@ export function saveSellingPrice(input: {
     new_strategy:     input.strategy,
     new_markup_type:  input.markupType,
     new_buy_avg:      recommendation.buyAvg,
+    new_transportation: transportation,
+    new_other_expenses: input.otherExpenses,
+    new_tier_pricing_enabled: input.tierPricingEnabled ?? 0,
     changed_by:       input.createdBy,
     changed_at:       now,
     change_reason:    input.changeReason ?? null,
@@ -1365,9 +1554,9 @@ export function saveSellingPrice(input: {
   // Upsert current selling price
   db.prepare(`
       INSERT INTO selling_prices (
-        item_id, month, strategy, markup_type, buy_min, buy_max, buy_avg, markup_min, markup_max, sell_min, sell_max, created_by, created_at
+        item_id, month, strategy, markup_type, buy_min, buy_max, buy_avg, markup_min, markup_max, sell_min, sell_max, created_by, created_at, transportation, other_expenses, tier_pricing_enabled
       ) VALUES (
-        @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max, @sell_min, @sell_max, @created_by, @created_at
+        @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max, @sell_min, @sell_max, @created_by, @created_at, @transportation, @other_expenses, @tier_pricing_enabled
       )
       ON CONFLICT(item_id, month) DO UPDATE SET
         strategy = excluded.strategy,
@@ -1380,7 +1569,10 @@ export function saveSellingPrice(input: {
         sell_min = excluded.sell_min,
         sell_max = excluded.sell_max,
         created_by = excluded.created_by,
-        created_at = excluded.created_at
+        created_at = excluded.created_at,
+        transportation = excluded.transportation,
+        other_expenses = excluded.other_expenses,
+        tier_pricing_enabled = excluded.tier_pricing_enabled
     `)
     .run({
       item_id: input.itemId,
@@ -1396,6 +1588,9 @@ export function saveSellingPrice(input: {
       sell_max: sellMax,
       created_by: input.createdBy,
       created_at: now,
+      transportation,
+      other_expenses: input.otherExpenses,
+      tier_pricing_enabled: input.tierPricingEnabled ?? 0,
     });
 }
 
@@ -1424,10 +1619,25 @@ export function getSalesCatalog(month: string, categoryId?: number) {
         sp.sell_min,
         sp.sell_max,
         sp.created_by,
-        sp.created_at
+        sp.created_at,
+        IFNULL(sp.tier_pricing_enabled, 0) as tier_pricing_enabled,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
+        IFNULL(sp.transportation, 0.0) as transportation,
+        IFNULL(sp.other_expenses, 0.0) as other_expenses,
+        i.transportation_per_unit,
+        i.moq
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = @month
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
       ORDER BY c.name, i.name
     `)
@@ -1447,6 +1657,20 @@ export function getSalesCatalog(month: string, categoryId?: number) {
       sell_max: number | null;
       created_by: string | null;
       created_at: string | null;
+      tier_pricing_enabled: number;
+      is_tiered: number;
+      tier1_max: number;
+      tier1_discount: number;
+      tier2_max: number;
+      tier2_discount: number;
+      tier3_max: number;
+      tier3_discount: number;
+      tier4_max: number;
+      tier4_discount: number;
+      transportation: number;
+      other_expenses: number;
+      transportation_per_unit: number;
+      moq: number;
     }>;
 }
 
@@ -1507,19 +1731,35 @@ export function getAdminSnapshot() {
       s.name,
       s.contact_person,
       s.phone,
-      COUNT(pe.id) as quote_count
+      s.code,
+      s.contact_job_title,
+      s.represented_products,
+      s.email,
+      s.region,
+      s.address,
+      COUNT(pe.id) as quote_count,
+      GROUP_CONCAT(DISTINCT i.name) as quoted_item_names
     FROM suppliers s
     LEFT JOIN price_entries pe ON pe.supplier_id = s.id
-    GROUP BY s.id, s.name, s.contact_person, s.phone
+    LEFT JOIN items i ON pe.item_id = i.id
+    GROUP BY s.id, s.name, s.contact_person, s.phone, s.code, s.contact_job_title, s.represented_products, s.email, s.region, s.address
     ORDER BY s.name
   `).all() as Array<{
     id: number;
     name: string;
     contact_person: string;
     phone: string;
+    code: string | null;
+    contact_job_title: string | null;
+    represented_products: string | null;
+    email: string | null;
+    region: string | null;
+    address: string | null;
     quote_count: number;
+    quoted_item_names: string | null;
   }>;
 
+  const month = currentMonth();
   const items = db.prepare(`
     SELECT
       i.id,
@@ -1529,20 +1769,16 @@ export function getAdminSnapshot() {
       i.active,
       i.category_id,
       c.name as category_name,
-      COUNT(pe.id) as quote_count
+      i.transportation_per_unit,
+      i.moq,
+      (SELECT COUNT(*) FROM price_entries pe WHERE pe.item_id = i.id) as quote_count,
+      (SELECT sp.sell_min FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_min,
+      (SELECT sp.sell_max FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_max,
+      (SELECT AVG(pe.price) FROM price_entries pe WHERE pe.item_id = i.id AND pe.month = ?) as buy_avg
     FROM items i
     JOIN categories c ON c.id = i.category_id
-    LEFT JOIN price_entries pe ON pe.item_id = i.id
-    GROUP BY
-      i.id,
-      i.name,
-      i.unit,
-      i.description,
-      i.active,
-      i.category_id,
-      c.name
     ORDER BY i.active DESC, c.name, i.name
-  `).all() as Array<{
+  `).all(month, month, month) as Array<{
     id: number;
     name: string;
     unit: string;
@@ -1550,7 +1786,12 @@ export function getAdminSnapshot() {
     active: number;
     category_id: number;
     category_name: string;
+    transportation_per_unit: number;
+    moq: number;
     quote_count: number;
+    sell_min: number | null;
+    sell_max: number | null;
+    buy_avg: number | null;
   }>;
 
   return {
@@ -1829,6 +2070,17 @@ export function getMonthlyReviewData(month: string) {
         i.category_id,
         c.name        AS category_name,
         s.name        AS supplier_name,
+        i.transportation_per_unit,
+        i.moq,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id
           ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -1837,11 +2089,15 @@ export function getMonthlyReviewData(month: string) {
       JOIN items      i ON i.id = pe.item_id
       JOIN categories c ON c.id = i.category_id
       JOIN suppliers  s ON s.id = pe.supplier_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       WHERE pe.month = ?
     )
     SELECT
       item_id, supplier_id, price, recorded_at,
-      item_name, unit, category_id, category_name, supplier_name
+      item_name, unit, category_id, category_name, supplier_name,
+      transportation_per_unit, moq, is_tiered,
+      tier1_max, tier1_discount, tier2_max, tier2_discount,
+      tier3_max, tier3_discount, tier4_max, tier4_discount
     FROM ranked
     WHERE rn = 1
     ORDER BY category_name, item_name, supplier_name
@@ -1855,12 +2111,24 @@ export function getMonthlyReviewData(month: string) {
     category_id: number;
     category_name: string;
     supplier_name: string;
+    transportation_per_unit: number;
+    moq: number;
+    is_tiered: number;
+    tier1_max: number;
+    tier1_discount: number;
+    tier2_max: number;
+    tier2_discount: number;
+    tier3_max: number;
+    tier3_discount: number;
+    tier4_max: number;
+    tier4_discount: number;
   }>;
 
   // Pull existing selling prices for this month
   const sellingRows = db.prepare(`
     SELECT item_id, sell_min, sell_max, strategy, markup_type,
-           markup_min, markup_max, created_by, created_at
+           markup_min, markup_max, created_by, created_at,
+           tier_pricing_enabled, other_expenses
     FROM selling_prices WHERE month = ?
   `).all(month) as Array<{
     item_id: number;
@@ -1872,6 +2140,8 @@ export function getMonthlyReviewData(month: string) {
     markup_max: number;
     created_by: string;
     created_at: string;
+    tier_pricing_enabled: number;
+    other_expenses: number;
   }>;
   const sellingMap = new Map(sellingRows.map(r => [r.item_id, r]));
 
@@ -1940,6 +2210,17 @@ export function getMonthlyReviewData(month: string) {
     avgPrice: number;
     existingSell: typeof sellingRows[0] | null;
     history: HistoryRow[];
+    transportation_per_unit: number;
+    moq: number;
+    is_tiered: number;
+    tier1_max: number;
+    tier1_discount: number;
+    tier2_max: number;
+    tier2_discount: number;
+    tier3_max: number;
+    tier3_discount: number;
+    tier4_max: number;
+    tier4_discount: number;
   };
   type ReviewCategory = { categoryId: number; categoryName: string; items: ReviewItem[] };
 
@@ -1958,6 +2239,17 @@ export function getMonthlyReviewData(month: string) {
         avgPrice: 0,
         existingSell: sellingMap.get(row.item_id) ?? null,
         history: historyByItem.get(row.item_id) ?? [],
+        transportation_per_unit: row.transportation_per_unit,
+        moq: row.moq,
+        is_tiered: row.is_tiered,
+        tier1_max: row.tier1_max,
+        tier1_discount: row.tier1_discount,
+        tier2_max: row.tier2_max,
+        tier2_discount: row.tier2_discount,
+        tier3_max: row.tier3_max,
+        tier3_discount: row.tier3_discount,
+        tier4_max: row.tier4_max,
+        tier4_discount: row.tier4_discount,
       });
     }
     const item = itemMap.get(row.item_id)!;
@@ -2035,12 +2327,14 @@ export function getItemCardData(itemId: number) {
 
   const item = db.prepare(`
     SELECT i.id, i.name, i.unit, i.description, i.active,
-           c.name AS category_name, c.id AS category_id
+           c.name AS category_name, c.id AS category_id,
+           i.transportation_per_unit, i.moq
     FROM items i JOIN categories c ON c.id = i.category_id
     WHERE i.id = ?
   `).get(itemId) as {
     id: number; name: string; unit: string; description: string;
     active: number; category_name: string; category_id: number;
+    transportation_per_unit: number; moq: number;
   } | undefined;
 
   if (!item) return null;
@@ -2119,6 +2413,7 @@ export function getSupplierCardData(supplierId: number) {
 
   const supplier = db.prepare(`
     SELECT s.id, s.name, s.contact_person, s.phone,
+           s.code, s.contact_job_title, s.represented_products, s.email, s.region, s.address,
            COUNT(pe.id) AS total_quotes
     FROM suppliers s
     LEFT JOIN price_entries pe ON pe.supplier_id = s.id
@@ -2126,7 +2421,9 @@ export function getSupplierCardData(supplierId: number) {
     GROUP BY s.id
   `).get(supplierId) as {
     id: number; name: string; contact_person: string;
-    phone: string; total_quotes: number;
+    phone: string; code: string | null; contact_job_title: string | null;
+    represented_products: string | null; email: string | null;
+    region: string | null; address: string | null; total_quotes: number;
   } | undefined;
 
   if (!supplier) return null;
@@ -2212,6 +2509,8 @@ export type SellingPriceHistoryRow = {
   prev_markup_min: number | null;
   prev_markup_max: number | null;
   prev_strategy: string | null;
+  prev_transportation: number | null;
+  prev_other_expenses: number | null;
   new_sell_min: number;
   new_sell_max: number;
   new_markup_min: number;
@@ -2219,6 +2518,8 @@ export type SellingPriceHistoryRow = {
   new_strategy: string;
   new_markup_type: string;
   new_buy_avg: number;
+  new_transportation: number;
+  new_other_expenses: number;
   changed_by: string;
   changed_at: string;
   change_reason: string | null;
@@ -2244,6 +2545,20 @@ export function getSellingPriceHistoryForItem(itemId: number, limit = 20): Selli
       LIMIT ?
     `)
     .all(itemId, limit) as SellingPriceHistoryRow[];
+}
+
+export function getRecentPriceUpdates(month: string, limit = 5): any[] {
+  return database()
+    .prepare(`
+      SELECT h.*, i.name as item_name, i.unit as item_unit, c.name as category_name
+      FROM selling_price_history h
+      JOIN items i ON h.item_id = i.id
+      JOIN categories c ON i.category_id = c.id
+      WHERE h.month = ? AND h.is_update = 1
+      ORDER BY h.changed_at DESC, h.id DESC
+      LIMIT ?
+    `)
+    .all(month, limit) as any[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2353,6 +2668,7 @@ export function applyCategoryMarkup(input: {
   markupMin: number;
   markupMax: number;
   createdBy: string;
+  tierPricingEnabled?: number;
 }): { applied: number; skipped: number; errors: string[] } {
   const db = database();
 
@@ -2374,15 +2690,24 @@ export function applyCategoryMarkup(input: {
           skipped++;
           continue;
         }
+        const existingSp = db.prepare("SELECT other_expenses FROM selling_prices WHERE item_id = ? AND month = ?").get(item.id, input.month) as { other_expenses: number } | undefined;
+        const otherExpenses = existingSp?.other_expenses ?? 0;
+
+        // Auto-detect if item is tiered from the database
+        const itemTierRow = db.prepare("SELECT is_tiered FROM item_tiers WHERE item_id = ?").get(item.id) as { is_tiered: number } | undefined;
+        const isTiered = itemTierRow?.is_tiered === 1;
+
         saveSellingPrice({
           itemId: item.id,
           month: input.month,
           strategy: input.strategy,
           markupType: input.markupType,
           markupMin: input.markupMin,
-          markupMax: input.markupMax,
+          markupMax: isTiered ? input.markupMin : input.markupMax,
           createdBy: input.createdBy,
           changeReason: `Bulk category markup applied by ${input.createdBy}`,
+          otherExpenses,
+          tierPricingEnabled: isTiered ? 1 : 0,
         });
         applied++;
       } catch (err) {
@@ -2580,10 +2905,138 @@ export function purgeAllDataExceptUsers() {
     DELETE FROM items;
     DELETE FROM categories;
     DELETE FROM suppliers;
+    DELETE FROM monthly_settings;
+    DELETE FROM item_tiers;
     DELETE FROM sqlite_sequence WHERE name IN (
       'categories', 'items', 'suppliers', 'price_entries', 'selling_prices', 
       'selling_price_history', 'margin_floors', 'price_change_requests'
     );
   `);
 }
+
+export function isTierPricingEnabled(month: string): boolean {
+  const row = database()
+    .prepare("SELECT tier_pricing_enabled FROM monthly_settings WHERE month = ?")
+    .get(month) as { tier_pricing_enabled: number } | undefined;
+  return row ? row.tier_pricing_enabled === 1 : false;
+}
+
+export function setMonthlyTierPricing(month: string, enabled: boolean): void {
+  database()
+    .prepare(`
+      INSERT INTO monthly_settings (month, tier_pricing_enabled)
+      VALUES (?, ?)
+      ON CONFLICT(month) DO UPDATE SET tier_pricing_enabled = excluded.tier_pricing_enabled
+    `)
+    .run(month, enabled ? 1 : 0);
+}
+
+export type ItemTierConfig = {
+  item_id: number;
+  item_name: string;
+  category_name: string;
+  is_tiered: number;
+  tier1_max: number;
+  tier1_discount: number;
+  tier2_max: number;
+  tier2_discount: number;
+  tier3_max: number;
+  tier3_discount: number;
+  tier4_max: number;
+  tier4_discount: number;
+};
+
+export function getItemTiers(): ItemTierConfig[] {
+  return database()
+    .prepare(`
+      SELECT 
+        i.id as item_id,
+        i.name as item_name,
+        c.name as category_name,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount
+      FROM items i
+      JOIN categories c ON c.id = i.category_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
+      ORDER BY c.name, i.name
+    `)
+    .all() as ItemTierConfig[];
+}
+
+export function upsertItemTier(config: {
+  itemId: number;
+  isTiered: number;
+  tier1Max: number;
+  tier1Discount: number;
+  tier2Max: number;
+  tier2Discount: number;
+  tier3Max: number;
+  tier3Discount: number;
+  tier4Max: number;
+  tier4Discount: number;
+}): void {
+  database()
+    .prepare(`
+      INSERT INTO item_tiers
+        (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount,
+         tier3_max, tier3_discount, tier4_max, tier4_discount)
+      VALUES
+        (@itemId, @isTiered, @tier1Max, @tier1Discount, @tier2Max, @tier2Discount,
+         @tier3Max, @tier3Discount, @tier4Max, @tier4Discount)
+      ON CONFLICT(item_id) DO UPDATE SET
+        is_tiered = excluded.is_tiered,
+        tier1_max = excluded.tier1_max,
+        tier1_discount = excluded.tier1_discount,
+        tier2_max = excluded.tier2_max,
+        tier2_discount = excluded.tier2_discount,
+        tier3_max = excluded.tier3_max,
+        tier3_discount = excluded.tier3_discount,
+        tier4_max = excluded.tier4_max,
+        tier4_discount = excluded.tier4_discount
+    `)
+    .run(config);
+}
+
+export function deleteItemTier(itemId: number): void {
+  database()
+    .prepare("DELETE FROM item_tiers WHERE item_id = ?")
+    .run(itemId);
+}
+
+// ── Exchange Rate helpers ─────────────────────────────────────────────────────
+
+export type ExchangeRateRow = {
+  id: number;
+  currency: string;
+  rate: number;
+  source: string | null;
+  fetched_at: string;
+};
+
+/** Returns the most recently saved rate for the given currency (default USD). */
+export function getExchangeRate(currency = "USD"): ExchangeRateRow | null {
+  return database()
+    .prepare(
+      "SELECT id, currency, rate, source, fetched_at FROM exchange_rates WHERE currency = ? ORDER BY fetched_at DESC LIMIT 1"
+    )
+    .get(currency) as ExchangeRateRow | null;
+}
+
+/** Saves a new rate record (keeps history, does not overwrite). */
+export function saveExchangeRate(currency: string, rate: number, source: string): void {
+  database()
+    .prepare(
+      "INSERT INTO exchange_rates (currency, rate, source, fetched_at) VALUES (?, ?, ?, datetime('now'))"
+    )
+    .run(currency, rate, source);
+}
+
+
 

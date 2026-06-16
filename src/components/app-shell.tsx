@@ -16,6 +16,7 @@ const ROLE_COLORS: Record<RoleCode, { badge: string; dot: string }> = {
   SC: { badge: "#818cf8", dot: "#6366f1" },
   WH: { badge: "#34d399", dot: "#10b981" },
   SA: { badge: "#fbbf24", dot: "#f59e0b" },
+  AD: { badge: "#ec4899", dot: "#db2777" },
 };
 
 export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number }) {
@@ -39,11 +40,13 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
   };
 
   // Nav items defined here so they pick up translations
-  const NAV_BY_ROLE: Record<RoleCode, Array<{ href: string; labelKey: "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"; icon: string; exact?: boolean; pendingKey?: "scApprovals" | "whApprovals" }>> = {
+  const NAV_BY_ROLE: Record<RoleCode, Array<{ href: string; labelKey: "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"|"nav.suppliers"|"nav.items"; icon: string; exact?: boolean; pendingKey?: "scApprovals" | "whApprovals" }>> = {
     WH: [
       { href: "/dashboard",                        labelKey: "nav.overview",        icon: "⊞",  exact: true },
       { href: "/dashboard/purchasing",             labelKey: "nav.priceCollection", icon: "📋", exact: true },
       { href: "/dashboard/purchasing/approvals",   labelKey: "nav.approvals",       icon: "🔔", pendingKey: "whApprovals" },
+      { href: "/dashboard/admin/suppliers",        labelKey: "nav.suppliers",       icon: "🏭" },
+      { href: "/dashboard/admin/items",            labelKey: "nav.items",           icon: "📦" },
     ],
     SC: [
       { href: "/dashboard",                   labelKey: "nav.overview",    icon: "⊞",  exact: true },
@@ -51,10 +54,16 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
       { href: "/dashboard/sales",             labelKey: "nav.salesView",   icon: "💰" },
       { href: "/dashboard/reports",           labelKey: "nav.reports",     icon: "📄" },
       { href: "/dashboard/approvals",         labelKey: "nav.approvals",   icon: "🔔", pendingKey: "scApprovals" },
-      { href: "/dashboard/admin",             labelKey: "nav.admin",       icon: "⚙️" },
+      { href: "/dashboard/admin/suppliers",   labelKey: "nav.suppliers",   icon: "🏭" },
+      { href: "/dashboard/admin/items",       labelKey: "nav.items",       icon: "📦" },
     ],
     SA: [
       { href: "/dashboard", labelKey: "nav.approvedPriceList", icon: "💰", exact: true },
+    ],
+    AD: [
+      { href: "/dashboard/admin",           labelKey: "nav.admin",     icon: "⚙️", exact: true },
+      { href: "/dashboard/admin/suppliers", labelKey: "nav.suppliers", icon: "🏭", exact: true },
+      { href: "/dashboard/admin/items",     labelKey: "nav.items",     icon: "📦", exact: true },
     ],
   };
 

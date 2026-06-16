@@ -128,7 +128,7 @@ export default function MarginFloorsPanel({ floors, categories, items, username 
                 name="minMarkupPct"
                 min="0"
                 max="50"
-                step="0.5"
+                step="any"
                 value={minPct}
                 onChange={(e) => setMinPct(e.target.value)}
                 required

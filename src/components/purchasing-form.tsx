@@ -6,7 +6,7 @@ import { shiftMonth, formatMonthLabel, formatCurrency } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
 type Category    = { id: number; name: string; description: string };
-type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string };
+type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
 type Supplier    = { id: number; name: string; contact_person?: string; phone?: string };
 type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null };
 type HistoryFilter = "3" | "6" | "all";
@@ -63,11 +63,11 @@ function ChangeRequestModal({
     fd.set("requestedBy", requestedBy);
     startTransition(async () => {
       const res = await submitPriceChangeRequestAction(fd);
-      if (res.ok) {
+      if (res?.ok) {
         setDone(res.directSaved ? "direct" : "request");
         setTimeout(onClose, 1800);
       }
-      else { setErr(res.error ?? "Failed to submit"); }
+      else { setErr(res?.error ?? "Failed to submit"); }
     });
   };
 
@@ -203,12 +203,12 @@ function ExtendPricesModal({
         supplierIds: Array.from(selected),
         extendedBy,
       });
-      if (res.ok) {
+      if (res?.ok) {
         setDone(true);
         setResult(`✓ Extended prices for ${res.created} supplier(s) into ${formatMonthLabel(month)}.`);
         setTimeout(() => onClose(true), 1800);
       } else {
-        setErr(res.error ?? "Failed");
+        setErr(res?.error ?? "Failed");
       }
     });
   };
@@ -459,10 +459,10 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
         fd.set(`notes_${supplier.id}`, editingEntry.notes);
         
         const res = await saveBatchPriceEntriesSilent(fd);
-        if (res.ok) {
+        if (res?.ok) {
           setEditingEntry(null);
         } else {
-          alert(res.error ?? "Failed to save price.");
+          alert(res?.error ?? "Failed to save price.");
         }
       } catch (err) {
         console.error(err);
@@ -756,6 +756,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                   <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{item.name}</strong>
                                   <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "8px", marginRight: "8px" }}>
                                     · {isAr ? "الوحدة" : "Unit"}: {item.unit}
+                                    {" · "}{isAr ? "أقل كمية طلب (MOQ)" : "MOQ"}: {item.moq ?? 0}
+                                    {" · "}{isAr ? "النقل للوحدة" : "Transportation/Unit"}: {formatCurrency(item.transportation_per_unit ?? 0)}
                                   </span>
                                 </div>
                               </div>
@@ -775,6 +777,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                     <tr style={{ borderBottom: "1px solid var(--border-medium)", background: "var(--bg-elevated)" }}>
                                       <th style={{ textAlign: isAr ? "right" : "left", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700 }}>{isAr ? "المورد" : "Supplier"}</th>
                                       <th style={{ textAlign: "center", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700, width: "120px" }}>{isAr ? "الحالة" : "Status"}</th>
+                                      <th style={{ textAlign: "center", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700, width: "120px" }}>{isAr ? "تكلفة النقل" : "Trans. Cost"}</th>
                                       <th style={{ textAlign: isAr ? "left" : "right", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700, width: "140px" }}>{isAr ? "السعر" : "Price"} ({item.unit})</th>
                                       <th style={{ textAlign: isAr ? "right" : "left", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700 }}>{isAr ? "ملاحظات" : "Notes"}</th>
                                       <th style={{ textAlign: "center", padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 700, width: "140px" }}>{isAr ? "الإجراءات" : "Actions"}</th>
@@ -818,13 +821,18 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                               <span className="badge" style={{ fontSize: "10px", padding: "2px 8px", opacity: 0.5 }}>{isAr ? "لم يدخل" : "Not Entered"}</span>
                                             )}
                                           </td>
+
+                                          {/* Transportation Cost */}
+                                          <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle", color: "var(--text-muted)" }}>
+                                            <span style={{ fontSize: "12.5px", fontWeight: 600 }}>{formatCurrency(item.transportation_per_unit ?? 0)}</span>
+                                          </td>
                                           
                                           {/* Price */}
                                           <td style={{ padding: "8px 12px", textAlign: isAr ? "left" : "right", verticalAlign: "middle" }}>
                                             {isEditing ? (
                                               <input
                                                 type="number"
-                                                step="0.01"
+                                                step="any"
                                                 min="0.01"
                                                 value={editingEntry.price}
                                                 onChange={e => setEditingEntry(prev => prev ? { ...prev, price: e.target.value } : null)}
@@ -1007,7 +1015,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
                 return (
                   <div key={supplier.id} style={{
-                    display: "grid", gridTemplateColumns: "auto 1fr 160px auto",
+                    display: "grid", gridTemplateColumns: "auto 1fr 120px 160px auto",
                     gap: "12px", alignItems: "center", padding: "14px 16px",
                     borderRadius: "var(--radius)",
                     border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color + "55" : "var(--border)"}`,
@@ -1036,32 +1044,59 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                     </div>
 
                     {/* Notes */}
-                    <input
-                      type="text"
-                      name={isConfirmed ? undefined : `notes_${supplier.id}`}
-                      placeholder={t("purch.notesOptional")}
-                      value={supplierNotes[supplier.id] ?? ""}
-                      onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                      style={{ padding: "8px 12px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px" }}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
+                      <input
+                        type="text"
+                        name={isConfirmed ? undefined : `notes_${supplier.id}`}
+                        placeholder={t("purch.notesOptional")}
+                        value={supplierNotes[supplier.id] ?? ""}
+                        onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                        style={{ padding: "8px 12px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "38px" }}
+                      />
+                    </div>
+
+                    {/* Transportation Cost (Read-Only) */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px", flexShrink: 0 }}>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "تكلفة النقل" : "Trans. Cost"}</span>
+                      <input
+                        type="text"
+                        readOnly
+                        value={formatCurrency(selectedItem.transportation_per_unit ?? 0)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: "var(--radius)",
+                          border: "1.5px solid var(--border-medium)",
+                          background: "var(--bg-subtle)",
+                          color: "var(--text-muted)",
+                          fontSize: "12.5px",
+                          fontWeight: 600,
+                          textAlign: "center",
+                          height: "38px"
+                        }}
+                      />
+                    </div>
 
                     {/* Price */}
-                    <input
-                      type="number"
-                      name={isConfirmed ? undefined : `price_${supplier.id}`}
-                      step="0.01" min="0.01"
-                      placeholder={t("purch.pricePlaceholder")}
-                      value={currentPrice}
-                      onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                      style={{
-                        width: "100%", padding: "8px 12px", borderRadius: "var(--radius)",
-                        border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--border-medium)"}`,
-                        background: "var(--bg-surface)",
-                        color: isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--text-primary)",
-                        fontSize: "14px", fontWeight: currentPrice ? 700 : 400,
-                        outline: "none", transition: "all 200ms",
-                      }}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "160px", flexShrink: 0 }}>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "السعر" : "Price"} ({selectedItem.unit})</span>
+                      <input
+                        type="number"
+                        name={isConfirmed ? undefined : `price_${supplier.id}`}
+                        step="any" min="0.01"
+                        placeholder={t("purch.pricePlaceholder")}
+                        value={currentPrice}
+                        onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                        style={{
+                          width: "100%", padding: "8px 12px", borderRadius: "var(--radius)",
+                          border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--border-medium)"}`,
+                          background: "var(--bg-surface)",
+                          color: isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--text-primary)",
+                          fontSize: "14px", fontWeight: currentPrice ? 700 : 400,
+                          outline: "none", transition: "all 200ms", height: "38px"
+                        }}
+                      />
+                    </div>
 
                     {/* Status icon */}
                     <div style={{ width: "20px", display: "flex", justifyContent: "center" }}>
@@ -1150,11 +1185,11 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                               const price = pivotData.priceMap.get(`${sup.id}||${m}`);
                               const isBest = price !== undefined && price === minP;
                               return (
-                                <td key={sup.id} style={{ padding: "8px 12px", textAlign: "center", background: isBest ? "rgba(16,185,129,0.08)" : "transparent", whiteSpace: "nowrap" }}>
+                                <td key={sup.id} style={{ padding: "8px 12px", textAlign: "center", background: isBest ? "rgba(2,132,199,0.08)" : "transparent", whiteSpace: "nowrap" }}>
                                   {price !== undefined ? (
                                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                                      <strong style={{ fontSize: "13px", fontWeight: isBest ? 800 : 600, color: isBest ? "var(--success)" : "var(--text-primary)" }}>{formatCurrency(price)}</strong>
-                                      {isBest && <span style={{ fontSize: "8px", fontWeight: 800, background: "var(--success)", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>{t("gen.best")}</span>}
+                                      <strong style={{ fontSize: "13px", fontWeight: isBest ? 800 : 600, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(price)}</strong>
+                                      {isBest && <span style={{ fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>{t("gen.best")}</span>}
                                     </div>
                                   ) : <span style={{ color: "var(--text-dim)" }}>—</span>}
                                 </td>

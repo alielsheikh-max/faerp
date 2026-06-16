@@ -20,6 +20,8 @@ export const translations = {
   "nav.approvedPriceList":  { en: "Approved Price List", ar: "قائمة الأسعار المعتمدة" },
   "nav.approvals":          { en: "Approvals",          ar: "طلبات الموافقة" },
   "nav.navigation":         { en: "Navigation",         ar: "التنقل" },
+  "nav.suppliers":          { en: "Suppliers",          ar: "الموردين" },
+  "nav.items":              { en: "Items & Categories", ar: "المنتجات والأقسام" },
 
   // ── Role labels ───────────────────────────────────────────────────────────
   "role.activeSession":     { en: "Active Session",     ar: "جلسة نشطة" },
@@ -29,6 +31,8 @@ export const translations = {
   "role.SC.desc":           { en: "Compare supplier prices, review historical trends, and publish resale limits.", ar: "مقارنة أسعار الموردين ومراجعة الاتجاهات التاريخية ونشر حدود إعادة البيع." },
   "role.SA.title":          { en: "Sales",              ar: "المبيعات" },
   "role.SA.desc":           { en: "Review approved minimum and maximum selling prices for the active month.", ar: "مراجعة أسعار البيع الدنيا والقصوى المعتمدة للشهر الحالي." },
+  "role.AD.title":          { en: "Admin",              ar: "المسؤول" },
+  "role.AD.desc":           { en: "Manage system master data, users, margin floors, and system tools.", ar: "إدارة البيانات الأساسية للنظام والمستخدمين والحدود الدنيا للهامش وأدوات النظام." },
 
   // ── Sidebar footer ────────────────────────────────────────────────────────
   "sidebar.systemOnline":   { en: "System online · Local", ar: "النظام متصل · محلي" },
@@ -328,6 +332,7 @@ export const translations = {
   "gen.supplier":           { en: "Supplier",    ar: "المورد" },
   "gen.month":              { en: "Month",       ar: "الشهر" },
   "gen.item":               { en: "Item",        ar: "الصنف" },
+  "gen.moq":                { en: "MOQ",         ar: "الحد الأدنى للطلب (MOQ)" },
   "gen.price":              { en: "Price",       ar: "السعر" },
   "gen.unit":               { en: "Unit",        ar: "الوحدة" },
   "gen.category":           { en: "Category",    ar: "الفئة" },

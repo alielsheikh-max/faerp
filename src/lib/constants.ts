@@ -19,6 +19,12 @@ export const ROLE_PROFILES = {
     title: "Sales",
     shortTitle: "Sales Catalog",
     description: "Review approved minimum and maximum selling prices for the active month."
+  },
+  AD: {
+    code: "AD",
+    title: "Admin",
+    shortTitle: "System Admin",
+    description: "Manage system master data, users, margin floors, and system tools."
   }
 } as const;
 
@@ -42,5 +48,10 @@ export const QUICK_LOGIN_CREDENTIALS: Record<
     username: "sa",
     password: "sa123",
     displayName: "SA Sales"
+  },
+  AD: {
+    username: "admin",
+    password: "admin123",
+    displayName: "System Admin"
   }
 };

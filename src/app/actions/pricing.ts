@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addPriceEntry, saveSellingPrice, getRecommendation } from "@/lib/db";
+import { addPriceEntry, saveSellingPrice, getRecommendation, database } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 
 export async function createBatchPriceEntries(formData: FormData) {
@@ -131,6 +131,7 @@ export async function publishSellingPrice(formData: FormData) {
   const markupMax = asNumber(formData.get("markupMax"));
   const createdBy = asString(formData.get("createdBy")) || "SC Manager";
   const changeReason = asString(formData.get("changeReason")) || undefined;
+  const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
   const redirectTo =
     asString(formData.get("redirectTo")) ||
     `/dashboard?month=${month}&itemId=${itemId}&saved=1`;
@@ -162,11 +163,11 @@ export async function publishSellingPrice(formData: FormData) {
       markupMax,
       createdBy,
       changeReason,
+      otherExpenses,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.startsWith("FLOOR_VIOLATION:")) {
-      // Extract the floor value from the error message for URL param
       const parts = msg.split(":");
       const floorPct = parts[1] ?? "0";
       redirect(`${errorRedirect}&floorViolation=1&floor=${floorPct}`);
@@ -188,14 +189,31 @@ export async function saveSellingPriceInline(input: {
   sellMax: number;
   createdBy: string;
   changeReason?: string;
+  otherExpenses?: number;
+  tierPricingEnabled?: number;
 }): Promise<{ ok: boolean; error?: string; floorViolation?: boolean; floorPct?: number }> {
   try {
     const rec = getRecommendation(input.month, input.itemId);
     if (rec.buyAvg === null) return { ok: false, error: "No quotes found" };
 
+    const db = database();
+    const itemRow = db.prepare("SELECT transportation_per_unit FROM items WHERE id = ?").get(input.itemId) as { transportation_per_unit: number } | undefined;
+    const transportation = itemRow?.transportation_per_unit ?? 0;
+    
+    const otherExpenses = input.otherExpenses !== undefined
+      ? input.otherExpenses
+      : (db.prepare("SELECT other_expenses FROM selling_prices WHERE item_id = ? AND month = ?").get(input.itemId, input.month) as { other_expenses: number } | undefined)?.other_expenses ?? 0;
+
+    const tierPricingEnabled = input.tierPricingEnabled !== undefined
+      ? input.tierPricingEnabled
+      : (db.prepare("SELECT tier_pricing_enabled FROM selling_prices WHERE item_id = ? AND month = ?").get(input.itemId, input.month) as { tier_pricing_enabled: number } | undefined)?.tier_pricing_enabled ?? 0;
+
+    const baseSellMin = input.sellMin - transportation - otherExpenses;
+    const baseSellMax = input.sellMax - transportation - otherExpenses;
+
     const base = rec.buyAvg;
-    const markupMin = base > 0 ? ((input.sellMin / base) - 1) * 100 : 0;
-    const markupMax = base > 0 ? ((input.sellMax / base) - 1) * 100 : 0;
+    const markupMin = base > 0 ? ((baseSellMin / base) - 1) * 100 : 0;
+    const markupMax = base > 0 ? ((baseSellMax / base) - 1) * 100 : 0;
 
     saveSellingPrice({
       itemId: input.itemId,
@@ -206,6 +224,8 @@ export async function saveSellingPriceInline(input: {
       markupMax: Math.max(0, markupMax),
       createdBy: input.createdBy,
       changeReason: input.changeReason,
+      otherExpenses,
+      tierPricingEnabled,
     });
 
     revalidatePath("/dashboard");
@@ -233,7 +253,7 @@ import { upsertMarginFloor, deleteMarginFloor } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 export async function setMarginFloorAction(formData: FormData): Promise<void> {
-  requireRole(["SC"]);
+  requireRole(["AD"]);
   const floorType = asString(formData.get("floorType")) as "item" | "category";
   const itemId = asNumber(formData.get("itemId")) ?? undefined;
   const categoryId = asNumber(formData.get("categoryId")) ?? undefined;
@@ -248,7 +268,7 @@ export async function setMarginFloorAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteMarginFloorAction(formData: FormData): Promise<void> {
-  requireRole(["SC"]);
+  requireRole(["AD"]);
   const id = asNumber(formData.get("id"));
   if (id !== null) deleteMarginFloor(id);
   revalidatePath("/dashboard/admin");
@@ -283,11 +303,14 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     const markupMax   = asNumber(formData.get("markupMax")) ?? 14;
     const createdBy   = asString(formData.get("createdBy")) || "SC Manager";
 
+    const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
+
     if (!categoryId || !month) return { ok: false, error: "Category and month are required." };
     if (markupMax < markupMin) return { ok: false, error: "Max markup must be ≥ min markup." };
 
     const result = applyCategoryMarkup({
       categoryId, month, strategy, markupType, markupMin, markupMax, createdBy,
+      tierPricingEnabled,
     });
 
     revalidatePath("/dashboard");
@@ -413,6 +436,8 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     const markupMax = asNumber(formData.get("markupMax"));
     const createdBy = asString(formData.get("createdBy")) || "SC Manager";
     const changeReason = asString(formData.get("changeReason")) || undefined;
+    const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
+    const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
 
     if (
       itemId === null ||
@@ -437,6 +462,8 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
       markupMax,
       createdBy,
       changeReason,
+      otherExpenses,
+      tierPricingEnabled,
     });
 
     revalidatePath("/dashboard");
@@ -453,4 +480,58 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     }
     return { ok: false, error: msg || "Failed to publish prices" };
   }
+}
+
+import { setMonthlyTierPricing, upsertItemTier, deleteItemTier } from "@/lib/db";
+
+export async function toggleMonthlyTierPricingAction(formData: FormData): Promise<void> {
+  requireRole(["SC"]);
+  const month = asString(formData.get("month"));
+  const enabled = asString(formData.get("tierPricingEnabled")) === "on";
+
+  if (!month) return;
+  setMonthlyTierPricing(month, enabled);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/sales");
+}
+
+export async function saveItemTierConfigAction(formData: FormData): Promise<void> {
+  requireRole(["AD"]);
+  const itemId       = asNumber(formData.get("itemId"));
+  const isTiered     = asString(formData.get("isTiered")) === "on" ? 1 : 0;
+  const tier1Max     = asNumber(formData.get("tier1Max"))     ?? 100;
+  const tier1Discount = asNumber(formData.get("tier1Discount")) ?? 0;
+  const tier2Max     = asNumber(formData.get("tier2Max"))     ?? 200;
+  const tier2Discount = asNumber(formData.get("tier2Discount")) ?? 5;
+  const tier3Max     = asNumber(formData.get("tier3Max"))     ?? 300;
+  const tier3Discount = asNumber(formData.get("tier3Discount")) ?? 10;
+  const tier4Max     = asNumber(formData.get("tier4Max"))     ?? 0;
+  const tier4Discount = asNumber(formData.get("tier4Discount")) ?? 0;
+
+  if (itemId === null) return;
+  upsertItemTier({
+    itemId,
+    isTiered,
+    tier1Max,
+    tier1Discount,
+    tier2Max,
+    tier2Discount,
+    tier3Max,
+    tier3Discount,
+    tier4Max,
+    tier4Discount,
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/admin");
+}
+
+export async function deleteItemTierConfigAction(formData: FormData): Promise<void> {
+  requireRole(["AD"]);
+  const itemId = asNumber(formData.get("itemId"));
+  if (itemId !== null) {
+    deleteItemTier(itemId);
+  }
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/admin");
 }

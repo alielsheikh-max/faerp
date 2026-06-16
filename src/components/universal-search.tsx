@@ -53,13 +53,13 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
               const color = COLORS[idx % COLORS.length];
               const isBest = idx === 0;
               return (
-                <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--success)" : color + "44"}`, background: isBest ? "var(--success-light)" : color + "0a", position: "relative" }}>
-                  {isBest && <span style={{ position: "absolute", top: "5px", right: "6px", fontSize: "8px", fontWeight: 800, background: "var(--success)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>BEST</span>}
+                <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--info)" : color + "44"}`, background: isBest ? "var(--info-light)" : color + "0a", position: "relative" }}>
+                  {isBest && <span style={{ position: "absolute", top: "5px", right: "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>BEST</span>}
                   <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
                     <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
                     <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sup.name}</span>
                   </div>
-                  <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--success)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
+                  <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
                   <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>avg {formatCurrency(sup.avg)}</div>
                 </div>
               );
@@ -132,7 +132,7 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
                         const entry = monthRow?.get(s);
                         const isBest = entry && minP !== null && entry.price === minP;
                         return (
-                          <td key={s} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.07)" : "transparent" }}>
+                          <td key={s} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(2,132,199,0.08)" : "transparent" }}>
                             {entry ? formatCurrency(entry.price) : "—"}
                           </td>
                         );
@@ -306,13 +306,48 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
       <button
         type="button"
         onClick={openModal}
-        style={{ width: "100%", display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.45)", fontSize: "12px", cursor: "pointer", transition: "all 150ms", textAlign: "left" }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.09)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.45)"; }}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "10px 14px",
+          borderRadius: "10px",
+          border: "1px solid rgba(255,255,255,0.25)",
+          background: "rgba(255,255,255,0.12)",
+          color: "#ffffff",
+          fontSize: "12px",
+          fontWeight: "600",
+          cursor: "pointer",
+          transition: "all 150ms ease",
+          textAlign: "left",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+        }}
+        onMouseEnter={e => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.background = "rgba(255,255,255,0.18)";
+          btn.style.borderColor = "rgba(96,165,250,0.6)";
+          btn.style.boxShadow = "0 0 12px rgba(59, 130, 246, 0.4)";
+        }}
+        onMouseLeave={e => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.background = "rgba(255,255,255,0.12)";
+          btn.style.borderColor = "rgba(255,255,255,0.25)";
+          btn.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
+        }}
       >
         <span style={{ fontSize: "13px" }}>🔍</span>
         <span style={{ flex: 1 }}>{t("sidebar.search")}</span>
-        <span style={{ fontSize: "9px", padding: "2px 5px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>⌘K</span>
+        <span style={{
+          fontSize: "9px",
+          padding: "2px 5px",
+          borderRadius: "4px",
+          border: "1px solid rgba(255,255,255,0.3)",
+          background: "rgba(255,255,255,0.15)",
+          color: "rgba(255,255,255,0.8)",
+          fontFamily: "monospace",
+          fontWeight: "bold"
+        }}>⌘K</span>
       </button>
 
       {/* ── Full-screen modal ── */}

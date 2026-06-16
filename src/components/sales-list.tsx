@@ -18,6 +18,8 @@ type SalesRow = {
   sell_max: number | null;
   created_by: string | null;
   created_at: string | null;
+  moq: number;
+  transportation_per_unit: number;
 };
 
 type SalesListProps = {
@@ -34,6 +36,7 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
   const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [qty, setQty] = useState<number>(100);
   const [targetPrice, setTargetPrice] = useState<number>(0);
+  const [showMOQDialog, setShowMOQDialog] = useState<boolean>(false);
   const [sessionQuotes, setSessionQuotes] = useState<Array<{
     id: number;
     itemName: string;
@@ -41,6 +44,10 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
     qty: number;
     price: number;
     total: number;
+    transportationCost: number;
+    grandTotal: number;
+    clientPaysTrans: boolean;
+    moq: number;
     minAllowed: number;
     maxAllowed: number;
     status: "approved" | "low" | "high";
@@ -66,17 +73,35 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
     } else {
       setTargetPrice(0);
     }
+    setShowMOQDialog(false);
   }, [selectedItemId, selectedItem]);
 
   const addQuote = () => {
     if (!selectedItem || selectedItem.sell_min === null || selectedItem.sell_max === null) return;
-    
+
+    const isUnderMOQ = selectedItem.moq > 0 && qty < selectedItem.moq;
+    if (isUnderMOQ) {
+      setShowMOQDialog(true);
+      return;
+    }
+
+    proceedAddQuote(false);
+  };
+
+  const proceedAddQuote = (clientPaysShipping: boolean) => {
+    if (!selectedItem || selectedItem.sell_min === null || selectedItem.sell_max === null) return;
+
     let status: "approved" | "low" | "high" = "approved";
     if (targetPrice < selectedItem.sell_min) {
       status = "low";
     } else if (targetPrice > selectedItem.sell_max) {
       status = "high";
     }
+
+    const isUnderMOQ = selectedItem.moq > 0 && qty < selectedItem.moq;
+    const transportationCost = (isUnderMOQ && clientPaysShipping)
+      ? qty * (selectedItem.transportation_per_unit ?? 0)
+      : 0;
 
     const newQuote = {
       id: Date.now(),
@@ -85,21 +110,36 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
       qty,
       price: targetPrice,
       total: qty * targetPrice,
+      transportationCost,
+      grandTotal: qty * targetPrice + transportationCost,
+      clientPaysTrans: isUnderMOQ ? clientPaysShipping : false,
+      moq: selectedItem.moq,
       minAllowed: selectedItem.sell_min,
       maxAllowed: selectedItem.sell_max,
       status
     };
 
     setSessionQuotes([newQuote, ...sessionQuotes]);
+    setShowMOQDialog(false);
   };
 
   const copyQuote = (quote: typeof sessionQuotes[0]) => {
     const statusText = quote.status === "approved" ? "APPROVED" : quote.status === "low" ? "WARN: BELOW MIN" : "WARN: ABOVE MAX";
+    
+    let transLine = "";
+    if (quote.transportationCost > 0) {
+      transLine = `Transportation Cost: EGP ${quote.transportationCost.toLocaleString("en-US", { minimumFractionDigits: 2 })} (Paid by Client due to under-MOQ)\n` +
+                  `Total Value (inc. Trans.): EGP ${quote.grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n`;
+    } else {
+      transLine = `Total Quote Value: EGP ${quote.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n`;
+    }
+
     const text = `--- FAERP Client Quote Summary ---\n` +
       `Product: ${quote.itemName} (${quote.unit})\n` +
       `Quantity: ${quote.qty}\n` +
       `Target Resell Price: EGP ${quote.price.toFixed(2)} / unit\n` +
-      `Total Quote Value: EGP ${quote.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n` +
+      `MOQ: ${quote.moq}\n` +
+      transLine +
       `Approved Min/Max limits: EGP ${quote.minAllowed.toFixed(2)} - EGP ${quote.maxAllowed.toFixed(2)}\n` +
       `Compliance Status: ${statusText}\n` +
       `Generated: ${new Date().toLocaleDateString()}\n` +
@@ -141,7 +181,63 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                 </select>
               </label>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {selectedItem && (
+                <div className="animate-fade-in" style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "1fr 1fr", 
+                  gap: "16px", 
+                  padding: "12px 16px", 
+                  backgroundColor: "var(--bg-elevated)", 
+                  border: "1px solid var(--border-medium)", 
+                  borderRadius: "8px",
+                  marginTop: "-4px" 
+                }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                      Min Order Qty (MOQ)
+                    </span>
+                    <strong style={{ fontSize: "15px", color: "var(--warning)" }}>
+                      {selectedItem.moq} {selectedItem.unit}
+                    </strong>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                      Standard Shipping Rate
+                    </span>
+                    <strong style={{ fontSize: "15px", color: "var(--text-primary)" }}>
+                      {formatCurrency(selectedItem.transportation_per_unit)} / unit
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {selectedItem && selectedItem.moq > 0 && qty < selectedItem.moq && (
+                <div className="animate-fade-in" style={{ 
+                  padding: "12px 16px", 
+                  backgroundColor: "rgba(245, 158, 11, 0.12)", 
+                  border: "1px solid var(--warning)", 
+                  borderRadius: "8px",
+                  color: "var(--warning)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  boxShadow: "0 0 10px rgba(245, 158, 11, 0.1)",
+                  marginTop: "4px"
+                }}>
+                  <span style={{ fontSize: "16px" }}>⚠️</span>
+                  <div style={{ textAlign: "left" }}>
+                    <strong>Notice:</strong> Quantity is below the Minimum Order Quantity ({selectedItem.moq} {selectedItem.unit}). A shipping cost of <strong>{formatCurrency(qty * (selectedItem.transportation_per_unit ?? 0))}</strong> will apply.
+                  </div>
+                </div>
+              )}
+
+              <div style={{ 
+                display: "grid", 
+                gridTemplateColumns: selectedItem && selectedItem.moq > 0 && qty < selectedItem.moq ? "1fr 1fr 1.2fr" : "1fr 1fr", 
+                gap: "16px" 
+              }}>
                 <label className="field">
                   <span>2. Deal Quantity</span>
                   <input 
@@ -157,20 +253,38 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                   <span>3. Target Unit Price (EGP)</span>
                   <input 
                     type="number" 
-                    step="0.01"
+                    step="any"
                     min="0"
                     value={targetPrice}
                     onChange={(e) => setTargetPrice(Math.max(0, parseFloat(e.target.value) || 0))}
                     disabled={!selectedItemId}
                   />
                 </label>
+
+                {selectedItem && selectedItem.moq > 0 && qty < selectedItem.moq && (
+                  <label className="field animate-fade-in">
+                    <span style={{ color: "var(--warning)" }}>Shipping Cost (Client-Paid)</span>
+                    <input 
+                      type="text" 
+                      readOnly
+                      value={`${formatCurrency(qty * (selectedItem.transportation_per_unit ?? 0))}`}
+                      style={{ 
+                        borderColor: "var(--warning)", 
+                        color: "var(--warning)", 
+                        backgroundColor: "rgba(245, 158, 11, 0.05)",
+                        fontWeight: "bold",
+                        cursor: "default"
+                      }}
+                    />
+                  </label>
+                )}
               </div>
 
               <button 
                 type="button" 
                 className="button button-primary button-block"
                 onClick={addQuote}
-                disabled={!selectedItemId}
+                disabled={!selectedItem}
                 style={{ marginTop: "8px" }}
               >
                 Add Quote to Session Deal Board
@@ -183,9 +297,28 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                 <>
                   <div style={{ textAlign: "center", borderBottom: "1px solid var(--border-light)", paddingBottom: "16px" }}>
                     <span className="eyebrow" style={{ fontSize: "11px" }}>Total deal value</span>
-                    <h1 style={{ fontSize: "32px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
-                      {formatCurrency(qty * targetPrice)}
-                    </h1>
+                    {selectedItem.moq > 0 && qty < selectedItem.moq ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "8px 0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
+                          <span>Goods Subtotal:</span>
+                          <span>{formatCurrency(qty * targetPrice)}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", color: "var(--warning)" }}>
+                          <span>Transportation (Client-Paid):</span>
+                          <span>{formatCurrency(qty * (selectedItem.transportation_per_unit ?? 0))}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "18px", fontWeight: "bold", borderTop: "1px dashed var(--border-light)", paddingTop: "4px", marginTop: "4px" }}>
+                          <span>Grand Total:</span>
+                          <span style={{ color: "var(--text-primary)" }}>
+                            {formatCurrency(qty * targetPrice + qty * (selectedItem.transportation_per_unit ?? 0))}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <h1 style={{ fontSize: "32px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
+                        {formatCurrency(qty * targetPrice)}
+                      </h1>
+                    )}
                     <div style={{ marginTop: "8px" }}>
                       {targetPrice >= (selectedItem.sell_min ?? 0) && targetPrice <= (selectedItem.sell_max ?? 0) ? (
                         <span className="badge badge-success">✓ Within Approved Pricing Limits</span>
@@ -253,7 +386,18 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                         <td><strong>{quote.itemName}</strong> <span className="muted">({quote.unit})</span></td>
                         <td>{quote.qty}</td>
                         <td>{formatCurrency(quote.price)}</td>
-                        <td><strong style={{ color: quote.status === "approved" ? "var(--success)" : quote.status === "low" ? "var(--danger)" : "var(--warning)" }}>{formatCurrency(quote.total)}</strong></td>
+                        <td>
+                          <div className="cell-stack">
+                            <strong style={{ color: quote.status === "approved" ? "var(--success)" : quote.status === "low" ? "var(--danger)" : "var(--warning)" }}>
+                              {formatCurrency(quote.grandTotal)}
+                            </strong>
+                            {quote.transportationCost > 0 && (
+                              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                                (inc. {formatCurrency(quote.transportationCost)} trans)
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td>{formatCurrency(quote.minAllowed)} - {formatCurrency(quote.maxAllowed)}</td>
                         <td>
                           {quote.status === "approved" ? (
@@ -339,6 +483,7 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                 <th>Category</th>
                 <th>Item</th>
                 <th>Unit</th>
+                <th>MOQ</th>
                 <th>Strategy</th>
                 <th>Approved Min Sell</th>
                 <th>Approved Max Sell</th>
@@ -348,7 +493,7 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
                     No approved selling prices match your search criteria.
                   </td>
                 </tr>
@@ -362,6 +507,20 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                       <strong>{row.item_name}</strong>
                     </td>
                     <td>{row.unit}</td>
+                    <td>
+                      <span style={{ 
+                        fontSize: "12px", 
+                        fontWeight: "bold", 
+                        color: "var(--warning)", 
+                        backgroundColor: "rgba(245, 158, 11, 0.15)", 
+                        border: "1px solid var(--warning)", 
+                        padding: "4px 8px", 
+                        borderRadius: "6px", 
+                        display: "inline-block" 
+                      }}>
+                        {row.moq}
+                      </span>
+                    </td>
                     <td>
                       <span className="badge badge-strong">{row.strategy ? row.strategy.toUpperCase() : "Pending"}</span>
                     </td>
@@ -388,6 +547,61 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
           </table>
         </div>
       </div>
+      
+      {showMOQDialog && selectedItem && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          backdropFilter: "blur(4px)"
+        }}>
+          <div className="quote-simulator-card animate-fade-in" style={{
+            width: "100%",
+            maxWidth: "480px",
+            padding: "24px",
+            borderRadius: "12px",
+            border: "1px solid var(--border-medium)",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+            backgroundColor: "var(--bg-elevated)",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "36px", marginBottom: "12px" }}>🚚</div>
+            <h3 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "8px", color: "var(--text-primary)" }}>
+              Shipping Cost Confirmation
+            </h3>
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: "20px" }}>
+              The requested quantity of <strong>{qty} {selectedItem.unit}</strong> is below the Minimum Order Quantity (MOQ) of <strong>{selectedItem.moq} {selectedItem.unit}</strong>.
+              <br /><br />
+              The client must pay for shipping/transportation, which totals <strong>{formatCurrency(qty * (selectedItem.transportation_per_unit ?? 0))}</strong> ({qty} × {formatCurrency(selectedItem.transportation_per_unit)}/unit).
+              <br /><br />
+              Does the client agree to pay this shipping cost?
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+              <button 
+                onClick={() => proceedAddQuote(true)}
+                className="button button-primary"
+                style={{ padding: "10px 18px", fontSize: "14px" }}
+              >
+                Yes, Client Pays Shipping
+              </button>
+              <button 
+                onClick={() => setShowMOQDialog(false)}
+                className="button button-secondary"
+                style={{ padding: "10px 18px", fontSize: "14px" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

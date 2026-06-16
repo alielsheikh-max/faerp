@@ -11,6 +11,18 @@ type CatalogItem = {
   category_name: string;
   sell_min: number | null;
   sell_max: number | null;
+  is_tiered?: number;
+  tier_pricing_enabled?: number;
+  tier1_max?: number;
+  tier1_discount?: number;
+  tier2_max?: number;
+  tier2_discount?: number;
+  tier3_max?: number;
+  tier3_discount?: number;
+  tier4_max?: number;
+  tier4_discount?: number;
+  moq: number;
+  transportation_per_unit: number;
 };
 
 type ClientQuotingSimulatorProps = {
@@ -26,6 +38,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
   const [qty, setQty] = useState<number>(100);
   const [targetPrice, setTargetPrice] = useState<number>(0);
   const [clientName, setClientName] = useState<string>("");
+  const [showMOQDialog, setShowMOQDialog] = useState<boolean>(false);
   const [sessionQuotes, setSessionQuotes] = useState<Array<{
     id: number;
     itemName: string;
@@ -33,6 +46,10 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
     qty: number;
     price: number;
     total: number;
+    transportationCost: number;
+    grandTotal: number;
+    clientPaysTrans: boolean;
+    moq: number;
     minAllowed: number;
     maxAllowed: number;
     status: "approved" | "low" | "high";
@@ -42,17 +59,45 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
 
   const selectedItem = initialRows.find((row) => String(row.item_id) === selectedItemId);
   const isPublished = selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null;
+  const isItemTiered = !!(selectedItem && selectedItem.is_tiered === 1 && selectedItem.tier_pricing_enabled === 1);
 
   // Sync target price on item selection change
   useEffect(() => {
     if (selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null) {
-      setTargetPrice(Number(((selectedItem.sell_min + selectedItem.sell_max) / 2).toFixed(2)));
+      if (isItemTiered) {
+        const base   = selectedItem.sell_min;
+        const t1Max  = selectedItem.tier1_max ?? 100;
+        const t1Disc = selectedItem.tier1_discount ?? 0;
+        const t2Max  = selectedItem.tier2_max ?? 200;
+        const t2Disc = selectedItem.tier2_discount ?? 5;
+        const t3Max  = selectedItem.tier3_max ?? 300;
+        const t3Disc = selectedItem.tier3_discount ?? 10;
+        const t4Max  = selectedItem.tier4_max ?? 0;
+        const t4Disc = selectedItem.tier4_discount ?? 0;
+        let discount = 0;
+        if (qty <= t1Max) {
+          discount = t1Disc;
+        } else if (qty <= t2Max) {
+          discount = t2Disc;
+        } else if (qty <= t3Max) {
+          discount = t3Disc;
+        } else if (t4Disc > 0) {
+          discount = t4Disc;
+        } else {
+          discount = t3Disc;
+        }
+        setTargetPrice(Number((base * (1 - discount / 100)).toFixed(2)));
+      } else {
+        setTargetPrice(Number(((selectedItem.sell_min + selectedItem.sell_max) / 2).toFixed(2)));
+      }
     } else {
       setTargetPrice(0);
     }
-  }, [selectedItemId, selectedItem]);
+    setShowMOQDialog(false);
+  }, [selectedItemId, selectedItem, qty, isItemTiered]);
 
   const handlePriceBlur = () => {
+    if (isItemTiered) return;
     if (selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null) {
       if (targetPrice < selectedItem.sell_min) {
         setTargetPrice(selectedItem.sell_min);
@@ -64,21 +109,64 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
 
   const addQuote = () => {
     if (!selectedItem || selectedItem.sell_min === null || selectedItem.sell_max === null) return;
+
+    const isUnderMOQ = selectedItem.moq > 0 && qty < selectedItem.moq;
+    if (isUnderMOQ) {
+      setShowMOQDialog(true);
+      return;
+    }
+
+    proceedAddQuote(false);
+  };
+
+  const proceedAddQuote = (clientPaysShipping: boolean) => {
+    if (!selectedItem || selectedItem.sell_min === null || selectedItem.sell_max === null) return;
     
     let finalPrice = targetPrice;
-    if (finalPrice < selectedItem.sell_min) {
-      finalPrice = selectedItem.sell_min;
-    } else if (finalPrice > selectedItem.sell_max) {
-      finalPrice = selectedItem.sell_max;
-    }
-    setTargetPrice(finalPrice);
-    
     let status: "approved" | "low" | "high" = "approved";
-    if (finalPrice < selectedItem.sell_min) {
-      status = "low";
-    } else if (finalPrice > selectedItem.sell_max) {
-      status = "high";
+
+    if (isItemTiered) {
+      const base   = selectedItem.sell_min;
+      const t1Max  = selectedItem.tier1_max ?? 100;
+      const t1Disc = selectedItem.tier1_discount ?? 0;
+      const t2Max  = selectedItem.tier2_max ?? 200;
+      const t2Disc = selectedItem.tier2_discount ?? 5;
+      const t3Max  = selectedItem.tier3_max ?? 300;
+      const t3Disc = selectedItem.tier3_discount ?? 10;
+      const t4Max  = selectedItem.tier4_max ?? 0;
+      const t4Disc = selectedItem.tier4_discount ?? 0;
+      let discount = 0;
+      if (qty <= t1Max) {
+        discount = t1Disc;
+      } else if (qty <= t2Max) {
+        discount = t2Disc;
+      } else if (qty <= t3Max) {
+        discount = t3Disc;
+      } else if (t4Disc > 0) {
+        discount = t4Disc;
+      } else {
+        discount = t3Disc;
+      }
+      finalPrice = Number((base * (1 - discount / 100)).toFixed(2));
+      status = "approved";
+    } else {
+      if (finalPrice < selectedItem.sell_min) {
+        finalPrice = selectedItem.sell_min;
+      } else if (finalPrice > selectedItem.sell_max) {
+        finalPrice = selectedItem.sell_max;
+      }
+      setTargetPrice(finalPrice);
+      
+      if (finalPrice < selectedItem.sell_min) {
+        status = "low";
+      } else if (finalPrice > selectedItem.sell_max) {
+        status = "high";
+      }
     }
+
+    const isUnderMOQ = selectedItem.moq > 0 && qty < selectedItem.moq;
+    // Transportation is always client-paid when under MOQ — not tracked in simulator UI
+    const transportationCost = 0;
 
     const newQuote = {
       id: Date.now(),
@@ -87,24 +175,39 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
       qty,
       price: finalPrice,
       total: qty * finalPrice,
+      transportationCost,
+      grandTotal: qty * finalPrice,
+      clientPaysTrans: isUnderMOQ,
+      moq: selectedItem.moq,
       minAllowed: selectedItem.sell_min,
-      maxAllowed: selectedItem.sell_max,
+      maxAllowed: isItemTiered ? finalPrice : selectedItem.sell_max,
       status,
       clientName: clientName.trim()
     };
 
     setSessionQuotes([newQuote, ...sessionQuotes]);
+    setShowMOQDialog(false);
   };
 
   const copyQuote = (quote: typeof sessionQuotes[0]) => {
     const statusText = quote.status === "approved" ? "APPROVED" : quote.status === "low" ? "WARN: BELOW MIN" : "WARN: ABOVE MAX";
     const clientLine = quote.clientName ? `Client Name: ${quote.clientName}\n` : "";
+    
+    let transLine = "";
+    if (quote.transportationCost > 0) {
+      transLine = `Transportation Cost: EGP ${quote.transportationCost.toLocaleString("en-US", { minimumFractionDigits: 2 })} (Paid by Client due to under-MOQ)\n` +
+                  `Total Value (inc. Trans.): EGP ${quote.grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n`;
+    } else {
+      transLine = `Total Quote Value: EGP ${quote.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n`;
+    }
+
     const text = `--- FAERP Client Quote Summary ---\n` +
       clientLine +
       `Product: ${quote.itemName} (${quote.unit})\n` +
       `Quantity: ${quote.qty}\n` +
       `Target Resell Price: EGP ${quote.price.toFixed(2)} / unit\n` +
-      `Total Quote Value: EGP ${quote.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}\n` +
+      `MOQ: ${quote.moq}\n` +
+      transLine +
       `Approved Min/Max limits: EGP ${quote.minAllowed.toFixed(2)} - EGP ${quote.maxAllowed.toFixed(2)}\n` +
       `Compliance Status: ${statusText}\n` +
       `Generated: ${new Date().toLocaleDateString()}\n` +
@@ -234,7 +337,73 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            {selectedItem && (
+              <div className="animate-fade-in" style={{ 
+                display: "grid", 
+                gridTemplateColumns: "1fr 1fr", 
+                gap: "16px", 
+                padding: "12px 16px", 
+                backgroundColor: "var(--bg-elevated)", 
+                border: "1px solid var(--border-medium)", 
+                borderRadius: "8px",
+                marginTop: "-4px" 
+              }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                    {locale === "ar" ? "الحد الأدنى للطلب (MOQ)" : "Min Order Qty (MOQ)"}
+                  </span>
+                  <strong style={{ fontSize: "15px", color: "var(--warning)" }}>
+                    {selectedItem.moq} {selectedItem.unit}
+                  </strong>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                    {locale === "ar" ? "تكلفة الشحن" : "Shipping"}
+                  </span>
+                  <strong style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                    {locale === "ar" ? "يتحملها العميل إن قل عن MOQ" : "Client-paid if below MOQ"}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {selectedItem && selectedItem.moq > 0 && qty < selectedItem.moq && (
+              <div className="animate-fade-in" style={{ 
+                padding: "12px 16px", 
+                backgroundColor: "rgba(245, 158, 11, 0.12)", 
+                border: "1px solid var(--warning)", 
+                borderRadius: "8px",
+                color: "var(--warning)",
+                fontSize: "13px",
+                fontWeight: 500,
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                boxShadow: "0 0 10px rgba(245, 158, 11, 0.1)",
+                marginTop: "4px"
+              }}>
+                <span style={{ fontSize: "16px" }}>🚚</span>
+                <div style={{ textAlign: "left" }}>
+                  {locale === "ar" ? (
+                    <>
+                      <strong>تنبيه:</strong> الكمية ({qty} {selectedItem.unit}) أقل من الحد الأدنى للطلب (<strong>{selectedItem.moq} {selectedItem.unit}</strong>).<br />
+                      سيتحمل العميل تكلفة النقل والشحن بالكامل.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Notice:</strong> Quantity ({qty} {selectedItem.unit}) is below the Minimum Order Quantity (<strong>{selectedItem.moq} {selectedItem.unit}</strong>).<br />
+                      <span style={{ fontSize: "12px", opacity: 0.85 }}>The client will be responsible for transportation costs.</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "1fr 1fr", 
+              gap: "16px" 
+            }}>
               <label className="field">
                 <span>{t.qtyLabel}</span>
                 <input 
@@ -251,23 +420,32 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                   <span>{t.priceLabel}</span>
                   <input 
                     type="number" 
-                    step="0.01"
+                    step="any"
                     min={selectedItem?.sell_min ?? 0}
                     max={selectedItem?.sell_max ?? 0}
                     value={targetPrice}
                     onChange={(e) => setTargetPrice(parseFloat(e.target.value) || 0)}
                     onBlur={handlePriceBlur}
-                    disabled={!isPublished}
+                    disabled={!isPublished || isItemTiered}
                   />
                 </label>
                 {isPublished && (
                   <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                    {locale === "ar" 
-                      ? `النطاق المعتمد: ${formatCurrency(selectedItem.sell_min)} - ${formatCurrency(selectedItem.sell_max)}` 
-                      : `Approved Range: ${formatCurrency(selectedItem.sell_min)} - ${formatCurrency(selectedItem.sell_max)}`}
+                    {isItemTiered ? (
+                      <span style={{ color: "var(--success)", fontWeight: 600 }}>
+                        {locale === "ar"
+                          ? `✓ تطبيق تسعير الحجم (خصم ${qty <= (selectedItem.tier1_max ?? 100) ? (selectedItem.tier1_discount ?? 0) : qty <= (selectedItem.tier2_max ?? 200) ? (selectedItem.tier2_discount ?? 5) : (selectedItem.tier3_discount ?? 10)}%)`
+                          : `✓ Volume pricing applied (${qty <= (selectedItem.tier1_max ?? 100) ? (selectedItem.tier1_discount ?? 0) : qty <= (selectedItem.tier2_max ?? 200) ? (selectedItem.tier2_discount ?? 5) : (selectedItem.tier3_discount ?? 10)}% discount)`}
+                      </span>
+                    ) : (
+                      locale === "ar" 
+                        ? `النطاق المعتمد: ${formatCurrency(selectedItem.sell_min)} - ${formatCurrency(selectedItem.sell_max)}` 
+                        : `Approved Range: ${formatCurrency(selectedItem.sell_min)} - ${formatCurrency(selectedItem.sell_max)}`
+                    )}
                   </span>
                 )}
               </div>
+
             </div>
 
             <button 
@@ -288,11 +466,23 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                 <>
                   <div style={{ textAlign: "center", borderBottom: "1px solid var(--border-light)", paddingBottom: "16px" }}>
                     <span className="eyebrow" style={{ fontSize: "11px" }}>{t.totalVal}</span>
-                    <h1 style={{ fontSize: "32px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
-                      {formatCurrency(qty * targetPrice)}
-                    </h1>
+                    <h1 style={{ fontSize: "32px", fontWeight: "800", color: "var(--text-primary)", margin: "8px 0" }}>
+                        {formatCurrency(qty * targetPrice)}
+                      </h1>
+                      {selectedItem.moq > 0 && qty < selectedItem.moq && (
+                        <div style={{ 
+                          fontSize: "11px", fontWeight: "600", color: "var(--warning)",
+                          backgroundColor: "rgba(245,158,11,0.1)",
+                          border: "1px solid rgba(245,158,11,0.3)",
+                          borderRadius: "6px", padding: "5px 10px", marginTop: "6px"
+                        }}>
+                          🚚 {locale === "ar" ? "ملاحظة: تكلفة النقل على العميل" : "Note: Client pays transportation"}
+                        </div>
+                      )}
                     <div style={{ marginTop: "8px" }}>
-                      {targetPrice >= (selectedItem.sell_min ?? 0) && targetPrice <= (selectedItem.sell_max ?? 0) ? (
+                      {isItemTiered ? (
+                        <span className="badge badge-success">{locale === "ar" ? "✓ تسعير الحجم النشط" : "✓ Active Volume Tier"}</span>
+                      ) : targetPrice >= (selectedItem.sell_min ?? 0) && targetPrice <= (selectedItem.sell_max ?? 0) ? (
                         <span className="badge badge-success">{t.withinLimits}</span>
                       ) : targetPrice < (selectedItem.sell_min ?? 0) ? (
                         <span className="badge badge-danger">{t.underPricing} (Approved Min: {formatCurrency(selectedItem.sell_min)})</span>
@@ -302,20 +492,42 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", paddingTop: "8px" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>{t.minLabel}</span>
-                      <strong style={{ fontSize: "15px", color: "var(--text-secondary)" }}>
-                        {formatCurrency(qty * (selectedItem.sell_min ?? 0))}
+                  {isItemTiered ? (
+                    <div style={{ 
+                      padding: "12px", 
+                      background: "linear-gradient(135deg, var(--primary-light), transparent)", 
+                      border: "1px solid var(--border-accent)",
+                      borderRadius: "8px", 
+                      fontSize: "11.5px", 
+                      marginTop: "12px", 
+                      lineHeight: 1.5,
+                      textAlign: "left"
+                    }}>
+                      <strong style={{ display: "block", marginBottom: "4px", color: "var(--primary)" }}>
+                        {locale === "ar" ? "قواعد خصم الحجم النشطة:" : "Active Volume Discount Tiers:"}
                       </strong>
+                      • {locale === "ar" ? `من 0 إلى ${selectedItem.tier1_max ?? 100}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier1_discount ?? 0}%)` : `0 - ${selectedItem.tier1_max ?? 100}: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier1_discount ?? 0}% discount)`}
+                      <br />
+                      • {locale === "ar" ? `من ${(selectedItem.tier1_max ?? 100) + 1} إلى ${selectedItem.tier2_max ?? 200}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier2_discount ?? 5}%)` : `${(selectedItem.tier1_max ?? 100) + 1} - ${selectedItem.tier2_max ?? 200}: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier2_discount ?? 5}% discount)`}
+                      <br />
+                      • {locale === "ar" ? `أكثر من ${selectedItem.tier2_max ?? 200}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier3_discount ?? 10}%)` : `${(selectedItem.tier2_max ?? 200) + 1}+: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier3_discount ?? 10}% discount)`}
                     </div>
-                    <div style={{ textAlign: "center" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>{t.maxLabel}</span>
-                      <strong style={{ fontSize: "15px", color: "var(--text-secondary)" }}>
-                        {formatCurrency(qty * (selectedItem.sell_max ?? 0))}
-                      </strong>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", paddingTop: "8px" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>{t.minLabel}</span>
+                        <strong style={{ fontSize: "15px", color: "var(--text-secondary)" }}>
+                          {formatCurrency(qty * (selectedItem.sell_min ?? 0))}
+                        </strong>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>{t.maxLabel}</span>
+                        <strong style={{ fontSize: "15px", color: "var(--text-secondary)" }}>
+                          {formatCurrency(qty * (selectedItem.sell_max ?? 0))}
+                        </strong>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "20px" }}>
@@ -371,7 +583,18 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                       <td><strong>{quote.itemName}</strong> <span className="muted">({quote.unit})</span></td>
                       <td>{quote.qty}</td>
                       <td>{formatCurrency(quote.price)}</td>
-                      <td><strong style={{ color: quote.status === "approved" ? "var(--success)" : quote.status === "low" ? "var(--danger)" : "var(--warning)" }}>{formatCurrency(quote.total)}</strong></td>
+                      <td>
+                        <div className="cell-stack">
+                          <strong style={{ color: quote.status === "approved" ? "var(--success)" : quote.status === "low" ? "var(--danger)" : "var(--warning)" }}>
+                            {formatCurrency(quote.grandTotal)}
+                          </strong>
+                          {quote.clientPaysTrans && (
+                              <div style={{ fontSize: "11px", color: "var(--warning)", marginTop: "2px" }}>
+                                🚚 {locale === "ar" ? "النقل على العميل" : "Client pays transport"}
+                              </div>
+                            )}
+                        </div>
+                      </td>
                       <td>{formatCurrency(quote.minAllowed)} - {formatCurrency(quote.maxAllowed)}</td>
                       <td>
                         {quote.status === "approved" ? (
@@ -400,6 +623,73 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
         )}
       </div>
     )}
+
+      {showMOQDialog && selectedItem && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          backdropFilter: "blur(4px)"
+        }}>
+          <div className="quote-simulator-card animate-fade-in" style={{
+            width: "100%",
+            maxWidth: "480px",
+            padding: "24px",
+            borderRadius: "12px",
+            border: "1px solid var(--border-medium)",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+            backgroundColor: "var(--bg-elevated)",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "36px", marginBottom: "12px" }}>🚚</div>
+            <h3 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "8px", color: "var(--text-primary)" }}>
+              {locale === "ar" ? "تأكيد تكلفة الشحن" : "Shipping Cost Confirmation"}
+            </h3>
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: "20px" }}>
+              {locale === "ar" ? (
+                <>
+                  الكمية المطلوبة (<strong>{qty} {selectedItem.unit}</strong>) أقل من الحد الأدنى للطلب (<strong>{selectedItem.moq} {selectedItem.unit}</strong>).
+                  <br /><br />
+                  سيتحمل العميل تكلفة النقل والشحن الإضافية بالكامل.
+                  <br /><br />
+                  هل تريد المتابعة وإضافة العرض؟
+                </>
+              ) : (
+                <>
+                  The requested quantity of <strong>{qty} {selectedItem.unit}</strong> is below the Minimum Order Quantity (MOQ) of <strong>{selectedItem.moq} {selectedItem.unit}</strong>.
+                  <br /><br />
+                  The client will be responsible for all transportation costs on this order.
+                  <br /><br />
+                  Do you want to proceed and add this quote?
+                </>
+              )}
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+              <button 
+                onClick={() => proceedAddQuote(true)}
+                className="button button-primary"
+                style={{ padding: "10px 18px", fontSize: "14px" }}
+              >
+                {locale === "ar" ? "نعم، متابعة" : "Yes, Add Quote"}
+              </button>
+              <button 
+                onClick={() => setShowMOQDialog(false)}
+                className="button button-secondary"
+                style={{ padding: "10px 18px", fontSize: "14px" }}
+              >
+                {locale === "ar" ? "إلغاء" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   </section>
   );
 }

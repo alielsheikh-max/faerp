@@ -1,19 +1,41 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { applyCategoryMarkupAction } from "@/app/actions/pricing";
 import { formatMonthLabel } from "@/lib/format";
+import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n-context";
 
 type Category = { id: number; name: string };
+type Item = {
+  id: number;
+  category_id: number;
+  name: string;
+  unit: string;
+  is_tiered?: number;
+  tier1_max?: number;
+  tier1_discount?: number;
+  tier2_max?: number;
+  tier2_discount?: number;
+  tier3_max?: number;
+  tier3_discount?: number;
+  tier4_max?: number;
+  tier4_discount?: number;
+};
 
 type Props = {
   categories: Category[];
+  items: Item[];
   month: string;
   username: string;
+  defaultCategoryId?: string;
+  onSuccess?: () => void;
 };
 
-export default function CategoryMarkupPanel({ categories, month, username }: Props) {
-  const [categoryId, setCategoryId]   = useState<string>(categories[0] ? String(categories[0].id) : "");
+export default function CategoryMarkupPanel({ categories, items, month, username, defaultCategoryId, onSuccess }: Props) {
+  const [categoryId, setCategoryId]   = useState<string>(
+    defaultCategoryId || (categories[0] ? String(categories[0].id) : "")
+  );
   const [strategy, setStrategy]       = useState<"min" | "avg" | "max">("avg");
   const [markupType, setMarkupType]   = useState<"percent" | "amount">("percent");
   const [markupMin, setMarkupMin]     = useState<string>("8");
@@ -21,6 +43,15 @@ export default function CategoryMarkupPanel({ categories, month, username }: Pro
   const [result, setResult]           = useState<{ applied: number; skipped: number; errors: string[] } | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [pending, startTransition]    = useTransition();
+
+  const router = useRouter();
+  const { locale } = useI18n();
+
+  useEffect(() => {
+    if (defaultCategoryId) {
+      setCategoryId(defaultCategoryId);
+    }
+  }, [defaultCategoryId]);
 
   const handleApply = () => {
     setResult(null);
@@ -42,12 +73,14 @@ export default function CategoryMarkupPanel({ categories, month, username }: Pro
     fd.set("markupMax",   String(max));
     fd.set("createdBy",   username);
 
+
     startTransition(async () => {
       const res = await applyCategoryMarkupAction(fd);
-      if (res.ok) {
+      if (res?.ok) {
         setResult({ applied: res.applied ?? 0, skipped: res.skipped ?? 0, errors: res.errors ?? [] });
+        router.refresh();
       } else {
-        setError(res.error ?? "Unknown error");
+        setError(res?.error ?? "Unknown error");
       }
     });
   };
@@ -131,7 +164,7 @@ export default function CategoryMarkupPanel({ categories, month, username }: Pro
           <input
             type="number"
             min="0"
-            step={markupType === "percent" ? "0.5" : "1"}
+            step="any"
             value={markupMin}
             onChange={e => setMarkupMin(e.target.value)}
             style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--success)", fontWeight: 700, fontSize: "14px" }}
@@ -144,13 +177,106 @@ export default function CategoryMarkupPanel({ categories, month, username }: Pro
           <input
             type="number"
             min="0"
-            step={markupType === "percent" ? "0.5" : "1"}
+            step="any"
             value={markupMax}
             onChange={e => setMarkupMax(e.target.value)}
             style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "14px" }}
           />
         </label>
       </div>
+
+      {/* Volume Tier Preview (Permanently visible for info) */}
+      {true && (
+        <div style={{
+          padding: "12px 14px",
+          border: "1.5px dashed var(--border-accent)",
+          borderRadius: "8px",
+          background: "var(--bg-subtle)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          marginTop: "-6px"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "16px" }}>⚡</span>
+            <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {locale === "ar" ? "خصومات الحجم النشطة للعناصر" : "Active Item Volume Tiers"}
+            </span>
+          </div>
+
+          {(() => {
+            const selectedCategoryIdNum = categoryId ? parseInt(categoryId, 10) : null;
+            const tieredItemsOfCategory = (items || []).filter(
+              (item) => item.category_id === selectedCategoryIdNum && item.is_tiered === 1
+            );
+
+            if (tieredItemsOfCategory.length === 0) {
+              return (
+                <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                  {locale === "ar" 
+                    ? "لا توجد عناصر ذات تسعير حجمي مكوّنة في هذه الفئة." 
+                    : "No volume tiered items configured in this category."}
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ 
+                display: "flex", 
+                flexDirection: "column", 
+                gap: "8px", 
+                maxHeight: "180px", 
+                overflowY: "auto", 
+                paddingRight: "4px" 
+              }}>
+                {tieredItemsOfCategory.map((item) => {
+                  const t1Max  = item.tier1_max ?? 100;
+                  const t1Disc = item.tier1_discount ?? 0;
+                  const t2Max  = item.tier2_max ?? 200;
+                  const t2Disc = item.tier2_discount ?? 5;
+                  const t3Max  = item.tier3_max ?? 300;
+                  const t3Disc = item.tier3_discount ?? 10;
+                  const t4Max  = item.tier4_max ?? 0;
+                  const t4Disc = item.tier4_discount ?? 0;
+                  const has4   = t4Disc > 0;
+
+                  const tierCells = [
+                    { label: locale === "ar" ? `فئة ١ (٠-${t1Max})` : `Tier 1 (0-${t1Max})`, disc: t1Disc, color: "var(--success)" },
+                    { label: locale === "ar" ? `فئة ٢ (${t1Max+1}-${t2Max})` : `Tier 2 (${t1Max+1}-${t2Max})`, disc: t2Disc, color: "var(--primary)" },
+                    { label: locale === "ar" ? `فئة ٣ (${t2Max+1}-${t3Max})` : `Tier 3 (${t2Max+1}-${t3Max})`, disc: t3Disc, color: "var(--warning)" },
+                    ...(has4 ? [{ label: locale === "ar" ? `فئة ٤ (${t3Max+1}${t4Max ? `-${t4Max}` : "+"})` : `Tier 4 (${t3Max+1}${t4Max ? `-${t4Max}` : "+"})`, disc: t4Disc, color: "var(--danger)" }] : []),
+                  ];
+
+                  return (
+                    <div key={item.id} style={{
+                      padding: "8px 10px",
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-light)",
+                      borderRadius: "6px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>{item.name}</span>
+                        <span className="badge badge-strong" style={{ fontSize: "9px" }}>{item.unit}</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${has4 ? 4 : 3}, 1fr)`, gap: "6px", fontSize: "10px", color: "var(--text-secondary)" }}>
+                        {tierCells.map((tc, idx) => (
+                          <div key={idx} style={{ background: "var(--bg-subtle)", padding: "4px 6px", borderRadius: "4px", border: "1px solid var(--border-light)", textAlign: "center" }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "8.5px" }}>{tc.label}</div>
+                            <div style={{ fontWeight: 700, color: tc.color }}>{tc.disc}% {locale === "ar" ? "خصم" : "discount"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Preview strip */}
       {selectedCat && (

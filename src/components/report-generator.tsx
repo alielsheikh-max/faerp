@@ -125,6 +125,7 @@ function printWindow(html: string, title: string) {
       .report-meta .subtitle{font-size:11px;color:#6b7280}
       .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
       .badge-success{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+      .badge-info{background:#f0f9ff;color:#0369a1;border-color:#bae6fd}
       .badge-warning{background:#fffbeb;color:#92400e;border-color:#fcd34d}
       .badge-danger{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
       .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#6366f1;margin:20px 0 10px}
@@ -132,7 +133,7 @@ function printWindow(html: string, title: string) {
       th{background:#f9fafb;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;padding:8px 10px;border-bottom:2px solid #e5e7eb;text-align:left}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
-      .best{color:#059669;font-weight:800}
+      .best{color:#0284c7;font-weight:800}
       .danger{color:#dc2626;font-weight:700}
       .muted{color:#9ca3af}
       .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -142,7 +143,7 @@ function printWindow(html: string, title: string) {
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
       .cat-header{background:#f5f3ff;padding:8px 12px;font-weight:800;font-size:12px;color:#4338ca;border-left:3px solid #6366f1;margin:12px 0 6px}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-      .highlight-row td{background:#f0fdf4}
+      .highlight-row td{background:#f0f9ff}
       .pending-row td{background:#fffbeb}
       @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4}}
     </style>
@@ -291,7 +292,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         const cells = suppliers.map((s: any, i: number) => {
           const p = prices[i];
           const isBest = p !== null && p === minP;
-          return `<td class="num ${isBest ? "best" : ""}">${p !== null ? formatCurrency(p) : '<span class="muted">—</span>'}${isBest ? ' <span class="badge badge-success" style="font-size:8px">★</span>' : ""}</td>`;
+          return `<td class="num ${isBest ? "best" : ""}">${p !== null ? formatCurrency(p) : '<span class="muted">—</span>'}${isBest ? ' <span class="badge badge-info" style="font-size:8px">★</span>' : ""}</td>`;
         }).join("");
         const spread = validPrices.length >= 2 ? (((Math.max(...validPrices) - Math.min(...validPrices)) / Math.min(...validPrices)) * 100).toFixed(1) + "%" : "—";
         return `<tr><td>${row.categoryName}</td><td style="max-width:200px">${row.itemName}</td>${cells}<td class="num muted">${spread}</td></tr>`;
@@ -786,43 +787,43 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           gap: "16px",
           padding: "16px 20px",
           borderRadius: "14px",
-          border: "1.5px solid rgba(16,185,129,0.4)",
-          background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+          border: "1.5px solid rgba(30,58,138,0.25)",
+          background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)",
           cursor: "pointer",
           transition: "all 220ms ease",
           textAlign: "left",
-          boxShadow: "0 2px 8px rgba(16,185,129,0.12)",
+          boxShadow: "0 2px 8px rgba(30,58,138,0.08)",
           position: "relative",
           overflow: "hidden",
         }}
         onMouseEnter={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(16,185,129,0.7)";
-          b.style.boxShadow = "0 6px 20px rgba(16,185,129,0.22)";
+          b.style.borderColor = "rgba(59,130,246,0.6)";
+          b.style.boxShadow = "0 6px 20px rgba(30,58,138,0.18)";
           b.style.transform = "translateY(-2px)";
-          b.style.background = "linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)";
+          b.style.background = "linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)";
         }}
         onMouseLeave={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(16,185,129,0.4)";
-          b.style.boxShadow = "0 2px 8px rgba(16,185,129,0.12)";
+          b.style.borderColor = "rgba(30,58,138,0.25)";
+          b.style.boxShadow = "0 2px 8px rgba(30,58,138,0.08)";
           b.style.transform = "translateY(0)";
-          b.style.background = "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)";
+          b.style.background = "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)";
         }}
       >
         {/* Icon block */}
         <div style={{
           width: "46px", height: "46px", borderRadius: "12px", flexShrink: 0,
-          background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+          background: "linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(16,185,129,0.4)",
+          boxShadow: "0 4px 12px rgba(30,58,138,0.25)",
           fontSize: "20px",
         }}>
           📄
         </div>
         {/* Text */}
         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-          <div style={{ fontSize: "15px", fontWeight: 800, color: "#065f46", letterSpacing: "-0.01em" }}>
+          <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a8a", letterSpacing: "-0.01em" }}>
             {locale === "ar" ? "تقارير PDF" : "PDF Reports"}
           </div>
           <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px", fontWeight: 500 }}>
@@ -832,9 +833,9 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
         {/* Arrow */}
         <div style={{
           width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-          background: "rgba(16,185,129,0.15)",
+          background: "rgba(30,58,138,0.10)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "14px", color: "#059669", fontWeight: 800,
+          fontSize: "14px", color: "#1e3a8a", fontWeight: 800,
           transition: "transform 220ms ease",
         }}>
           →

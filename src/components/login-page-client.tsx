@@ -145,10 +145,10 @@ export default function LoginPageClient({ error }: { error?: string }) {
                   <input type="hidden" name="password" value={QUICK_LOGIN_CREDENTIALS[profile.code].password} />
                   <button type="submit" className="quick-role-btn" disabled={signingIn}>
                     <div className="role-icon">
-                      {profile.code === "SC" ? "📊" : profile.code === "WH" ? "📦" : "💰"}
+                      {profile.code === "SC" ? "📊" : profile.code === "WH" ? "📦" : profile.code === "SA" ? "💰" : "⚙️"}
                     </div>
                     <div className="role-details">
-                      <strong>{profile.code === "SC" ? t("role.SC.title") : profile.code === "WH" ? t("role.WH.title") : t("role.SA.title")} ({profile.code})</strong>
+                      <strong>{t(`role.${profile.code}.title` as any) || profile.title} ({profile.code})</strong>
                       <span>{profile.shortTitle} · {QUICK_LOGIN_CREDENTIALS[profile.code].username}</span>
                     </div>
                   </button>
