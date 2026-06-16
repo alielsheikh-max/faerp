@@ -1057,7 +1057,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
                 return (
                   <div key={supplier.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr 180px 120px 160px auto",
+                    display: "grid", gridTemplateColumns: "1fr 270px 120px 160px auto",
                     gap: "12px", alignItems: "center", padding: "14px 16px",
                     borderRadius: "var(--radius)",
                     border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color + "55" : "var(--border)"}`,
