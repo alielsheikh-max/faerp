@@ -208,17 +208,18 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
               </span>
               <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                 {minP === maxP ? (
-                  <strong style={{ color: "var(--success)", fontSize: "13px" }}>{formatCurrency(minP)}</strong>
+                  <span style={{ fontSize: "12.5px" }}>
+                    <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
+                    <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· avg {formatCurrency(avgP)}</span>
+                  </span>
                 ) : (
                   <span style={{ fontSize: "11.5px" }}>
                     <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
                     <span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span>
                     <strong style={{ color: "var(--danger)" }}>{formatCurrency(maxP)}</strong>
+                    <span style={{ color: "var(--text-muted)", marginLeft: "6px", fontSize: "10px" }}>avg {formatCurrency(avgP)}</span>
                   </span>
                 )}
-                <div style={{ fontSize: "9.5px", color: "var(--text-muted)" }}>
-                  {isAr ? "متوسط" : "avg"} {formatCurrency(avgP)}
-                </div>
               </div>
               {count > 1 && (
                 <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>

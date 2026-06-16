@@ -132,12 +132,25 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
 
   return (
     <>
-      {/* Print CSS */}
+      {/* Print CSS — uses visibility (not display:none) so it works regardless of Next.js DOM nesting */}
       <style>{`
         @media print {
-          .usd-no-print { display: none !important; }
-          .usd-print-modal { display: block !important; }
-          body > *:not(.usd-print-root) { display: none !important; }
+          /* Hide everything */
+          body * { visibility: hidden !important; }
+          /* Show only the USD print root and all its children */
+          .usd-print-root, .usd-print-root * { visibility: visible !important; }
+          /* Position the print root at the top of the page */
+          .usd-print-root {
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: auto !important;
+            background: #fff !important;
+            z-index: 9999 !important;
+            overflow: visible !important;
+          }
+          /* Remove modal chrome for print */
+          .usd-no-print { display: none !important; visibility: hidden !important; }
+          .usd-print-modal { display: block !important; visibility: visible !important; }
           .modal-overlay { background: none !important; position: static !important; display: block !important; padding: 0 !important; }
           .modal-container { max-height: none !important; box-shadow: none !important; overflow: visible !important; max-width: 100% !important; }
           .modal-body { overflow: visible !important; }
