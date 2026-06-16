@@ -327,7 +327,7 @@ export default function CsvImportPanel({ type }: Props) {
                               color: "var(--text-primary)",
                               direction: isArabic ? "rtl" : "ltr",
                               textAlign: isArabic ? "right" : "left",
-                              fontFamily: isArabic ? "'Cairo', 'Noto Sans Arabic', sans-serif" : "inherit",
+                              fontFamily: isArabic ? "'Readex Pro Variable', sans-serif" : "inherit",
                               maxWidth: "180px",
                               overflow: "hidden",
                               textOverflow: "ellipsis",

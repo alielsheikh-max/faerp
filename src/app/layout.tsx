@@ -21,11 +21,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
-        {/* Arabic font — Cairo is clean, professional, works well in ERP UIs */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700&display=swap"
-          rel="stylesheet"
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -38,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   if (locale === 'ar') {
                     document.documentElement.setAttribute('dir', 'rtl');
                     document.documentElement.setAttribute('lang', 'ar');
-                    document.documentElement.style.setProperty('--font-sans', "'Cairo', 'Tajawal', 'Segoe UI', sans-serif");
+                    document.documentElement.style.setProperty('--font-sans', "'Readex Pro Variable', -apple-system, sans-serif");
                   }
                 } catch (e) {}
               })();
