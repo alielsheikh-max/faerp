@@ -719,7 +719,7 @@ export function getItems(categoryId?: number) {
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
-      ORDER BY i.active DESC, c.name, i.name
+      ORDER BY i.active DESC, c.name, i.id
     `)
     .all(params) as Array<{
       id: number;
@@ -1639,7 +1639,7 @@ export function getSalesCatalog(month: string, categoryId?: number) {
       LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = @month
       LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
-      ORDER BY c.name, i.name
+      ORDER BY c.name, i.id
     `)
     .all(params) as Array<{
       item_id: number;
@@ -1691,7 +1691,7 @@ export function getSalesCatalogForMonths(startMonth: string, endMonth: string) {
       JOIN selling_prices sp ON sp.item_id = i.id
       WHERE sp.month >= @startMonth AND sp.month <= @endMonth AND sp.sell_min IS NOT NULL
       GROUP BY i.id, i.name, i.unit, c.name
-      ORDER BY c.name, i.name
+      ORDER BY c.name, i.id
     `)
     .all({ startMonth, endMonth }) as Array<{
       item_id: number;
@@ -1777,7 +1777,7 @@ export function getAdminSnapshot() {
       (SELECT AVG(pe.price) FROM price_entries pe WHERE pe.item_id = i.id AND pe.month = ?) as buy_avg
     FROM items i
     JOIN categories c ON c.id = i.category_id
-    ORDER BY i.active DESC, c.name, i.name
+    ORDER BY i.active DESC, c.name, i.id
   `).all(month, month, month) as Array<{
     id: number;
     name: string;
@@ -2298,7 +2298,7 @@ export function getSearchIndex() {
     SELECT i.id, i.name, i.unit, i.active, c.name AS category_name, c.id AS category_id
     FROM items i
     JOIN categories c ON c.id = i.category_id
-    ORDER BY c.name, i.name
+    ORDER BY c.name, i.id
   `).all() as Array<{
     id: number; name: string; unit: string; active: number;
     category_name: string; category_id: number;
@@ -2965,7 +2965,7 @@ export function getItemTiers(): ItemTierConfig[] {
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN item_tiers it ON it.item_id = i.id
-      ORDER BY c.name, i.name
+      ORDER BY c.name, i.id
     `)
     .all() as ItemTierConfig[];
 }

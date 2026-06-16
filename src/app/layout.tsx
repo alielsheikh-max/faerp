@@ -33,7 +33,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   if (locale === 'ar') {
                     document.documentElement.setAttribute('dir', 'rtl');
                     document.documentElement.setAttribute('lang', 'ar');
+                    // AR locale: Readex Pro Variable as primary (covers both Arabic + Latin)
                     document.documentElement.style.setProperty('--font-sans', "'Readex Pro Variable', -apple-system, sans-serif");
+                  } else {
+                    // EN locale: Inter Variable for Latin UI, Readex Pro auto-handles Arabic text via unicode-range
+                    document.documentElement.style.setProperty('--font-sans', "'Inter Variable', 'Readex Pro Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
                   }
                 } catch (e) {}
               })();
