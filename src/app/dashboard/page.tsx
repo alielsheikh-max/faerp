@@ -187,7 +187,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
       />
 
       {/* ── Price Change Requests — link to approvals page ───────────────── */}
-      {role === "SC" && (
+      {role === "SC" && pendingCount > 0 && (
         <section className="panel animate-fade-in" style={{ padding: "18px 24px", marginBottom: "14px", borderLeft: "4px solid var(--warning)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
             <div>
@@ -198,15 +198,11 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               </p>
             </div>
             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-              {pendingCount > 0 ? (
-                <span className="badge badge-warning" style={{ fontSize: "12px", padding: "5px 12px", animation: "pulse-ring 2s ease-out infinite" }}>
-                  ⏳ {pendingCount} pending
-                </span>
-              ) : (
-                <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>✓ All clear</span>
-              )}
+              <span className="badge badge-warning" style={{ fontSize: "12px", padding: "5px 12px", animation: "pulse-ring 2s ease-out infinite" }}>
+                ⏳ {pendingCount} pending
+              </span>
               <Link href="/dashboard/approvals" className="button button-primary" style={{ padding: "9px 18px", fontSize: "13px" }}>
-                {pendingCount > 0 ? `Review ${pendingCount} Request${pendingCount > 1 ? "s" : ""} →` : "View Approvals →"}
+                {`Review ${pendingCount} Request${pendingCount > 1 ? "s" : ""} →`}
               </Link>
             </div>
           </div>
