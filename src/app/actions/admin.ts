@@ -59,6 +59,45 @@ export async function assignSupplierCategoriesAction(
   }
 }
 
+/**
+ * Bulk-save category assignments for multiple suppliers at once.
+ * Accepts formData with "assignments" = JSON string of
+ * Array<{ supplierId: number; categoryIds: number[] }>
+ */
+export async function bulkAssignSupplierCategoriesAction(
+  formData: FormData
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const session = requireRole(["AD"]);
+  const raw = formData.get("assignments");
+  if (!raw || typeof raw !== "string") {
+    return { success: false, error: "No assignment data provided." };
+  }
+  let assignments: Array<{ supplierId: number; categoryIds: number[] }>;
+  try {
+    assignments = JSON.parse(raw);
+    if (!Array.isArray(assignments)) throw new Error("Not an array");
+  } catch {
+    return { success: false, error: "Invalid assignment data format." };
+  }
+  try {
+    for (const { supplierId, categoryIds } of assignments) {
+      if (!supplierId || isNaN(supplierId)) continue;
+      const validIds = (categoryIds ?? []).filter(n => !isNaN(n) && n > 0);
+      setSupplierCategories(supplierId, validIds, session.displayName);
+    }
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/admin");
+    revalidatePath("/dashboard/admin/suppliers");
+    return {
+      success: true,
+      message: `Saved assignments for ${assignments.length} supplier${assignments.length === 1 ? "" : "s"}.`,
+    };
+  } catch (e) {
+    return { success: false, error: "Failed to save supplier categories." };
+  }
+}
+
+
 export async function createUserAction(formData: FormData) {
   requireRole(["AD"]);
   const username = asString(formData.get("username")).toLowerCase();
