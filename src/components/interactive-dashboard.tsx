@@ -351,7 +351,7 @@ export default function InteractiveDashboard({
               {supplierLines.map(l => (
                 <span key={l.sup.id} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "var(--text-secondary)", fontWeight: 600 }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: l.c, display: "inline-block" }} />
-                  {l.sup.name}
+                  {l.sup.fame_name || l.sup.name}
                 </span>
               ))}
             </div>
@@ -389,7 +389,7 @@ export default function InteractiveDashboard({
                     {l.pts.map((pt, pi) => (
                       <circle key={pi} cx={pt.x} cy={pt.y} r={4.5} fill={l.c} stroke="var(--bg-surface)" strokeWidth={2}
                         style={{ cursor: "pointer" }}
-                        onMouseEnter={() => setHoveredDot({ x: pt.x, y: pt.y, price: pt.price, month: pt.month, supplier: l.sup.name })}
+                        onMouseEnter={() => setHoveredDot({ x: pt.x, y: pt.y, price: pt.price, month: pt.month, supplier: l.sup.fame_name || l.sup.name })}
                         onMouseLeave={() => setHoveredDot(null)}
                       />
                     ))}
@@ -488,7 +488,7 @@ export default function InteractiveDashboard({
                     <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: supColor, flexShrink: 0 }} />
-                        <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.name}</span>
+                        <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.fame_name || sup.name}</span>
                       </div>
                     </td>
                     {matrixMonths.map((m, mi) => {
