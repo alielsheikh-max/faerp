@@ -729,7 +729,12 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                         const isExpanded = expandedItems.has(item.id);
                         const itemEntries = dashboardMonthEntries.get(item.id);
                         const submittedCount = itemEntries?.size ?? 0;
-                        
+                        // Only suppliers assigned to this item's category
+                        const suppliersForItem = suppliers.filter(
+                          s => s.category_ids.includes(Number(item.category_id))
+                        );
+                        const totalForItem = suppliersForItem.length;
+
                         return (
                           <div
                             key={item.id}
@@ -770,8 +775,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                               </div>
                               
                               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <span className={`badge ${submittedCount === suppliers.length ? "badge-success" : submittedCount > 0 ? "badge-warning" : ""}`} style={{ fontSize: "11px" }}>
-                                  {submittedCount} / {suppliers.length} {isAr ? "تم تقديمه" : "submitted"}
+                                <span className={`badge ${submittedCount === totalForItem && totalForItem > 0 ? "badge-success" : submittedCount > 0 ? "badge-warning" : ""}`} style={{ fontSize: "11px" }}>
+                                  {submittedCount} / {totalForItem} {isAr ? "تم تقديمه" : "submitted"}
                                 </span>
                               </div>
                             </div>
@@ -791,7 +796,13 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {suppliers.map((supplier, idx) => {
+                                    {suppliersForItem.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={6} style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px", fontStyle: "italic" }}>
+                                          {isAr ? "لم يتم تعيين موردين لفئة هذا الصنف." : "No suppliers assigned to this item's category. Contact Admin."}
+                                        </td>
+                                      </tr>
+                                    ) : suppliersForItem.map((supplier, idx) => {
                                       const entry = itemEntries?.get(supplier.id);
                                       const isEditing = editingEntry?.itemId === item.id && editingEntry?.supplierId === supplier.id;
                                       const color = COLORS[idx % COLORS.length];
