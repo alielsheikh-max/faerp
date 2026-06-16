@@ -1096,6 +1096,7 @@ export function getRecentPriceEntries(limit = 10) {
     .prepare(`
       SELECT
         pe.id,
+        pe.supplier_id,
         pe.month,
         pe.price,
         pe.collected_by,
@@ -1115,6 +1116,7 @@ export function getRecentPriceEntries(limit = 10) {
     `)
     .all(limit) as Array<{
       id: number;
+      supplier_id: number;
       month: string;
       price: number;
       collected_by: string;
@@ -1126,6 +1128,12 @@ export function getRecentPriceEntries(limit = 10) {
       supplier_name: string;
       supplier_display_name: string;
     }>;
+}
+
+export function updatePriceEntry(id: number, price: number, notes: string) {
+  database()
+    .prepare(`UPDATE price_entries SET price = ?, notes = ?, recorded_at = ? WHERE id = ?`)
+    .run(price, notes, new Date().toISOString(), id);
 }
 
 export function addPriceEntry(input: {

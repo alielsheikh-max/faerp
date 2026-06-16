@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addPriceEntry, saveSellingPrice, getRecommendation, database } from "@/lib/db";
+import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 
 export async function createBatchPriceEntries(formData: FormData) {
@@ -54,6 +54,44 @@ export async function createBatchPriceEntries(formData: FormData) {
  * Same as createBatchPriceEntries but returns a result instead of redirecting.
  * Used when called imperatively from client-side JS (mixed new+change submit flow).
  */
+/** Update an existing price entry (price + notes only). No month lock — correcting existing data. */
+export async function updatePriceEntryAction(input: {
+  id: number;
+  price: number;
+  notes: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (!input.id || input.price <= 0) return { ok: false, error: "Invalid input." };
+    updatePriceEntry(input.id, input.price, input.notes);
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed." };
+  }
+}
+
+/** Add a single new price entry silently (returns ok/error, no redirect). */
+export async function addPriceEntrySilent(input: {
+  itemId: number;
+  supplierId: number;
+  month: string;
+  price: number;
+  notes: string;
+  collectedBy: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    addPriceEntry({ ...input, collectedRole: "WH" });
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
 export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   try {
     const itemId = asNumber(formData.get("itemId"));

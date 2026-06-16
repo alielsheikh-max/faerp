@@ -64,7 +64,7 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
         </div>
 
         <div style={{ padding: "0 0 4px" }}>
-          <RecentPricesTable entries={recentEntries} />
+          <RecentPricesTable entries={recentEntries} suppliers={suppliers} username={session.displayName} month={month} />
         </div>
       </section>
     </div>
