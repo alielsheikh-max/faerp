@@ -1057,8 +1057,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
                 return (
                   <div key={supplier.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr 120px 160px auto",
-                    gap: "12px", alignItems: "start", padding: "14px 16px",
+                    display: "grid", gridTemplateColumns: "1fr 180px 120px 160px auto",
+                    gap: "12px", alignItems: "center", padding: "14px 16px",
                     borderRadius: "var(--radius)",
                     border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color + "55" : "var(--border)"}`,
                     background: isChangeMode ? "var(--warning-light)" : currentPrice ? `${color}08` : "var(--bg-elevated)",
@@ -1066,41 +1066,40 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                     position: "relative",
                   }}>
 
-                    {/* Supplier identity + Notes stacked below */}
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-                      <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0, marginTop: "2px" }}>
+                    {/* Supplier identity */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0 }}>
                         {(supplier.fame_name || supplier.name).charAt(0)}
                       </span>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: "13px" }}>
-                            {supplier.fame_name || supplier.name}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {supplier.fame_name || supplier.name}
+                        </div>
+                        {supplier.fame_name && supplier.fame_name !== supplier.name && (
+                          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supplier.name}</div>
+                        )}
+                        {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
+                        {thisEntry && (
+                          <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>
+                            {isChangeMode
+                              ? `Current confirmed price: ${formatCurrency(thisEntry.price)}`
+                              : `Current price: ${formatCurrency(thisEntry.price)}`}
                           </div>
-                          {supplier.fame_name && supplier.fame_name !== supplier.name && (
-                            <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{supplier.name}</div>
-                          )}
-                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
-                          {thisEntry && (
-                            <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>
-                              {isChangeMode
-                                ? `Current confirmed price: ${formatCurrency(thisEntry.price)}`
-                                : `Current price: ${formatCurrency(thisEntry.price)}`}
-                            </div>
-                          )}
-                        </div>
-                        {/* Notes below the name — consistent width for every row */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
-                          <input
-                            type="text"
-                            name={isConfirmed ? undefined : `notes_${supplier.id}`}
-                            placeholder={t("purch.notesOptional")}
-                            value={supplierNotes[supplier.id] ?? ""}
-                            onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                            style={{ padding: "6px 10px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "34px" }}
-                          />
-                        </div>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Notes — same row as supplier identity */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
+                      <input
+                        type="text"
+                        name={isConfirmed ? undefined : `notes_${supplier.id}`}
+                        placeholder={t("purch.notesOptional")}
+                        value={supplierNotes[supplier.id] ?? ""}
+                        onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                        style={{ padding: "6px 10px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "38px", width: "100%" }}
+                      />
                     </div>
 
                     {/* Transportation Cost (Read-Only) */}
@@ -1193,7 +1192,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                             <th key={sup.id} style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color, borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-subtle)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)", minWidth: "110px" }}>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: color, display: "inline-block" }} />
-                                {sup.name}
+                                {sup.fame_name || sup.name}
                               </span>
                             </th>
                           );
