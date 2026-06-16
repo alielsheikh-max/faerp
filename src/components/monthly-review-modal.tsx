@@ -1066,12 +1066,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
     }
   }
 
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
+  // Close on Escape — intentionally removed: modal must stay open until user clicks Close
 
   // Filter data by search
   const filtered = data
@@ -1295,9 +1290,6 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
       {open && (
         <div
           ref={overlayRef}
-          onClick={(e) => {
-            if (e.target === overlayRef.current) setOpen(false);
-          }}
           style={{
             position: "fixed",
             inset: 0,

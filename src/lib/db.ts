@@ -1104,7 +1104,7 @@ export function getRecentPriceEntries(limit = 10) {
         i.name as item_name,
         i.id as item_id,
         c.name as category_name,
-        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
         COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_display_name
       FROM price_entries pe
       JOIN items i ON i.id = pe.item_id
@@ -1254,7 +1254,7 @@ function getLatestComparisonRows(filters: FilterInput) {
         i.name as item_name,
         i.unit,
         c.name as category_name,
-        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id, pe.month
           ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -1332,7 +1332,7 @@ function getHistoryRows(filters: FilterInput) {
       pe.month,
       pe.price,
       pe.recorded_at,
-      s.name as supplier_name
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
     FROM price_entries pe
     JOIN items i ON i.id = pe.item_id
     JOIN suppliers s ON s.id = pe.supplier_id
@@ -1981,7 +1981,7 @@ export function getAnalyticsData(filters: {
         pe.recorded_at,
         i.name as item_name,
         i.unit,
-        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
         c.name as category_name,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id, pe.month
@@ -2040,7 +2040,7 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
       pe.recorded_at,
       pe.collected_role,
       pe.notes,
-      s.name  as supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  as supplier_name,
       i.name  as item_name,
       i.unit  as item_unit,
       c.name  as category_name,
@@ -2122,7 +2122,7 @@ export function getMonthlyReviewData(month: string) {
         i.unit,
         i.category_id,
         c.name        AS category_name,
-        s.name        AS supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
         i.transportation_per_unit,
         i.moq,
         IFNULL(it.is_tiered, 0) as is_tiered,
@@ -2225,7 +2225,7 @@ export function getMonthlyReviewData(month: string) {
           pe.supplier_id,
           pe.month,
           pe.price,
-          s.name AS supplier_name,
+          COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
           ROW_NUMBER() OVER (
             PARTITION BY pe.item_id, pe.supplier_id, pe.month
             ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -2396,7 +2396,7 @@ export function getItemCardData(itemId: number) {
   const priceRows = db.prepare(`
     WITH ranked AS (
       SELECT pe.supplier_id, pe.month, pe.price, pe.recorded_at,
-             s.name AS supplier_name,
+             COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
              ROW_NUMBER() OVER (
                PARTITION BY pe.supplier_id, pe.month
                ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -2830,7 +2830,7 @@ export function getPendingPriceChangeRequests(): PriceChangeRequest[] {
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id
@@ -2846,7 +2846,7 @@ export function getAllPriceChangeRequests(limit = 50): PriceChangeRequest[] {
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id
@@ -2927,7 +2927,7 @@ export function getPriceChangeRequestsByUser(requestedBy: string): PriceChangeRe
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id

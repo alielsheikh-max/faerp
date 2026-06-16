@@ -582,8 +582,13 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
               </div>
               <div style={{ flex: 1 }}>
                 <h2 style={{ margin: 0, fontSize: "19px", fontWeight: "800", color: "#fff", letterSpacing: "-0.02em" }}>
-                  {supplier.name}
+                  {supplier.fame_name || supplier.name}
                 </h2>
+                {supplier.fame_name && supplier.fame_name !== supplier.name && (
+                  <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", marginTop: "2px", fontStyle: "italic" }}>
+                    {supplier.name}
+                  </div>
+                )}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "7px" }}>
                   {supplier.code && (
                     <span style={{

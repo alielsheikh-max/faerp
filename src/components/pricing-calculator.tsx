@@ -20,6 +20,7 @@ type PriceEntry = {
 type Supplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
 };
 
 type PricingCalculatorProps = {
@@ -136,7 +137,7 @@ export default function PricingCalculator({
       });
       return {
         supplierId: s.id,
-        supplierName: s.name,
+        supplierName: s.fame_name || s.name,
         quotes, // e.g. [42.00, 43.00, 45.00] corresponding to last3Months
       };
     });
