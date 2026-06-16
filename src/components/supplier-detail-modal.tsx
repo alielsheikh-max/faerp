@@ -335,8 +335,22 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
         <title>${title}</title>
         <meta charset="utf-8" />
         <style>
+          @font-face {
+            font-family: 'Readex Pro Variable';
+            font-style: normal;
+            font-weight: 160 700;
+            src: url('/fonts/readex-pro-arabic-wght-normal.woff2') format('woff2');
+            unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF, U+0000-007F;
+          }
+          @font-face {
+            font-family: 'Readex Pro Variable';
+            font-style: normal;
+            font-weight: 160 700;
+            src: url('/fonts/readex-pro-latin-wght-normal.woff2') format('woff2');
+            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+FEFF, U+FFFD;
+          }
           body {
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: 'Readex Pro Variable', -apple-system, sans-serif;
             color: #111827;
             margin: 20px;
             line-height: 1.4;

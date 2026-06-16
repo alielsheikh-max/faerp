@@ -15,7 +15,7 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
   const report = getMonthlyReport(month, categoryId);
 
   return (
-    <div className="print-page-wrapper" style={{ minHeight: "100vh", background: "#fff", color: "#10213a", fontFamily: "Segoe UI, sans-serif" }}>
+    <div className="print-page-wrapper" style={{ minHeight: "100vh", background: "#fff", color: "#10213a", fontFamily: "'Readex Pro Variable', -apple-system, sans-serif" }}>
       <main style={{ padding: "32px", maxWidth: "1100px", margin: "0 auto" }}>
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
             <div>
