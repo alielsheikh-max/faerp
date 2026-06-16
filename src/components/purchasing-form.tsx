@@ -95,7 +95,7 @@ function ChangeRequestModal({
             {item.name}
           </h3>
           <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
-            <span className="badge badge-strong" style={{ fontSize: "10px" }}>{supplier.name}</span>
+            <span className="badge badge-strong" style={{ fontSize: "10px" }}>{supplier.fame_name || supplier.name}</span>
             <span className="badge" style={{ fontSize: "10px" }}>{formatMonthLabel(month)}</span>
           </div>
         </div>
@@ -814,10 +814,10 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                           <td style={{ padding: "8px 12px", verticalAlign: "middle", textAlign: isAr ? "right" : "left" }}>
                                             <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
                                               <span style={{ width: "24px", height: "24px", borderRadius: "50%", background: color + "15", border: `1px solid ${color}33`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 700, color }}>
-                                                {supplier.name.charAt(0)}
+                                                {(supplier.fame_name || supplier.name).charAt(0)}
                                               </span>
                                               <div style={{ textAlign: isAr ? "right" : "left" }}>
-                                                <div style={{ fontWeight: 600 }}>{supplier.name}</div>
+                                                <div style={{ fontWeight: 600 }}>{supplier.fame_name || supplier.name}</div>
                                                 {prevPrice != null && (
                                                   <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
                                                     {isAr ? "السابق" : "Prev"}: {formatCurrency(prevPrice)}

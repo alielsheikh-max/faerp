@@ -7,6 +7,7 @@ import SupplierDetailModal from "@/components/supplier-detail-modal";
 export type FullSupplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
   code: string | null;
   contact_person: string | null;
   contact_job_title: string | null;
@@ -287,8 +288,13 @@ function SupplierCard({
             lineHeight: "1.3",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            {supplier.name}
+            {supplier.fame_name || supplier.name}
           </div>
+          {supplier.fame_name && supplier.fame_name !== supplier.name && (
+            <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {supplier.name}
+            </div>
+          )}
 
           {/* Code + Region badges */}
           <div style={{ display: "flex", gap: "6px", marginTop: "5px", flexWrap: "wrap" }}>

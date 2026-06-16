@@ -2358,14 +2358,14 @@ export function getSearchIndex() {
   }>;
 
   const suppliers = db.prepare(`
-    SELECT s.id, s.name, s.contact_person, s.phone,
+    SELECT s.id, s.name, s.fame_name, s.contact_person, s.phone,
            COUNT(pe.id) AS quote_count
     FROM suppliers s
     LEFT JOIN price_entries pe ON pe.supplier_id = s.id
     GROUP BY s.id
     ORDER BY s.name
   `).all() as Array<{
-    id: number; name: string; contact_person: string;
+    id: number; name: string; fame_name: string | null; contact_person: string;
     phone: string; quote_count: number;
   }>;
 
@@ -2465,7 +2465,7 @@ export function getSupplierCardData(supplierId: number) {
   const db = database();
 
   const supplier = db.prepare(`
-    SELECT s.id, s.name, s.contact_person, s.phone,
+    SELECT s.id, s.name, s.fame_name, s.contact_person, s.phone,
            s.code, s.contact_job_title, s.represented_products, s.email, s.region, s.address,
            COUNT(pe.id) AS total_quotes
     FROM suppliers s
@@ -2473,7 +2473,7 @@ export function getSupplierCardData(supplierId: number) {
     WHERE s.id = ?
     GROUP BY s.id
   `).get(supplierId) as {
-    id: number; name: string; contact_person: string;
+    id: number; name: string; fame_name: string | null; contact_person: string;
     phone: string; code: string | null; contact_job_title: string | null;
     represented_products: string | null; email: string | null;
     region: string | null; address: string | null; total_quotes: number;

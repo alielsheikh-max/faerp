@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n-context";
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
 
 type SearchItem     = { id: number; name: string; unit: string; active: number; category_name: string; category_id: number };
-type SearchSupplier = { id: number; name: string; contact_person: string; phone: string; quote_count: number };
+type SearchSupplier = { id: number; name: string; fame_name?: string | null; contact_person: string; phone: string; quote_count: number };
 type SearchIndex    = { items: SearchItem[]; suppliers: SearchSupplier[] };
 type ItemCardData     = Awaited<ReturnType<typeof fetchItemCard>>;
 type SupplierCardData = Awaited<ReturnType<typeof fetchSupplierCard>>;
@@ -173,7 +173,10 @@ function SupplierDetail({ data, role }: { data: NonNullable<SupplierCardData>; r
           <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🏭</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "#3b82f6", marginBottom: "3px" }}>Supplier Profile</div>
-            <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{supplier.name}</h2>
+            <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{supplier.fame_name || supplier.name}</h2>
+            {supplier.fame_name && supplier.fame_name !== supplier.name && (
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{supplier.name}</div>
+            )}
             {supplier.contact_person && <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "3px" }}>{supplier.contact_person}{supplier.phone ? ` · ${supplier.phone}` : ""}</div>}
             <div style={{ display: "flex", gap: "8px", marginTop: "7px", flexWrap: "wrap" }}>
               <span className="badge badge-strong">{totalQuotes} quotes</span>
@@ -283,7 +286,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
   const closeModal = () => { setOpen(false); setQuery(""); setCard(null); };
 
   const filteredItems     = query.trim().length >= 1 ? index.items.filter(i => fuzzy(query, i.name) || fuzzy(query, i.category_name)) : [];
-  const filteredSuppliers = query.trim().length >= 1 ? index.suppliers.filter(s => fuzzy(query, s.name)) : [];
+  const filteredSuppliers = query.trim().length >= 1 ? index.suppliers.filter(s => fuzzy(query, s.name) || fuzzy(query, s.fame_name || "")) : [];
   const hasResults = filteredItems.length > 0 || filteredSuppliers.length > 0;
 
   const openItemCard = useCallback((id: number) => {
@@ -437,7 +440,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                             >
                               <span style={{ width: "34px", height: "34px", borderRadius: "9px", background: COLORS[i % COLORS.length] + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>🏭</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{sup.name}</div>
+                                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{sup.fame_name || sup.name}</div>
                                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>{sup.quote_count} quotes{sup.contact_person ? ` · ${sup.contact_person}` : ""}</div>
                               </div>
                               <span style={{ fontSize: "18px", color: "var(--text-muted)", flexShrink: 0 }}>›</span>

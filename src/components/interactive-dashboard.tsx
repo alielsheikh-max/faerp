@@ -11,7 +11,7 @@ import type { SellingPriceHistoryRow } from "@/lib/db";
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Category  = { id: number; name: string; description: string | null };
 type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number; transportation_per_unit?: number; moq?: number; is_tiered?: number; tier1_max?: number; tier1_discount?: number; tier2_max?: number; tier2_discount?: number; tier3_max?: number; tier3_discount?: number; tier4_max?: number; tier4_discount?: number };
-type Supplier  = { id: number; name: string; contact_person: string | null; phone: string | null };
+type Supplier  = { id: number; name: string; fame_name?: string | null; contact_person: string | null; phone: string | null };
 type PriceEntry = {
   id: number; item_id: number; supplier_id: number; month: string; price: number;
   recorded_at: string; item_name: string; unit: string; supplier_name: string;
@@ -286,7 +286,7 @@ export default function InteractiveDashboard({
                   }}>
                     <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
                     <span style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {row.supplier.name}
+                      {row.supplier.fame_name || row.supplier.name}
                     </span>
                     {isBest && (
                       <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>
