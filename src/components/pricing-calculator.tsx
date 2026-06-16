@@ -93,6 +93,13 @@ export default function PricingCalculator({
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
 
+  // ── Markup Assistant state ─────────────────────────────────────────
+  const [useMarkup, setUseMarkup]       = useState(false);
+  const [markupRef, setMarkupRef]       = useState<"min" | "avg" | "max">("max");
+  const [markupType, setMarkupType]     = useState<"pct" | "fixed">("pct");
+  const [markupMinVal, setMarkupMinVal] = useState<string>("");
+  const [markupMaxVal, setMarkupMaxVal] = useState<string>("");
+
   const { locale } = useI18n();
   const router = useRouter();
 
@@ -148,8 +155,18 @@ export default function PricingCalculator({
     setIsPending(true);
     setErrorMsg(null);
 
-    const sellMinVal = parseFloat(sellMinStr) || 0;
-    const sellMaxVal = isTiered ? sellMinVal : (parseFloat(sellMaxStr) || 0);
+    // Resolve effective selling prices (same logic as the derived-values block below)
+    const _applyMu = (ref: number, val: string, type: "pct" | "fixed") => {
+      const v = parseFloat(val) || 0;
+      return type === "pct" ? ref * (1 + v / 100) : ref + v;
+    };
+    const _muRef = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
+    const sellMinVal = useMarkup
+      ? _applyMu(_muRef, markupMinVal, markupType)
+      : (parseFloat(sellMinStr) || 0);
+    const sellMaxVal = isTiered ? sellMinVal
+      : useMarkup ? _applyMu(_muRef, markupMaxVal, markupType)
+      : (parseFloat(sellMaxStr) || 0);
 
     if (sellMinVal <= 0 || sellMaxVal <= 0) {
       setErrorMsg("Please enter valid positive selling prices.");
@@ -218,19 +235,35 @@ export default function PricingCalculator({
     setConfirmUpdate(false);
   }, [itemId]);
 
-  const finalSellMin = (parseFloat(sellMinStr) || 0) + transportation + otherExpenses;
-  const finalSellMax = isTiered ? finalSellMin : ((parseFloat(sellMaxStr) || 0) + transportation + otherExpenses);
+  // ── Markup assistant helpers ───────────────────────────────────────
+  const applyMarkup = (ref: number, val: string, type: "pct" | "fixed"): number => {
+    const v = parseFloat(val) || 0;
+    return type === "pct" ? ref * (1 + v / 100) : ref + v;
+  };
+  const markupRefPrice = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
 
-  // Base values without transport/expenses (for display)
-  const liveSellMin = parseFloat(sellMinStr) || 0;
-  const liveSellMax = isTiered ? liveSellMin : (parseFloat(sellMaxStr) || 0);
+  // Effective base selling prices (WITHOUT transport/expenses) — single source of truth
+  const effectiveSellMin = useMarkup
+    ? applyMarkup(markupRefPrice, markupMinVal, markupType)
+    : (parseFloat(sellMinStr) || 0);
+  const effectiveSellMax = useMarkup
+    ? (isTiered ? effectiveSellMin : applyMarkup(markupRefPrice, markupMaxVal, markupType))
+    : (isTiered ? effectiveSellMin : (parseFloat(sellMaxStr) || 0));
+
+  // Published prices = base + transport + other expenses
+  const finalSellMin = effectiveSellMin + transportation + otherExpenses;
+  const finalSellMax = isTiered ? finalSellMin : (effectiveSellMax + transportation + otherExpenses);
+
+  // Aliases kept for legacy display labels
+  const liveSellMin = effectiveSellMin;
+  const liveSellMax = effectiveSellMax;
 
   const calculatedBaseMin = liveSellMin;
   const calculatedMarkupMin = buyAvg > 0 ? ((calculatedBaseMin / buyAvg) - 1) * 100 : 0;
   const effectiveMarkupMinPct = calculatedMarkupMin;
   const floorViolated = floorPct !== null && calculatedMarkupMin < floorPct;
   const floorWarn = floorPct !== null && calculatedMarkupMin >= floorPct && calculatedMarkupMin < floorPct + 2;
-  const maxViolated = !isTiered && (parseFloat(sellMaxStr) || 0) < (parseFloat(sellMinStr) || 0);
+  const maxViolated = !isTiered && effectiveSellMax < effectiveSellMin;
 
   const isUpdate = !!existing;
 
@@ -343,38 +376,145 @@ export default function PricingCalculator({
           ) : (
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
 
+                {/* ── Markup Assistant ─────────────────────────────────── */}
+                <div style={{ border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                  <button type="button"
+                    onClick={() => setUseMarkup(v => !v)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 14px",
+                      background: useMarkup ? "rgba(99,102,241,0.08)" : "var(--bg-subtle)",
+                      border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700,
+                      color: useMarkup ? "var(--primary)" : "var(--text-secondary)",
+                    }}
+                  >
+                    <span>💡 {locale === "ar" ? "حساب تلقائي بالهامش" : "Markup Assistant"}</span>
+                    <span style={{
+                      width: "36px", height: "18px", borderRadius: "9px",
+                      background: useMarkup ? "var(--primary)" : "var(--border-medium)",
+                      position: "relative", display: "inline-flex", alignItems: "center", transition: "background 200ms",
+                    }}>
+                      <span style={{
+                        width: "12px", height: "12px", borderRadius: "50%", background: "#fff",
+                        position: "absolute", left: useMarkup ? "21px" : "3px",
+                        transition: "left 200ms", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                      }} />
+                    </span>
+                  </button>
+                  {useMarkup && (
+                    <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {/* Reference price selector */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                        <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          {locale === "ar" ? "السعر المرجعي" : "Reference Buy Cost"}
+                        </span>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {(["min", "avg", "max"] as ("min" | "avg" | "max")[]).map(key => {
+                            const val = key === "min" ? buyMin : key === "avg" ? buyAvg : buyMax;
+                            const label = key === "min" ? "Min" : key === "avg" ? "Avg ⌀" : "Max ★";
+                            return (
+                              <button key={key} type="button"
+                                onClick={() => setMarkupRef(key)}
+                                style={{
+                                  flex: 1, padding: "7px 4px", borderRadius: "7px",
+                                  border: `1.5px solid ${markupRef === key ? "var(--primary)" : "var(--border)"}`,
+                                  background: markupRef === key ? "var(--primary-light)" : "var(--bg-elevated)",
+                                  color: markupRef === key ? "var(--primary)" : "var(--text-secondary)",
+                                  fontSize: "11px", fontWeight: 700, cursor: "pointer", textAlign: "center",
+                                }}
+                              >
+                                <div style={{ fontSize: "9px", opacity: 0.8, marginBottom: "2px" }}>{label}</div>
+                                <div>{formatCurrency(val)}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {/* Type toggle + markup inputs */}
+                      <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {locale === "ar" ? "النوع" : "Type"}
+                          </span>
+                          <div style={{ display: "flex", borderRadius: "7px", border: "1.5px solid var(--border)", overflow: "hidden" }}>
+                            {(["pct", "fixed"] as const).map(t => (
+                              <button key={t} type="button"
+                                onClick={() => setMarkupType(t)}
+                                style={{
+                                  padding: "6px 12px", border: "none", cursor: "pointer",
+                                  fontSize: "11px", fontWeight: 700,
+                                  background: markupType === t ? "var(--primary)" : "transparent",
+                                  color: markupType === t ? "#fff" : "var(--text-muted)",
+                                }}
+                              >{t === "pct" ? "%" : "EGP +"}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {isTiered ? (locale === "ar" ? "الهامش" : "Markup") : (locale === "ar" ? "هامش الأدنى" : "Min Markup")}
+                          </span>
+                          <input
+                            type="number" step="any" min="0"
+                            value={markupMinVal}
+                            onChange={e => setMarkupMinVal(e.target.value)}
+                            placeholder={markupType === "pct" ? "e.g. 10" : "e.g. 5.00"}
+                            style={{ padding: "7px 10px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontSize: "13px", fontWeight: 700 }}
+                          />
+                        </div>
+                        {!isTiered && (
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              {locale === "ar" ? "هامش الأقصى" : "Max Markup"}
+                            </span>
+                            <input
+                              type="number" step="any" min="0"
+                              value={markupMaxVal}
+                              onChange={e => setMarkupMaxVal(e.target.value)}
+                              placeholder={markupType === "pct" ? "e.g. 15" : "e.g. 10.00"}
+                              style={{ padding: "7px 10px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontSize: "13px", fontWeight: 700 }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {/* Live preview */}
+                      {effectiveSellMin > 0 && (
+                        <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: "7px", padding: "8px 12px", fontSize: "11.5px", color: "var(--primary)", fontWeight: 600 }}>
+                          {isTiered ? (
+                            <span>→ Base: <strong>{formatCurrency(effectiveSellMin)}</strong>{" "}({formatCurrency(markupRefPrice)}{markupType === "pct" ? ` + ${markupMinVal || 0}%` : ` + EGP ${markupMinVal || 0}`})</span>
+                          ) : (
+                            <span>→ Min: <strong>{formatCurrency(effectiveSellMin)}</strong>{" · "}Max: <strong>{formatCurrency(effectiveSellMax)}</strong></span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* ── Selling Price Inputs ── */}
                 {isTiered ? (
                   /* Tiered item: single Base Selling Price */
                   <label className="field">
                     <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {locale === "ar" ? "سعر البيع الأساسي" : "Base Selling Price"}
-                      <span style={{
-                        fontSize: "9px", fontWeight: 800,
-                        background: "var(--primary)", color: "#fff",
-                        padding: "1px 7px", borderRadius: "4px", letterSpacing: "0.04em"
-                      }}>
+                      <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--primary)", color: "#fff", padding: "1px 7px", borderRadius: "4px", letterSpacing: "0.04em" }}>
                         TIER BASE
                       </span>
                     </span>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      required
-                      value={sellMinStr}
-                      onChange={(e) => setSellMinStr(e.target.value)}
-                      placeholder="e.g. 120.00"
-                      style={{
-                        padding: "10px 14px", borderRadius: "8px", fontSize: "16px",
-                        fontWeight: 800, border: "1.5px solid var(--primary)",
-                        background: "var(--bg-elevated)", color: "var(--primary)"
-                      }}
-                    />
+                    {useMarkup ? (
+                      <input type="text" readOnly
+                        value={effectiveSellMin > 0 ? effectiveSellMin.toFixed(2) : "—"}
+                        style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "16px", fontWeight: 800, border: "1.5px solid var(--primary)", background: "rgba(99,102,241,0.06)", color: "var(--primary)", cursor: "not-allowed" }}
+                      />
+                    ) : (
+                      <input type="number" step="any" min="0" required
+                        value={sellMinStr} onChange={e => setSellMinStr(e.target.value)}
+                        placeholder="e.g. 120.00"
+                        style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "16px", fontWeight: 800, border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)" }}
+                      />
+                    )}
                     <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                      {locale === "ar"
-                        ? "السعر الأساسي الذي تُحسب منه خصومات الشرائح تلقائياً"
-                        : "Base price — tier discounts are calculated automatically from this"}
+                      {locale === "ar" ? "السعر الأساسي — خصومات الشرائح تُحسب منه تلقائياً (النقل يُضاف بعد الخصم)" : "Base price — tier discounts are applied to this, then transport is added back"}
                     </span>
                   </label>
                 ) : (
@@ -382,37 +522,33 @@ export default function PricingCalculator({
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <label className="field">
                       <span>{locale === "ar" ? "الحد الأدنى لسعر البيع" : "Min Selling Price"}</span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        required
-                        value={sellMinStr}
-                        onChange={(e) => setSellMinStr(e.target.value)}
-                        placeholder="e.g. 110.00"
-                        style={{
-                          padding: "10px 14px", borderRadius: "8px", fontSize: "15px",
-                          fontWeight: 800, border: "1.5px solid var(--success)",
-                          background: "var(--bg-elevated)", color: "var(--success)"
-                        }}
-                      />
+                      {useMarkup ? (
+                        <input type="text" readOnly
+                          value={effectiveSellMin > 0 ? effectiveSellMin.toFixed(2) : "—"}
+                          style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "15px", fontWeight: 800, border: "1.5px solid var(--success)", background: "rgba(16,185,129,0.06)", color: "var(--success)", cursor: "not-allowed" }}
+                        />
+                      ) : (
+                        <input type="number" step="any" min="0" required
+                          value={sellMinStr} onChange={e => setSellMinStr(e.target.value)}
+                          placeholder="e.g. 110.00"
+                          style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "15px", fontWeight: 800, border: "1.5px solid var(--success)", background: "var(--bg-elevated)", color: "var(--success)" }}
+                        />
+                      )}
                     </label>
                     <label className="field">
                       <span>{locale === "ar" ? "الحد الأقصى لسعر البيع" : "Max Selling Price"}</span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        required
-                        value={sellMaxStr}
-                        onChange={(e) => setSellMaxStr(e.target.value)}
-                        placeholder="e.g. 130.00"
-                        style={{
-                          padding: "10px 14px", borderRadius: "8px", fontSize: "15px",
-                          fontWeight: 800, border: "1.5px solid var(--primary)",
-                          background: "var(--bg-elevated)", color: "var(--primary)"
-                        }}
-                      />
+                      {useMarkup ? (
+                        <input type="text" readOnly
+                          value={effectiveSellMax > 0 ? effectiveSellMax.toFixed(2) : "—"}
+                          style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "15px", fontWeight: 800, border: "1.5px solid var(--primary)", background: "rgba(99,102,241,0.06)", color: "var(--primary)", cursor: "not-allowed" }}
+                        />
+                      ) : (
+                        <input type="number" step="any" min="0" required
+                          value={sellMaxStr} onChange={e => setSellMaxStr(e.target.value)}
+                          placeholder="e.g. 130.00"
+                          style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "15px", fontWeight: 800, border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)" }}
+                        />
+                      )}
                     </label>
                   </div>
                 )}
@@ -531,12 +667,12 @@ export default function PricingCalculator({
                         <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(finalSellMin)}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                        <span>Tier 2 ({tier1Max + 1} - {tier2Max} units) — {tier2Discount}% discount:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency(finalSellMin * (1 - tier2Discount / 100))}</strong>
+                        <span>Tier 2 ({tier1Max + 1} - {tier2Max} units) — {tier2Discount}% discount on base:</span>
+                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency((effectiveSellMin * (1 - tier2Discount / 100)) + transportation + otherExpenses)}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Tier 3 ({tier2Max + 1}+ units) — {tier3Discount}% discount:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency(finalSellMin * (1 - tier3Discount / 100))}</strong>
+                        <span>Tier 3 ({tier2Max + 1}+ units) — {tier3Discount}% discount on base:</span>
+                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency((effectiveSellMin * (1 - tier3Discount / 100)) + transportation + otherExpenses)}</strong>
                       </div>
                     </div>
                   </div>
