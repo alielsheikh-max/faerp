@@ -24,26 +24,35 @@ async function fetchCBERate(): Promise<number> {
   const html = await res.text();
 
   // The CBE exchange-rates page renders a table like:
-  //   <td class="column-width table-cell">US Dollar</td>
-  //   <td class="column-width table-cell">50.3394</td>  ← Buy
-  //   <td class="column-width table-cell">50.4394</td>  ← Sell
-  // We capture the Buy rate (first number after "US Dollar").
+  //   <td>US Dollar</td>
+  //   <td>50.1625</td>  ← Buy  (lower — we SKIP this)
+  //   <td>50.2963</td>  ← Sell (higher — we WANT this)
+  // We skip past the first number (buy rate) and capture the second (sell rate).
   const patterns = [
-    // Primary: "US Dollar" label followed by table-cell with the buy rate
-    /US\s*Dollar[\s\S]{0,300}?(\d{2,3}[.,]\d{2,6})/i,
-    // Fallback: any cell with a plausible EGP/USD number after "US Dollar"
+    // Primary: skip first number (buy), capture second number (sell)
+    /US\s*Dollar[\s\S]{0,400}?(\d{2,3}[.,]\d{2,6})[\s\S]{0,200}?(\d{2,3}[.,]\d{2,6})/i,
+    // Fallback: just take the first plausible number if only one found
     /US\s+Dollar[\s\S]{0,500}?(\d{2,3}\.\d{2,4})/i,
   ];
 
-  for (const pattern of patterns) {
-    const m = html.match(pattern);
-    if (m) {
-      const raw = m[1].replace(",", ".");
-      const val = parseFloat(raw);
+  // Try primary pattern first — use the SELL (second) capture group
+  const primaryMatch = html.match(patterns[0]);
+  if (primaryMatch) {
+    const candidates = [primaryMatch[2], primaryMatch[1]]; // sell first, buy as fallback
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const val = parseFloat(raw.replace(",", "."));
       if (!isNaN(val) && val > 10 && val < 500) {
-        return val;
+        return val; // returns sell rate (higher value)
       }
     }
+  }
+
+  // Fallback pattern
+  const fallbackMatch = html.match(patterns[1]);
+  if (fallbackMatch) {
+    const val = parseFloat(fallbackMatch[1].replace(",", "."));
+    if (!isNaN(val) && val > 10 && val < 500) return val;
   }
 
   throw new Error("Could not parse USD/EGP rate from CBE page");
