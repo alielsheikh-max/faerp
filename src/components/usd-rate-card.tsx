@@ -243,35 +243,39 @@ export default function UsdRateCard({ onRateChange, initialRate }: Props) {
             {showManual && (
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
-                  type="number"
-                  step="0.0001"
-                  min="1"
+                  type="number" step="0.0001" min="1"
                   value={manualRate}
                   onChange={(e) => setManualRate(e.target.value)}
-                  placeholder={lbl("e.g. 50.3394", "مثال: 50.3394")}
+                  placeholder={lbl("e.g. 50.2963", "مثال: 50.2963")}
                   onKeyDown={(e) => e.key === "Enter" && saveManualRate()}
-                  style={{
-                    flex: 1, padding: "7px 10px",
-                    borderRadius: "7px", border: "1px solid var(--border-medium)",
-                    backgroundColor: "var(--bg-surface)", color: "var(--text-primary)",
-                    fontSize: "12px",
-                  }}
+                  style={{ flex: 1, padding: "7px 10px", borderRadius: "7px", border: "1px solid var(--border-medium)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px" }}
                 />
                 <button
-                  type="button"
-                  onClick={saveManualRate}
+                  type="button" onClick={saveManualRate}
                   disabled={refreshing || !manualRate}
-                  style={{
-                    padding: "7px 13px", borderRadius: "7px",
-                    border: "none", backgroundColor: "var(--primary)",
-                    color: "#fff", fontWeight: "700", fontSize: "12px",
-                    cursor: "pointer", flexShrink: 0,
-                  }}
+                  style={{ padding: "7px 13px", borderRadius: "7px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: "700", fontSize: "12px", cursor: "pointer", flexShrink: 0 }}
                 >
                   {lbl("Save", "حفظ")}
                 </button>
               </div>
             )}
+
+            {/* ── Schedule note ───────────────────────────────── */}
+            <div style={{
+              marginTop: "4px",
+              padding: "7px 10px",
+              borderRadius: "7px",
+              backgroundColor: "rgba(29,111,164,0.07)",
+              border: "1px solid rgba(29,111,164,0.18)",
+              fontSize: "10px",
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}>
+              📅 {lbl(
+                "Auto-refreshes every Sunday at 9:00 AM (Egypt time · EET). Click 🔄 for an immediate update.",
+                "يتجدد تلقائياً كل يوم أحد الساعة 9:00 صباحاً (توقيت مصر). اضغط 🔄 لتحديث فوري."
+              )}
+            </div>
           </>
         )}
       </div>

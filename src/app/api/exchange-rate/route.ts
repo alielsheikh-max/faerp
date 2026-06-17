@@ -58,11 +58,33 @@ async function fetchCBERate(): Promise<number> {
   throw new Error("Could not parse USD/EGP rate from CBE page");
 }
 
-// ── Is the stored rate stale? (> 7 days old) ─────────────────────────────────
-function isStale(fetchedAt: string): boolean {
-  const then = new Date(fetchedAt).getTime();
-  const now = Date.now();
-  return now - then > 7 * 24 * 60 * 60 * 1000;
+// ── Should we auto-refresh? ────────────────────────────────────────────────
+// Primary trigger: every Sunday at/after 09:00 AM Egypt Standard Time (UTC+2).
+// Safety net: also refresh if rate is older than 10 days regardless of day.
+function shouldAutoRefresh(fetchedAt: string | undefined): boolean {
+  if (!fetchedAt) return true;
+
+  // Egypt Standard Time = UTC+2 (no DST since 2011)
+  const EGY_OFFSET_MS = 2 * 60 * 60 * 1000;
+  const nowUTC   = Date.now();
+  const nowEgypt = new Date(nowUTC + EGY_OFFSET_MS);
+
+  const dayEgypt  = nowEgypt.getUTCDay();    // 0 = Sunday
+  const hourEgypt = nowEgypt.getUTCHours();  // 0-23 in Egypt local time
+
+  // Is it currently Sunday at or after 09:00 Egypt time?
+  if (dayEgypt === 0 && hourEgypt >= 9) {
+    // Compute this Sunday's 09:00 AM Egypt as a UTC timestamp
+    const sunday9AM_Egypt = new Date(nowEgypt);
+    sunday9AM_Egypt.setUTCHours(9, 0, 0, 0);                          // 09:00 Egypt
+    const sunday9AM_UTC = sunday9AM_Egypt.getTime() - EGY_OFFSET_MS;  // → 07:00 UTC
+
+    // Refresh if the stored rate was fetched before this Sunday 09:00
+    return new Date(fetchedAt).getTime() < sunday9AM_UTC;
+  }
+
+  // Safety net: refresh if older than 10 days (handles missed Sundays)
+  return nowUTC - new Date(fetchedAt).getTime() > 10 * 24 * 60 * 60 * 1000;
 }
 
 // ── GET /api/exchange-rate ────────────────────────────────────────────────────
@@ -73,8 +95,8 @@ export async function GET() {
 
   let row = getExchangeRate("USD");
 
-  // Auto-refresh on Sunday or if rate is stale
-  if (!row || isStale(row.fetched_at)) {
+  // Auto-refresh on Sunday 09:00 AM Egypt time, or if rate is stale (>10 days)
+  if (!row || shouldAutoRefresh(row?.fetched_at)) {
     try {
       const rate = await fetchCBERate();
       saveExchangeRate("USD", rate, "CBE auto-refresh");
