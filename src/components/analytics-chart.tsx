@@ -399,7 +399,7 @@ export default function AnalyticsChart({ history, months, groupMode }: Analytics
             <span style={{ fontSize: "11px", fontWeight: "700", display: "block" }}>{hoveredDot.label}</span>
             <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>
               {hoveredDot.month}
-              {hoveredDot.recordedAt ? ` · ${new Date(hoveredDot.recordedAt).toLocaleDateString()}` : ""}
+              {hoveredDot.recordedAt ? ` · ${(() => { const d = new Date(hoveredDot.recordedAt); return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`; })()}` : ""}
             </span>
           </div>
         )}

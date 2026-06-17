@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import * as XLSX from "xlsx-js-style";
+import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
 type CatalogRow = {
@@ -59,9 +60,7 @@ function printWindow(html: string, title: string) {
   win.document.close();
 }
 
-function formatDate() {
-  return new Date().toLocaleDateString("en-EG", { day: "2-digit", month: "long", year: "numeric" });
-}
+// formatDate() imported from @/lib/format — returns dd-mm-yyyy
 
 /* ────────────────────────────────────────────────────────────────────── */
 export default function UsdPricePanel({ catalog, month, username }: Props) {
@@ -91,7 +90,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       const d = await res.json();
       if (res.ok && d.rate) {
         setRate(d.rate);
-        setRateInfo(d.fetched_at ? new Date(d.fetched_at).toLocaleDateString() : "");
+        setRateInfo(d.fetched_at ? formatDate(new Date(d.fetched_at)) : "");
       } else {
         setRateError(d.error ?? lbl("Could not load rate.", "تعذّر تحميل سعر الصرف."));
       }
@@ -142,7 +141,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
     const footerHtml = `<div class="footer">
       <span>FAERP · Confidential · 1 USD = ${rate.toFixed(4)} EGP</span>
       <span>Prepared by ${username}</span>
-      <span>${formatDate()}</span>
+      <span>${formatDate(new Date())}</span>
     </div>`;
 
     printWindow(`${headerHtml}${tablesHtml}${footerHtml}`, `USD Prices - ${month}`);
@@ -192,14 +191,20 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       ];
       worksheet["!views"] = [{ RTL: isAr }];
 
-      /* Auto-fit column widths */
+      /* Auto-fit column widths — account for $ prefix on USD columns */
       const cols = headers.map((h, ci) => {
         let maxLen = String(h).length;
         dataRows.forEach(row => {
-          const len = String(row[ci] ?? "").length;
-          if (len > maxLen) maxLen = len;
+          const val = row[ci];
+          // For USD price columns (ci 4,5), estimate displayed width: "$1,234.56" ≈ raw digits + 4
+          const displayLen = (ci >= 4 && typeof val === "number")
+            ? String(Math.round(val)).length + 6
+            : String(val ?? "").length;
+          if (displayLen > maxLen) maxLen = displayLen;
         });
-        return { wch: Math.max(maxLen + 5, 12) };
+        // Minimum widths per column type
+        const minWidths = [18, 44, 10, 10, 16, 16];
+        return { wch: Math.max(maxLen + 4, minWidths[ci] ?? 12) };
       });
       worksheet["!cols"] = cols;
 

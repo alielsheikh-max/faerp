@@ -1,3 +1,31 @@
+/* ── Shared date/currency helpers ──────────────────────────────────────── */
+
+/** dd-mm-yyyy HH:mm */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  try {
+    const d = new Date(value);
+    const day   = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year  = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const mins  = String(d.getMinutes()).padStart(2, "0");
+    return `${day}-${month}-${year} ${hours}:${mins}`;
+  } catch { return value; }
+}
+
+/** dd-mm-yyyy */
+export function formatDate(value?: string | Date | null): string {
+  if (!value) return "—";
+  try {
+    const d = typeof value === "string" ? new Date(value) : value;
+    const day   = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year  = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch { return String(value); }
+}
+
 export function formatCurrency(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
@@ -9,20 +37,6 @@ export function formatCurrency(value: number | null | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
-}
-
-export function formatDateTime(value: string | null | undefined) {
-  if (!value) {
-    return "—";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
 }
 
 export function formatMonthLabel(month: string) {

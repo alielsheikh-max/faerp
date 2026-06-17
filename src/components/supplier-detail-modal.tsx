@@ -273,12 +273,9 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
 
   const formatDate = (dt: string) => {
     try {
-      return new Date(dt).toLocaleDateString(locale === "ar" ? "ar-EG" : "en-GB", {
-        year: "numeric", month: "short", day: "numeric",
-      });
-    } catch {
-      return dt;
-    }
+      const d = new Date(dt);
+      return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;
+    } catch { return dt; }
   };
 
   const formatMonth = (m: string) => {

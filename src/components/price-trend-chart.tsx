@@ -385,7 +385,7 @@ export default function PriceTrendChart({ history, itemName }: PriceTrendChartPr
             </strong>
             <span style={{ fontSize: "11px", fontWeight: "700" }}>{hoveredDot.supplier}</span>
             <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-              {hoveredDot.month} · {new Date(hoveredDot.recordedAt).toLocaleDateString()}
+              {hoveredDot.month} · {(() => { const d = new Date(hoveredDot.recordedAt); return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`; })()}
             </span>
           </div>
         )}

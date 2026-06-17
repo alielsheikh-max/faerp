@@ -142,7 +142,7 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
       transLine +
       `Approved Min/Max limits: EGP ${quote.minAllowed.toFixed(2)} - EGP ${quote.maxAllowed.toFixed(2)}\n` +
       `Compliance Status: ${statusText}\n` +
-      `Generated: ${new Date().toLocaleDateString()}\n` +
+      `Generated: ${(() => { const d = new Date(); return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`; })()}\n` +
       `----------------------------------`;
     
     navigator.clipboard.writeText(text);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { formatCurrency, formatMonthLabel, formatDateTime, currentMonth } from "@/lib/format";
+import { formatCurrency, formatMonthLabel, formatDateTime, formatDate, currentMonth } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import * as XLSX from "xlsx-js-style";
 
@@ -151,9 +151,7 @@ function printWindow(html: string, title: string) {
   win.document.close();
 }
 
-function formatDate() {
-  return new Date().toLocaleDateString("en-EG", { day: "2-digit", month: "long", year: "numeric" });
-}
+// formatDate() imported from @/lib/format (dd-mm-yyyy)
 
 function header(title: string, subtitle: string, month: string, stats?: Record<string, string | number>) {
   const statsHtml = stats ? `<div class="stat-row">${Object.entries(stats).map(([lbl, val]) => `<div class="stat-box"><div class="lbl">${lbl}</div><div class="val">${val}</div></div>`).join("")}</div>` : "";
@@ -164,13 +162,13 @@ function header(title: string, subtitle: string, month: string, stats?: Record<s
     </div>
     <div class="report-meta">
       <div class="title">${title}</div>
-      <div class="subtitle">${subtitle} · Generated ${formatDate()}</div>
+      <div class="subtitle">${subtitle} · Generated ${formatDate(new Date())}</div>
     </div>
   </div>${statsHtml}`;
 }
 
 function footer(username: string) {
-  return `<div class="footer"><span>FAERP · Confidential</span><span>Prepared by ${username}</span><span>${formatDate()}</span></div>`;
+  return `<div class="footer"><span>FAERP · Confidential</span><span>Prepared by ${username}</span><span>${formatDate(new Date())}</span></div>`;
 }
 
 // ── Report data fetcher + renderer ────────────────────────────────────────────
