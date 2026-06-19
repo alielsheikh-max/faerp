@@ -37,9 +37,10 @@ export default function CategoryMarkupPanel({ categories, items, month, username
     defaultCategoryId || (categories[0] ? String(categories[0].id) : "")
   );
   const [strategy, setStrategy]       = useState<"min" | "avg" | "max">("avg");
-  const [markupType, setMarkupType]   = useState<"percent" | "amount">("percent");
+  const [markupType, setMarkupType]   = useState<"percent" | "amount" | "divisor">("percent");
   const [markupMin, setMarkupMin]     = useState<string>("8");
   const [markupMax, setMarkupMax]     = useState<string>("14");
+  const [divisor, setDivisor]         = useState<string>("0.77");
   const [result, setResult]           = useState<{ applied: number; skipped: number; errors: string[] } | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [pending, startTransition]    = useTransition();
@@ -56,23 +57,31 @@ export default function CategoryMarkupPanel({ categories, items, month, username
   const handleApply = () => {
     setResult(null);
     setError(null);
-    const min = parseFloat(markupMin);
-    const max = parseFloat(markupMax);
     if (!categoryId) { setError("Please select a category."); return; }
-    if (isNaN(min) || isNaN(max) || min < 0 || max < min) {
-      setError("Max markup must be ≥ min markup, and both must be ≥ 0.");
-      return;
-    }
 
     const fd = new FormData();
-    fd.set("categoryId",  categoryId);
-    fd.set("month",       month);
-    fd.set("strategy",    strategy);
-    fd.set("markupType",  markupType);
-    fd.set("markupMin",   String(min));
-    fd.set("markupMax",   String(max));
-    fd.set("createdBy",   username);
+    fd.set("categoryId", categoryId);
+    fd.set("month",      month);
+    fd.set("strategy",   strategy);
+    fd.set("createdBy",  username);
 
+    if (markupType === "divisor") {
+      const d = parseFloat(divisor);
+      if (isNaN(d) || d <= 0 || d > 1) { setError("Divisor must be between 0.01 and 1.00 (e.g. 0.77)."); return; }
+      fd.set("markupType", "divisor");
+      fd.set("markupMin",  String(d));
+      fd.set("markupMax",  String(d));
+    } else {
+      const min = parseFloat(markupMin);
+      const max = parseFloat(markupMax);
+      if (isNaN(min) || isNaN(max) || min < 0 || max < min) {
+        setError("Max markup must be ≥ min markup, and both must be ≥ 0.");
+        return;
+      }
+      fd.set("markupType", markupType);
+      fd.set("markupMin",  String(min));
+      fd.set("markupMax",  String(max));
+    }
 
     startTransition(async () => {
       const res = await applyCategoryMarkupAction(fd);
@@ -144,7 +153,7 @@ export default function CategoryMarkupPanel({ categories, items, month, username
         <label className="field">
           <span>Markup Mode</span>
           <div style={{ display: "flex", gap: "4px", background: "var(--bg-subtle)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-            {(["percent", "amount"] as const).map(m => (
+            {(["percent", "amount", "divisor"] as const).map(m => (
               <button
                 key={m}
                 type="button"
@@ -152,37 +161,64 @@ export default function CategoryMarkupPanel({ categories, items, month, username
                 className={`button ${markupType === m ? "button-primary" : "button-secondary"}`}
                 style={{ flex: 1, padding: "6px", fontSize: "11px", borderRadius: "6px", cursor: "pointer" }}
               >
-                {m === "percent" ? "% Percent" : "EGP Fixed"}
+                {m === "percent" ? "% Percent" : m === "amount" ? "EGP Fixed" : "÷ Divisor"}
               </button>
             ))}
           </div>
         </label>
 
-        {/* Min markup */}
-        <label className="field">
-          <span>Min Markup {markupType === "percent" ? "%" : "(EGP)"}</span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={markupMin}
-            onChange={e => setMarkupMin(e.target.value)}
-            style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--success)", fontWeight: 700, fontSize: "14px" }}
-          />
-        </label>
-
-        {/* Max markup */}
-        <label className="field">
-          <span>Max Markup {markupType === "percent" ? "%" : "(EGP)"}</span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={markupMax}
-            onChange={e => setMarkupMax(e.target.value)}
-            style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "14px" }}
-          />
-        </label>
+        {/* Divisor inputs */}
+        {markupType === "divisor" ? (
+          <label className="field" style={{ gridColumn: "1 / -1" }}>
+            <span>Divisor Value <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "10px" }}>(sell = cost ÷ divisor, e.g. 0.77 = 30% margin)</span></span>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="number"
+                min="0.01"
+                max="1"
+                step="0.01"
+                value={divisor}
+                onChange={e => setDivisor(e.target.value)}
+                style={{ padding: "9px 12px", borderRadius: "8px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 800, fontSize: "16px", width: "120px" }}
+              />
+              {/* Quick-select tier divisors */}
+              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                {[
+                  { label: "0.77", desc: "T1" },
+                  { label: "0.83", desc: "T2" },
+                  { label: "0.85", desc: "T3" },
+                  { label: "0.89", desc: "T4" },
+                ].map(d => (
+                  <button key={d.label} type="button" onClick={() => setDivisor(d.label)}
+                    className={`button ${divisor === d.label ? "button-primary" : "button-secondary"}`}
+                    style={{ fontSize: "11px", padding: "5px 10px", borderRadius: "6px" }}>
+                    {d.desc} {d.label}
+                  </button>
+                ))}
+              </div>
+              {parseFloat(divisor) > 0 && parseFloat(divisor) <= 1 && (
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  ≈ {((1 / parseFloat(divisor) - 1) * 100).toFixed(1)}% implied margin
+                </span>
+              )}
+            </div>
+          </label>
+        ) : (
+          <>
+            {/* Min markup */}
+            <label className="field">
+              <span>Min Markup {markupType === "percent" ? "%" : "(EGP)"}</span>
+              <input type="number" min="0" step="any" value={markupMin} onChange={e => setMarkupMin(e.target.value)}
+                style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--success)", fontWeight: 700, fontSize: "14px" }} />
+            </label>
+            {/* Max markup */}
+            <label className="field">
+              <span>Max Markup {markupType === "percent" ? "%" : "(EGP)"}</span>
+              <input type="number" min="0" step="any" value={markupMax} onChange={e => setMarkupMax(e.target.value)}
+                style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "14px" }} />
+            </label>
+          </>
+        )}
       </div>
 
       {/* Volume Tier Preview (Permanently visible for info) */}
@@ -224,10 +260,13 @@ export default function CategoryMarkupPanel({ categories, items, month, username
               <div style={{ 
                 display: "flex", 
                 flexDirection: "column", 
-                gap: "8px", 
-                maxHeight: "180px", 
-                overflowY: "auto", 
-                paddingRight: "4px" 
+                gap: "10px", 
+                maxHeight: "340px", 
+                overflowY: "auto",
+                overflowX: "hidden",
+                paddingRight: "4px",
+                scrollbarWidth: "thin",
+                scrollbarColor: "rgba(99,102,241,0.3) transparent",
               }}>
                 {tieredItemsOfCategory.map((item) => {
                   const t1Max  = item.tier1_max ?? 100;
@@ -249,23 +288,32 @@ export default function CategoryMarkupPanel({ categories, items, month, username
 
                   return (
                     <div key={item.id} style={{
-                      padding: "8px 10px",
+                      padding: "12px 14px",
                       background: "var(--bg-elevated)",
                       border: "1px solid var(--border-light)",
-                      borderRadius: "6px",
+                      borderRadius: "8px",
                       display: "flex",
                       flexDirection: "column",
-                      gap: "4px"
+                      gap: "8px",
                     }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>{item.name}</span>
-                        <span className="badge badge-strong" style={{ fontSize: "9px" }}>{item.unit}</span>
+                      {/* Item header */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.3 }}>{item.name}</span>
+                        <span className="badge badge-strong" style={{ fontSize: "9px", flexShrink: 0, marginInlineStart: "8px" }}>{item.unit}</span>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${has4 ? 4 : 3}, 1fr)`, gap: "6px", fontSize: "10px", color: "var(--text-secondary)" }}>
+                      {/* Tier grid */}
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${has4 ? 4 : 3}, 1fr)`, gap: "6px" }}>
                         {tierCells.map((tc, idx) => (
-                          <div key={idx} style={{ background: "var(--bg-subtle)", padding: "4px 6px", borderRadius: "4px", border: "1px solid var(--border-light)", textAlign: "center" }}>
-                            <div style={{ color: "var(--text-muted)", fontSize: "8.5px" }}>{tc.label}</div>
-                            <div style={{ fontWeight: 700, color: tc.color }}>{tc.disc}% {locale === "ar" ? "خصم" : "discount"}</div>
+                          <div key={idx} style={{
+                            background: "var(--bg-subtle)",
+                            padding: "6px 8px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border-light)",
+                            borderLeft: `3px solid ${tc.color}`,
+                            textAlign: "center",
+                          }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "10px", marginBottom: "3px" }}>{tc.label}</div>
+                            <div style={{ fontWeight: 800, color: tc.color, fontSize: "11px" }}>{tc.disc}% {locale === "ar" ? "خصم" : "disc"}</div>
                           </div>
                         ))}
                       </div>
@@ -292,9 +340,11 @@ export default function CategoryMarkupPanel({ categories, items, month, username
           <span>·</span>
           <span>Strategy: <strong>{strategy.toUpperCase()}</strong></span>
           <span>·</span>
-          <span>Markup: <strong style={{ color: "var(--success)" }}>{markupMin}{markupType === "percent" ? "%" : " EGP"}</strong>
-            {" → "}
-            <strong style={{ color: "var(--primary)" }}>{markupMax}{markupType === "percent" ? "%" : " EGP"}</strong>
+          <span>Markup: {markupType === "divisor"
+            ? <strong style={{ color: "var(--primary)" }}>÷ {divisor}</strong>
+            : <><strong style={{ color: "var(--success)" }}>{markupMin}{markupType === "percent" ? "%" : " EGP"}</strong>
+              {" → "}
+              <strong style={{ color: "var(--primary)" }}>{markupMax}{markupType === "percent" ? "%" : " EGP"}</strong></>}
           </span>
         </div>
       )}

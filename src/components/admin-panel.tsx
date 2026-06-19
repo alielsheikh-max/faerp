@@ -14,7 +14,12 @@ import {
   updateItemAction,
   updateSupplierAction,
   updateUserAction,
-  purgeDataAction
+  purgeDataAction,
+  bulkActivateItemsAction,
+  bulkDeactivateItemsAction,
+  bulkMoveCategoryAction,
+  bulkDeleteItemsAction,
+  bulkDeleteCategoriesAction,
 } from "@/app/actions/admin";
 
 type User = {
@@ -50,6 +55,7 @@ type Item = {
   category_id: number;
   category_name: string;
   quote_count: number;
+  pending_request_count?: number;
 };
 
 type AdminPanelProps = {
@@ -67,6 +73,24 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   const [supplierQuery, setSupplierQuery] = useState("");
   const [itemQuery, setItemQuery] = useState("");
   const [itemCategoryFilter, setItemCategoryFilter] = useState("");
+  // T2: Bulk edit state
+  const [bulkItemMode, setBulkItemMode] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
+  const [bulkItemAction, setBulkItemAction] = useState<"activate"|"deactivate"|"move"|"delete">("activate");
+  const [bulkMoveCatId, setBulkMoveCatId] = useState("");
+  const [bulkCatMode, setBulkCatMode] = useState(false);
+  const [selectedCatIds, setSelectedCatIds] = useState<Set<number>>(new Set());
+
+  const toggleItem = (id: number) => setSelectedItemIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const toggleCat = (id: number) => setSelectedCatIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const [confirmDeleteId, setConfirmDeleteId] = useState<{
     type: "user" | "category" | "supplier" | "item";
     id: number;
@@ -257,6 +281,72 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   if (showOnly === "items") {
     return (
       <div className="page-stack">
+        {/* T2: Floating Bulk-Action Bar for Items */}
+        {bulkItemMode && selectedItemIds.size > 0 && (
+          <div style={{
+            position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+            zIndex: 2000, background: "var(--bg-surface)", border: "1.5px solid var(--primary)",
+            borderRadius: "14px", boxShadow: "var(--shadow-xl)",
+            padding: "10px 18px", display: "flex", gap: "10px", alignItems: "center",
+            animation: "slideUp 0.2s ease-out", minWidth: "340px",
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--primary)", whiteSpace: "nowrap" }}>
+              {selectedItemIds.size} selected
+            </span>
+            <select value={bulkItemAction} onChange={e => setBulkItemAction(e.target.value as any)}
+              style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
+              <option value="activate">Activate All</option>
+              <option value="deactivate">Deactivate All</option>
+              <option value="move">Move to Category</option>
+              <option value="delete">Delete Selected</option>
+            </select>
+            {bulkItemAction === "move" && (
+              <select value={bulkMoveCatId} onChange={e => setBulkMoveCatId(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", fontSize: "12px", color: "var(--text-primary)" }}>
+                <option value="">Select category…</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <form action={
+              bulkItemAction === "activate" ? bulkActivateItemsAction
+              : bulkItemAction === "deactivate" ? bulkDeactivateItemsAction
+              : bulkItemAction === "move" ? bulkMoveCategoryAction
+              : bulkDeleteItemsAction
+            }>
+              {[...selectedItemIds].map(id => <input key={id} type="hidden" name="itemId" value={id} />)}
+              {bulkItemAction === "move" && <input type="hidden" name="categoryId" value={bulkMoveCatId} />}
+              <button type="submit"
+                disabled={bulkItemAction === "move" && !bulkMoveCatId}
+                style={{ padding: "7px 16px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 800,
+                  background: bulkItemAction === "delete" ? "var(--danger)" : "var(--primary)", color: "#fff" }}>
+                Apply
+              </button>
+            </form>
+            <button type="button" onClick={() => { setBulkItemMode(false); setSelectedItemIds(new Set()); }}
+              style={{ padding: "7px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", cursor: "pointer", fontSize: "11px", color: "var(--text-muted)" }}>✕ Cancel</button>
+          </div>
+        )}
+        {/* T2: Floating Bulk-Action Bar for Categories */}
+        {bulkCatMode && selectedCatIds.size > 0 && (
+          <div style={{
+            position: "fixed", bottom: "24px", right: "40px",
+            zIndex: 2000, background: "var(--bg-surface)", border: "1.5px solid var(--danger)",
+            borderRadius: "14px", boxShadow: "var(--shadow-xl)",
+            padding: "10px 18px", display: "flex", gap: "10px", alignItems: "center",
+            animation: "slideUp 0.2s ease-out",
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--danger)", whiteSpace: "nowrap" }}>
+              {selectedCatIds.size} categories selected
+            </span>
+            <form action={bulkDeleteCategoriesAction}>
+              {[...selectedCatIds].map(id => <input key={id} type="hidden" name="categoryId" value={id} />)}
+              <button type="submit" style={{ padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 800, background: "var(--danger)", color: "#fff" }}>Delete Selected</button>
+            </form>
+            <button type="button" onClick={() => { setBulkCatMode(false); setSelectedCatIds(new Set()); }}
+              style={{ padding: "7px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", cursor: "pointer", fontSize: "11px", color: "var(--text-muted)" }}>✕ Cancel</button>
+          </div>
+        )}
+
         <section className="admin-section-grid">
           {/* Categories Panel */}
           <article className="panel">
@@ -267,13 +357,17 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               </div>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 {isReadOnly && (
-                  <button
-                    type="button"
-                    onClick={handlePrintCatalog}
-                    className="button button-secondary"
-                    style={{ padding: "6px 12px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", height: "30px" }}
-                  >
+                  <button type="button" onClick={handlePrintCatalog} className="button button-secondary"
+                    style={{ padding: "6px 12px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", height: "30px" }}>
                     🖨️ Print Catalog
+                  </button>
+                )}
+                {!isReadOnly && (
+                  <button type="button"
+                    onClick={() => { setBulkCatMode(b => !b); setSelectedCatIds(new Set()); }}
+                    className={`button ${bulkCatMode ? "button-danger" : "button-secondary"}`}
+                    style={{ padding: "6px 12px", fontSize: "11px", height: "30px" }}>
+                    {bulkCatMode ? "✕ Cancel Bulk" : "☑ Bulk Select"}
                   </button>
                 )}
                 <span className="badge badge-strong">{categories.length} groups</span>
@@ -315,32 +409,27 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 <p className="muted" style={{ padding: "12px", textAlign: "center" }}>No categories match search.</p>
               ) : isReadOnly ? (
                 filteredCategories.map((category) => (
-                  <div
-                    key={category.id}
-                    className="inline-editor"
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "12px 16px",
-                      backgroundColor: "var(--bg-subtle)",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border-light)",
-                      marginBottom: "8px"
-                    }}
-                  >
+                  <div key={category.id} className="inline-editor"
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "12px 16px", backgroundColor: "var(--bg-subtle)",
+                      borderRadius: "8px", border: "1px solid var(--border-light)", marginBottom: "8px" }}>
                     <div>
                       <div style={{ fontWeight: "700", color: "var(--text-primary)" }}>{category.name}</div>
                       <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>{category.description || "—"}</div>
                     </div>
-                    <span className="badge badge-strong" style={{ fontSize: "11px" }}>
-                      {category.item_count} items
-                    </span>
+                    <span className="badge badge-strong" style={{ fontSize: "11px" }}>{category.item_count} items</span>
                   </div>
                 ))
               ) : (
                 filteredCategories.map((category) => (
-                  <form key={category.id} action={updateCategoryAction} className="inline-editor">
+                  <form key={category.id} action={updateCategoryAction} className="inline-editor"
+                    style={{ position: "relative" }}>
+                    {/* T2: Bulk checkbox */}
+                    {bulkCatMode && (
+                      <input type="checkbox" checked={selectedCatIds.has(category.id)}
+                        onChange={() => toggleCat(category.id)}
+                        style={{ position: "absolute", top: "14px", left: "-22px", width: "16px", height: "16px", accentColor: "var(--danger)", cursor: "pointer" }} />
+                    )}
                     <input type="hidden" name="id" value={category.id} />
                     <label className="field">
                       <span>Name</span>
@@ -404,13 +493,17 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               </div>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 {isReadOnly && (
-                  <button
-                    type="button"
-                    onClick={handlePrintCatalog}
-                    className="button button-secondary"
-                    style={{ padding: "6px 12px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", height: "30px" }}
-                  >
+                  <button type="button" onClick={handlePrintCatalog} className="button button-secondary"
+                    style={{ padding: "6px 12px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", height: "30px" }}>
                     🖨️ Print Catalog
+                  </button>
+                )}
+                {!isReadOnly && (
+                  <button type="button"
+                    onClick={() => { setBulkItemMode(b => !b); setSelectedItemIds(new Set()); }}
+                    className={`button ${bulkItemMode ? "button-danger" : "button-secondary"}`}
+                    style={{ padding: "6px 12px", fontSize: "11px", height: "30px" }}>
+                    {bulkItemMode ? "✕ Cancel Bulk" : "☑ Bulk Edit"}
                   </button>
                 )}
                 <span className="badge badge-strong">{items.length} items</span>
@@ -506,6 +599,9 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         {item.active !== 1 && (
                           <span className="badge badge-danger" style={{ fontSize: "9px", padding: "1px 6px" }}>Inactive</span>
                         )}
+                        {(item.pending_request_count ?? 0) > 0 && (
+                          <span className="badge badge-warning" style={{ fontSize: "9px", padding: "1px 6px" }}>⏳ {item.pending_request_count} Pending</span>
+                        )}
                       </div>
                       <div style={{ fontWeight: "800", fontSize: "14px", color: "var(--text-primary)", marginTop: "4px" }}>
                         {item.name}
@@ -528,7 +624,16 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 ))
               ) : (
                 filteredItems.map((item) => (
-                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide">
+                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide"
+                    style={{ position: "relative" }}>
+                    {/* T2: Bulk select checkbox */}
+                    {bulkItemMode && (
+                      <div style={{ display: "flex", alignItems: "center", marginRight: "4px" }}>
+                        <input type="checkbox" checked={selectedItemIds.has(item.id)}
+                          onChange={() => toggleItem(item.id)}
+                          style={{ width: "16px", height: "16px", accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
+                      </div>
+                    )}
                     <input type="hidden" name="id" value={item.id} />
                     <label className="field">
                       <span>Category</span>
@@ -540,6 +645,9 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         ))}
                       </select>
                     </label>
+                    {(item.pending_request_count ?? 0) > 0 && (
+                      <span className="badge badge-warning" style={{ fontSize: "10px", alignSelf: "center", marginTop: "18px" }}>⏳ {item.pending_request_count} Pending</span>
+                    )}
                     <label className="field" style={{ minWidth: "140px" }}>
                       <span>Name</span>
                       <input name="name" defaultValue={item.name} required />

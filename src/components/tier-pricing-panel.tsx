@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { saveItemTierConfigAction, deleteItemTierConfigAction } from "@/app/actions/pricing";
+import { ItemCombobox } from "./item-combobox";
 import type { ItemTierConfig } from "@/lib/db";
 
 type Props = {
@@ -14,13 +15,13 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
   const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [isTiered, setIsTiered] = useState(true);
   const [tier1Max, setTier1Max] = useState("100");
-  const [tier1Discount, setTier1Discount] = useState("0");
+  const [tier1Discount, setTier1Discount] = useState("0.77");
   const [tier2Max, setTier2Max] = useState("200");
-  const [tier2Discount, setTier2Discount] = useState("5");
-  const [tier3Max, setTier3Max] = useState("300");
-  const [tier3Discount, setTier3Discount] = useState("10");
+  const [tier2Discount, setTier2Discount] = useState("0.83");
+  const [tier3Max, setTier3Max] = useState("800");
+  const [tier3Discount, setTier3Discount] = useState("0.85");
   const [tier4Max, setTier4Max] = useState("0");
-  const [tier4Discount, setTier4Discount] = useState("0");
+  const [tier4Discount, setTier4Discount] = useState("0.89");
   const [useTier4, setUseTier4] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
@@ -35,28 +36,32 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
       setTier1Discount(String(existing.tier1_discount));
       setTier2Max(String(existing.tier2_max));
       setTier2Discount(String(existing.tier2_discount));
-      setTier3Max(String(existing.tier3_max ?? 300));
+      setTier3Max(String(existing.tier3_max ?? 800));
       setTier3Discount(String(existing.tier3_discount));
       const has4 = (existing.tier4_max ?? 0) > 0 || (existing.tier4_discount ?? 0) > 0;
       setUseTier4(has4);
       setTier4Max(String(existing.tier4_max ?? 0));
-      setTier4Discount(String(existing.tier4_discount ?? 0));
+      setTier4Discount(String(existing.tier4_discount ?? 0.89));
     } else {
       setIsTiered(true);
       setTier1Max("100");
-      setTier1Discount("0");
+      setTier1Discount("0.77");
       setTier2Max("200");
-      setTier2Discount("5");
-      setTier3Max("300");
-      setTier3Discount("10");
+      setTier2Discount("0.83");
+      setTier3Max("800");
+      setTier3Discount("0.85");
       setUseTier4(false);
       setTier4Max("0");
-      setTier4Discount("0");
+      setTier4Discount("0.89");
     }
+    // T22: scroll the form into view after selecting item to edit
+    setTimeout(() => {
+      document.getElementById("tier-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div id="tier-form-top" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* ── Add / Update Tier Form ─────────────────────────────────────────── */}
       <div style={{
         padding: "20px 24px",
@@ -70,7 +75,7 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
             Configure Volume Pricing Tiers
           </h3>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-            Set quantity ranges and percentage discount rates for tiered items. Up to 4 tiers supported. Tier 4 is optional.
+            Set quantity ranges and divisors for tiered items. Divisor formula: <strong>Sell Price = Buy Avg ÷ Divisor + Transport</strong>. Example: 0.77 = 23% margin. Up to 4 tiers supported.
           </p>
         </div>
 
@@ -79,20 +84,18 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
             {/* Item selector */}
             <label className="field">
               <span>Select Product Item</span>
-              <select
-                name="itemId"
+              {/* Hidden input preserves name="itemId" for server form submission */}
+              <input type="hidden" name="itemId" value={selectedItemId} />
+              <ItemCombobox
+                items={items.map((i) => ({
+                  id: i.id,
+                  label: i.name,
+                  category: i.category_name,
+                }))}
                 value={selectedItemId}
-                onChange={(e) => handleItemSelect(e.target.value)}
-                required
-                style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "13px" }}
-              >
-                <option value="">— Select an item —</option>
-                {items.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    [{i.category_name}] {i.name}
-                  </option>
-                ))}
-              </select>
+                onChange={handleItemSelect}
+                placeholder="— Select an item —"
+              />
             </label>
 
             {/* Is Tiered Toggle */}
@@ -119,9 +122,9 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
             }}>
               {/* Tiers grid: 2 cols per tier row */}
               {[
-                { label: "Tier 1", maxName: "tier1Max", maxVal: tier1Max, setMax: setTier1Max, discName: "tier1Discount", discVal: tier1Discount, setDisc: setTier1Discount, color: "var(--success)", note: "Range: 0 → N" },
-                { label: "Tier 2", maxName: "tier2Max", maxVal: tier2Max, setMax: setTier2Max, discName: "tier2Discount", discVal: tier2Discount, setDisc: setTier2Discount, color: "var(--primary)", note: "Range: N+1 → M" },
-                { label: "Tier 3", maxName: "tier3Max", maxVal: tier3Max, setMax: setTier3Max, discName: "tier3Discount", discVal: tier3Discount, setDisc: setTier3Discount, color: "var(--warning)", note: "Range: M+1 → P" },
+                { label: "Tier 1", maxName: "tier1Max", maxVal: tier1Max, setMax: setTier1Max, discName: "tier1Discount", discVal: tier1Discount, setDisc: setTier1Discount, color: "var(--success)", note: "1 → N units" },
+                { label: "Tier 2", maxName: "tier2Max", maxVal: tier2Max, setMax: setTier2Max, discName: "tier2Discount", discVal: tier2Discount, setDisc: setTier2Discount, color: "var(--primary)", note: "N+1 → M units" },
+                { label: "Tier 3", maxName: "tier3Max", maxVal: tier3Max, setMax: setTier3Max, discName: "tier3Discount", discVal: tier3Discount, setDisc: setTier3Discount, color: "var(--warning)", note: "M+1 → P units" },
               ].map((tier) => (
                 <div key={tier.label} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label className="field">
@@ -136,13 +139,13 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
                     />
                   </label>
                   <label className="field">
-                    <span>{tier.label} Discount %</span>
+                    <span>{tier.label} Divisor (÷) <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "10px" }}>e.g. 0.77</span></span>
                     <input
                       type="number"
                       name={tier.discName}
-                      min="0"
-                      max="100"
-                      step="0.5"
+                      min="0.01"
+                      max="1"
+                      step="0.001"
                       value={tier.discVal}
                       onChange={(e) => tier.setDisc(e.target.value)}
                       required
@@ -177,13 +180,13 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
                     />
                   </label>
                   <label className="field">
-                    <span>Tier 4 Discount %</span>
+                    <span>Tier 4 Divisor (÷) <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "10px" }}>e.g. 0.89</span></span>
                     <input
                       type="number"
                       name="tier4Discount"
-                      min="0"
-                      max="100"
-                      step="0.5"
+                      min="0.01"
+                      max="1"
+                      step="0.001"
                       value={tier4Discount}
                       onChange={(e) => setTier4Discount(e.target.value)}
                       style={{ color: "var(--danger)" }}
@@ -262,21 +265,21 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
                       <td><span className="badge">{t.category_name}</span></td>
                       <td style={{ textAlign: "center" }}>
                         1–{t.tier1_max}<br />
-                        <strong style={{ color: "var(--success)" }}>{t.tier1_discount}%</strong>
+                        <strong style={{ color: "var(--success)" }}>÷{t.tier1_discount}</strong>
                       </td>
                       <td style={{ textAlign: "center" }}>
                         {t.tier1_max + 1}–{t.tier2_max}<br />
-                        <strong style={{ color: "var(--primary)" }}>{t.tier2_discount}%</strong>
+                        <strong style={{ color: "var(--primary)" }}>÷{t.tier2_discount}</strong>
                       </td>
                       <td style={{ textAlign: "center" }}>
                         {t.tier2_max + 1}–{t.tier3_max ?? "∞"}<br />
-                        <strong style={{ color: "var(--warning)" }}>{t.tier3_discount}%</strong>
+                        <strong style={{ color: "var(--warning)" }}>÷{t.tier3_discount}</strong>
                       </td>
                       <td style={{ textAlign: "center", color: has4 ? "inherit" : "var(--text-muted)" }}>
                         {has4 ? (
                           <>
-                            {(t.tier3_max ?? 300) + 1}{t.tier4_max ? `–${t.tier4_max}` : "+"}<br />
-                            <strong style={{ color: "var(--danger)" }}>{t.tier4_discount}%</strong>
+                            {(t.tier3_max ?? 800) + 1}{t.tier4_max ? `–${t.tier4_max}` : "+"}<br />
+                            <strong style={{ color: "var(--danger)" }}>÷{t.tier4_discount}</strong>
                           </>
                         ) : (
                           <span style={{ fontSize: "10px" }}>—</span>

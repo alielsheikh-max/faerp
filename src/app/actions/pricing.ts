@@ -15,14 +15,16 @@ export async function createBatchPriceEntries(formData: FormData) {
     redirect(`/dashboard/purchasing?error=missing`);
   }
 
-  const entries: { supplierId: number; price: number; notes: string }[] = [];
+  const entries: { supplierId: number; price: number; notes: string; actualTransport?: number }[] = [];
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("price_")) {
       const supplierId = Number(key.replace("price_", ""));
       const price = asNumber(value);
       if (!isNaN(supplierId) && supplierId > 0 && price !== null && price > 0) {
         const notes = asString(formData.get(`notes_${supplierId}`));
-        entries.push({ supplierId, price, notes });
+        const rawTransport = asNumber(formData.get(`actual_transport_${supplierId}`));
+        const actualTransport = rawTransport != null && rawTransport >= 0 ? rawTransport : undefined;
+        entries.push({ supplierId, price, notes, actualTransport });
       }
     }
   }
@@ -40,6 +42,7 @@ export async function createBatchPriceEntries(formData: FormData) {
       collectedBy,
       collectedRole,
       notes: entry.notes,
+      actualTransport: entry.actualTransport,
     });
   }
 
@@ -101,14 +104,16 @@ export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{
 
     if (itemId === null || !month) return { ok: false, error: "Missing item or month." };
 
-    const entries: { supplierId: number; price: number; notes: string }[] = [];
+    const entries: { supplierId: number; price: number; notes: string; actualTransport?: number }[] = [];
     for (const [key, value] of formData.entries()) {
       if (key.startsWith("price_")) {
         const supplierId = Number(key.replace("price_", ""));
         const price = asNumber(value);
         if (!isNaN(supplierId) && supplierId > 0 && price !== null && price > 0) {
           const notes = asString(formData.get(`notes_${supplierId}`));
-          entries.push({ supplierId, price, notes });
+          const rawTransport = asNumber(formData.get(`actual_transport_${supplierId}`));
+          const actualTransport = rawTransport != null && rawTransport >= 0 ? rawTransport : undefined;
+          entries.push({ supplierId, price, notes, actualTransport });
         }
       }
     }
@@ -124,6 +129,7 @@ export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{
         collectedBy,
         collectedRole,
         notes: entry.notes,
+        actualTransport: entry.actualTransport,
       });
     }
 
@@ -170,6 +176,13 @@ export async function publishSellingPrice(formData: FormData) {
   const createdBy = asString(formData.get("createdBy")) || "SC Manager";
   const changeReason = asString(formData.get("changeReason")) || undefined;
   const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
+  // T5: SC transport override for this month
+  const transportOverrideEnabled = asString(formData.get("transportOverrideEnabled")) === "1";
+  const transportOverrideRaw = asNumber(formData.get("transportOverride"));
+  const transportOverride = transportOverrideEnabled && transportOverrideRaw !== null ? transportOverrideRaw : null;
+  // T17: dual note fields
+  const internalNote = asString(formData.get("internalNote")) || undefined;
+  const saNote = asString(formData.get("saNote")) || undefined;
   const redirectTo =
     asString(formData.get("redirectTo")) ||
     `/dashboard?month=${month}&itemId=${itemId}&saved=1`;
@@ -202,6 +215,9 @@ export async function publishSellingPrice(formData: FormData) {
       createdBy,
       changeReason,
       otherExpenses,
+      transportOverride,
+      internalNote,
+      saNote,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
@@ -336,7 +352,7 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     const month       = asString(formData.get("month"));
     const strategy    = (asString(formData.get("strategy")) || "avg") as "min" | "avg" | "max";
     const markupTypeR = asString(formData.get("markupType")) || "percent";
-    const markupType  = (markupTypeR === "amount" ? "amount" : "percent") as "percent" | "amount";
+    const markupType  = (["percent","amount","divisor"].includes(markupTypeR) ? markupTypeR : "percent") as "percent" | "amount" | "divisor";
     const markupMin   = asNumber(formData.get("markupMin")) ?? 8;
     const markupMax   = asNumber(formData.get("markupMax")) ?? 14;
     const createdBy   = asString(formData.get("createdBy")) || "SC Manager";
@@ -366,13 +382,18 @@ export async function submitPriceChangeRequestAction(formData: FormData): Promis
   ok: boolean; error?: string; directSaved?: boolean;
 }> {
   try {
-    const itemId      = asNumber(formData.get("itemId"));
-    const supplierId  = asNumber(formData.get("supplierId"));
-    const month       = asString(formData.get("month"));
-    const oldPrice    = asNumber(formData.get("oldPrice"));
-    const newPrice    = asNumber(formData.get("newPrice"));
-    const reason      = asString(formData.get("reason"));
-    const requestedBy = asString(formData.get("requestedBy")) || "WH Purchasing";
+    const itemId        = asNumber(formData.get("itemId"));
+    const supplierId    = asNumber(formData.get("supplierId"));
+    const month         = asString(formData.get("month"));
+    const oldPrice      = asNumber(formData.get("oldPrice"));
+    const newPrice      = asNumber(formData.get("newPrice"));
+    const reason        = asString(formData.get("reason"));
+    const requestedBy   = asString(formData.get("requestedBy")) || "WH Purchasing";
+    // optional transport revision
+    const oldTransportRaw = formData.get("oldTransport");
+    const newTransportRaw = formData.get("newTransport");
+    const oldTransport  = oldTransportRaw ? asNumber(oldTransportRaw) : null;
+    const newTransport  = newTransportRaw ? asNumber(newTransportRaw) : null;
 
     if (!itemId || !supplierId || !month || oldPrice === null || newPrice === null || !reason.trim()) {
       return { ok: false, error: "All fields are required including reason." };
@@ -401,7 +422,7 @@ export async function submitPriceChangeRequestAction(formData: FormData): Promis
       return { ok: true, directSaved: true };
     }
 
-    submitPriceChangeRequest({ itemId, supplierId, month, oldPrice, newPrice, reason, requestedBy });
+    submitPriceChangeRequest({ itemId, supplierId, month, oldPrice, newPrice, oldTransport, newTransport, reason, requestedBy });
 
     revalidatePath("/dashboard/purchasing");
     revalidatePath("/dashboard");
@@ -520,10 +541,10 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
   }
 }
 
-import { setMonthlyTierPricing, upsertItemTier, deleteItemTier } from "@/lib/db";
+import { setMonthlyTierPricing, setScTransportOverride, upsertItemTier, deleteItemTier } from "@/lib/db";
 
 export async function toggleMonthlyTierPricingAction(formData: FormData): Promise<void> {
-  requireRole(["SC"]);
+  requireRole(["AD"]);
   const month = asString(formData.get("month"));
   const enabled = asString(formData.get("tierPricingEnabled")) === "on";
 
@@ -533,8 +554,19 @@ export async function toggleMonthlyTierPricingAction(formData: FormData): Promis
   revalidatePath("/dashboard/sales");
 }
 
-export async function saveItemTierConfigAction(formData: FormData): Promise<void> {
+// T26: Admin enables/disables SC's ability to override transport per item/month
+export async function toggleScTransportOverrideAction(formData: FormData): Promise<void> {
   requireRole(["AD"]);
+  const month   = asString(formData.get("month"));
+  const enabled = asString(formData.get("scTransportOverrideEnabled")) === "on";
+  if (!month) return;
+  setScTransportOverride(month, enabled);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/pricing");
+}
+
+export async function saveItemTierConfigAction(formData: FormData): Promise<void> {
+  requireRole(["AD", "SC"]);
   const itemId       = asNumber(formData.get("itemId"));
   const isTiered     = asString(formData.get("isTiered")) === "on" ? 1 : 0;
   const tier1Max     = asNumber(formData.get("tier1Max"))     ?? 100;
@@ -565,7 +597,7 @@ export async function saveItemTierConfigAction(formData: FormData): Promise<void
 }
 
 export async function deleteItemTierConfigAction(formData: FormData): Promise<void> {
-  requireRole(["AD"]);
+  requireRole(["AD", "SC"]);
   const itemId = asNumber(formData.get("itemId"));
   if (itemId !== null) {
     deleteItemTier(itemId);

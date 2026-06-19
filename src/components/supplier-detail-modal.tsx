@@ -751,43 +751,95 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
                   </div>
                 </div>
 
-                {/* Quoted Products Grid */}
-                {!loading && uniqueItems.length > 0 && (
-                  <div style={{ backgroundColor: "var(--bg-subtle)", borderRadius: "12px", padding: "18px", border: "1px solid var(--border-light)" }}>
-                    <p style={{ margin: "0 0 14px", fontSize: "11px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-muted)" }}>
-                      {locale === "ar"
-                        ? `المنتجات المُسعَّرة معه (${uniqueItems.length})`
-                        : `Products Quoted with This Supplier (${uniqueItems.length})`}
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                      {uniqueItems.map((item) => {
-                        const iq = quotes.filter((q) => q.item_name === item);
-                        const last = [...iq].sort((a, b) => b.month.localeCompare(a.month))[0];
-                        return (
-                          <div key={item} style={{
-                            padding: "9px 14px", borderRadius: "10px",
-                            backgroundColor: "var(--bg-surface)",
-                            border: "1px solid var(--border-medium)",
-                            minWidth: "160px",
-                          }}>
-                            <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-primary)", lineHeight: "1.4" }}>{item}</div>
-                            <div style={{ display: "flex", gap: "10px", marginTop: "5px", flexWrap: "wrap" }}>
-                              <span style={{ fontSize: "11px", color: "var(--primary)", fontWeight: "600" }}>
-                                EGP {last.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {/* T14: 3-month price trend grid */}
+                {!loading && uniqueItems.length > 0 && (() => {
+                  // Collect the last 3 unique months across all quotes
+                  const allMonths = Array.from(new Set(quotes.map(q => q.month))).sort().slice(-3);
+                  return (
+                    <div style={{ backgroundColor: "var(--bg-subtle)", borderRadius: "12px", padding: "18px", border: "1px solid var(--border-light)" }}>
+                      <p style={{ margin: "0 0 14px", fontSize: "11px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-muted)" }}>
+                        {locale === "ar"
+                          ? `المنتجات المُسعَّرة — آخر ${allMonths.length} أشهر (${uniqueItems.length})`
+                          : `Products Quoted — Last ${allMonths.length} Months (${uniqueItems.length})`}
+                      </p>
+                      {/* Header row */}
+                      <div style={{ display: "grid", gridTemplateColumns: `2fr repeat(${allMonths.length}, 1fr) 80px 64px`, gap: "6px", fontSize: "10px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", padding: "0 6px" }}>
+                        <span>{locale === "ar" ? "المنتج" : "Item"}</span>
+                        {allMonths.map(m => {
+                          const [y, mo] = m.split("-");
+                          const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                          return <span key={m} style={{ textAlign: "center" }}>{names[parseInt(mo)-1]} {y.slice(2)}</span>;
+                        })}
+                        <span style={{ textAlign: "center" }}>Trend</span>
+                        <span style={{ textAlign: "center" }}>Chart</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        {uniqueItems.map(item => {
+                          const iq = quotes.filter(q => q.item_name === item);
+                          // Price per month (avg if multiple)
+                          const priceByMonth: Record<string, number> = {};
+                          for (const m of allMonths) {
+                            const entries = iq.filter(q => q.month === m);
+                            if (entries.length > 0) {
+                              priceByMonth[m] = entries.reduce((s, e) => s + e.price, 0) / entries.length;
+                            }
+                          }
+                          const prices = allMonths.map(m => priceByMonth[m] ?? null);
+                          const validPrices = prices.filter((p): p is number => p !== null);
+                          const first = validPrices[0] ?? null;
+                          const last = validPrices[validPrices.length - 1] ?? null;
+                          const trendPct = first && last && first > 0 ? ((last - first) / first) * 100 : null;
+                          const trendColor = trendPct === null ? "var(--text-muted)" : trendPct > 1 ? "var(--danger)" : trendPct < -1 ? "var(--success)" : "var(--text-muted)";
+                          const trendIcon = trendPct === null ? "—" : trendPct > 1 ? "↑" : trendPct < -1 ? "↓" : "→";
+
+                          // Sparkline SVG
+                          const svgW = 52, svgH = 22;
+                          const sparkPrices = validPrices;
+                          const minP = Math.min(...sparkPrices), maxP = Math.max(...sparkPrices);
+                          const range = maxP - minP || 1;
+                          const pts = sparkPrices.map((p, i) => {
+                            const x = sparkPrices.length === 1 ? svgW / 2 : (i / (sparkPrices.length - 1)) * svgW;
+                            const y = svgH - ((p - minP) / range) * (svgH - 4) - 2;
+                            return `${x},${y}`;
+                          }).join(" ");
+
+                          return (
+                            <div key={item} style={{
+                              display: "grid", gridTemplateColumns: `2fr repeat(${allMonths.length}, 1fr) 80px 64px`,
+                              gap: "6px", alignItems: "center",
+                              padding: "7px 6px", borderRadius: "8px", fontSize: "12px",
+                              background: "var(--bg-surface)", border: "1px solid var(--border)"
+                            }}>
+                              <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "11.5px" }}>{item}</span>
+                              {allMonths.map(m => (
+                                <span key={m} style={{ textAlign: "center", fontWeight: 600, color: priceByMonth[m] ? "var(--text-primary)" : "var(--text-muted)", fontSize: "11px" }}>
+                                  {priceByMonth[m] ? `${priceByMonth[m].toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                                </span>
+                              ))}
+                              <span style={{ textAlign: "center", fontWeight: 800, color: trendColor, fontSize: "12px" }}>
+                                {trendIcon}{trendPct !== null ? ` ${Math.abs(trendPct).toFixed(1)}%` : ""}
                               </span>
-                              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                                {formatMonth(last.month)}
-                              </span>
-                              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                                {iq.length} {locale === "ar" ? "مرة" : "entries"}
+                              <span style={{ display: "flex", justifyContent: "center" }}>
+                                {sparkPrices.length > 1 ? (
+                                  <svg width={svgW} height={svgH} style={{ overflow: "visible" }}>
+                                    <polyline
+                                      points={pts}
+                                      fill="none"
+                                      stroke={trendPct !== null && trendPct > 1 ? "#ef4444" : trendPct !== null && trendPct < -1 ? "#10b981" : "#6366f1"}
+                                      strokeWidth="1.8"
+                                      strokeLinejoin="round"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                ) : <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>·</span>}
                               </span>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {!loading && uniqueItems.length === 0 && (
                   <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)", backgroundColor: "var(--bg-subtle)", borderRadius: "12px", border: "1px solid var(--border-light)" }}>

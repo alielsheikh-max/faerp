@@ -22,6 +22,11 @@ export const translations = {
   "nav.navigation":         { en: "Navigation",         ar: "التنقل" },
   "nav.suppliers":          { en: "Suppliers",          ar: "الموردين" },
   "nav.items":              { en: "Items & Categories", ar: "المنتجات والأقسام" },
+  "nav.notifications":      { en: "Notifications",      ar: "الإشعارات" },
+  "nav.pricing":            { en: "Pricing Engine",        ar: "محرك التسعير" },
+  "nav.categoryPricing":    { en: "Category Pricing",      ar: "تسعير الفئات" },
+  "nav.itemPricing":        { en: "Item Pricing Engine",   ar: "تسعير المنتجات" },
+  "nav.referenceData":      { en: "Reference Data",        ar: "البيانات المرجعية" },
 
   // ── Role labels ───────────────────────────────────────────────────────────
   "role.activeSession":     { en: "Active Session",     ar: "جلسة نشطة" },

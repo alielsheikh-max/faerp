@@ -850,44 +850,91 @@ function ItemRow({
             }}
           >
             {isTiered ? (
-              /* ── Tiered item: single Base Selling Price ── */
-              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {locale === "ar" ? "سعر البيع الأساسي" : "Base Selling Price"}
-                  <span
-                    style={{
-                      fontSize: "9px",
-                      fontWeight: 800,
-                      background: "var(--primary)",
-                      color: "#fff",
-                      padding: "1px 6px",
-                      borderRadius: "4px",
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    TIER BASE
+              /* ── Tiered item: single Base Selling Price + T13 preview ── */
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    {locale === "ar" ? "سعر البيع الأساسي" : "Base Selling Price"}
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 800,
+                        background: "var(--primary)",
+                        color: "#fff",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      TIER BASE
+                    </span>
                   </span>
-                </span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  placeholder={formatCurrency(item.minPrice * 1.1).replace("EGP", "").trim()}
-                  style={{
-                    padding: "8px 11px",
-                    borderRadius: "var(--radius)",
-                    border: "1.5px solid var(--primary)",
-                    background: "var(--bg-surface)",
-                    color: "var(--primary)",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    outline: "none",
-                    width: "100%",
-                  }}
-                />
-              </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    placeholder={formatCurrency(item.minPrice * 1.1).replace("EGP", "").trim()}
+                    style={{
+                      padding: "8px 11px",
+                      borderRadius: "var(--radius)",
+                      border: "1.5px solid var(--primary)",
+                      background: "var(--bg-surface)",
+                      color: "var(--primary)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      outline: "none",
+                      width: "100%",
+                    }}
+                  />
+                </label>
+
+                {/* T13: live tier price preview */}
+                {(() => {
+                  const base = parseFloat(basePrice);
+                  if (!base || base <= 0) return null;
+                  const tiers = [
+                    { label: "T1", max: item.tier1_max, disc: item.tier1_discount },
+                    { label: "T2", max: item.tier2_max, disc: item.tier2_discount },
+                    { label: "T3", max: item.tier3_max, disc: item.tier3_discount },
+                    { label: "T4", max: item.tier4_max, disc: item.tier4_discount },
+                  ].filter(t => t.disc > 0);
+                  if (tiers.length === 0) return null;
+                  const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#06b6d4"];
+                  return (
+                    <div style={{
+                      display: "flex", gap: "6px", flexWrap: "wrap",
+                      padding: "8px 10px",
+                      background: "var(--bg-subtle)",
+                      borderRadius: "var(--radius)",
+                      border: "1px dashed var(--border-medium)",
+                      gridColumn: "1 / -1",
+                    }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", alignSelf: "center" }}>
+                        Tier Prices:
+                      </span>
+                      {tiers.map((tier, i) => {
+                        const divisor = 1 - tier.disc / 100;
+                        const raw = divisor > 0 ? base / divisor : base;
+                        const rounded = Math.ceil(raw / 5) * 5;
+                        return (
+                          <span key={tier.label} style={{
+                            fontSize: "11px", fontWeight: 800,
+                            color: colors[i],
+                            background: colors[i] + "18",
+                            border: `1px solid ${colors[i]}44`,
+                            borderRadius: "6px",
+                            padding: "2px 8px",
+                          }}>
+                            {tier.label} ({tier.max > 0 ? `≤${tier.max}` : "∞"}): {formatCurrency(rounded)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </>
             ) : (
               /* ── Non-tiered item: Min + Max ── */
               <>

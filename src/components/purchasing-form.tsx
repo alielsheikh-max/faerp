@@ -3,12 +3,13 @@
 import { useState, useEffect, useMemo, useTransition } from "react";
 import { createBatchPriceEntries, saveBatchPriceEntriesSilent, submitPriceChangeRequestAction, extendPreviousMonthPricesAction } from "@/app/actions/pricing";
 import { shiftMonth, formatMonthLabel, formatCurrency } from "@/lib/format";
+import { ItemCombobox } from "./item-combobox";
 import { useI18n } from "@/lib/i18n-context";
 
 type Category    = { id: number; name: string; description: string };
 type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
 type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
-type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null };
+type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null };
 type HistoryFilter = "3" | "6" | "all";
 
 type Props = {
@@ -24,34 +25,33 @@ type Props = {
 
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4"];
 
-// Modal for submitting a price change request for a single supplier
-function ChangeRequestModal({
-  supplier,
-  item,
-  month,
-  currentPrice,
-  newPrice,
-  requestedBy,
-  onClose,
-}: {
-  supplier: Supplier;
-  item: Item;
-  month: string;
-  currentPrice: number;
-  newPrice: number;
-  requestedBy: string;
-  onClose: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  const [pending, startTransition] = useTransition();
-  const [done, setDone] = useState<"request" | "direct" | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+// Modal for submitting a price change / transport revision request
+const PRICE_PRESETS = ["Price change", "Price negotiation"];
+const TRANS_PRESETS = ["Transport cost change", "Rate negotiation"];
 
-  const diff = newPrice - currentPrice;
-  const diffPct = currentPrice > 0 ? (diff / currentPrice) * 100 : 0;
+function ChangeRequestModal({
+  supplier, item, month, currentPrice, newPrice, oldTransport, newTransport, requestedBy, onClose,
+}: {
+  supplier: Supplier; item: Item; month: string;
+  currentPrice: number; newPrice: number;
+  oldTransport?: number | null; newTransport?: number | null;
+  requestedBy: string; onClose: () => void;
+}) {
+  const hasPrice   = newPrice !== currentPrice;
+  const hasTrans   = newTransport != null && oldTransport != null && newTransport !== oldTransport;
+  const presets    = hasTrans && !hasPrice ? TRANS_PRESETS : PRICE_PRESETS;
+
+  const [reason, setReason]        = useState("");
+  const [pending, startTransition] = useTransition();
+  const [done, setDone]            = useState<"request" | "direct" | null>(null);
+  const [err, setErr]              = useState<string | null>(null);
+
+  const priceDiff = newPrice - currentPrice;
+  const pricePct  = currentPrice > 0 ? (priceDiff / currentPrice) * 100 : 0;
+  const transDiff = hasTrans ? (newTransport! - oldTransport!) : 0;
 
   const handleSubmit = () => {
-    if (!reason.trim()) { setErr("Please enter a reason for the price change."); return; }
+    if (!reason.trim()) { setErr("Please select or enter a reason."); return; }
     setErr(null);
     const fd = new FormData();
     fd.set("itemId",      String(item.id));
@@ -61,13 +61,12 @@ function ChangeRequestModal({
     fd.set("newPrice",    String(newPrice));
     fd.set("reason",      reason);
     fd.set("requestedBy", requestedBy);
+    if (oldTransport != null) fd.set("oldTransport", String(oldTransport));
+    if (newTransport != null) fd.set("newTransport", String(newTransport));
     startTransition(async () => {
       const res = await submitPriceChangeRequestAction(fd);
-      if (res?.ok) {
-        setDone(res.directSaved ? "direct" : "request");
-        setTimeout(onClose, 1800);
-      }
-      else { setErr(res?.error ?? "Failed to submit"); }
+      if (res?.ok) { setDone(res.directSaved ? "direct" : "request"); setTimeout(onClose, 1800); }
+      else          { setErr(res?.error ?? "Failed to submit"); }
     });
   };
 
@@ -76,92 +75,107 @@ function ChangeRequestModal({
       position: "fixed", inset: 0, zIndex: 3000,
       background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
-      opacity: 1,
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
         background: "var(--bg-surface)", border: "1px solid var(--border-medium)",
         borderRadius: "16px", boxShadow: "var(--shadow-xl)",
-        width: "100%", maxWidth: "480px", padding: "24px",
-        display: "flex", flexDirection: "column", gap: "16px",
+        width: "100%", maxWidth: "500px", padding: "24px",
+        display: "flex", flexDirection: "column", gap: "14px",
         animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)",
-        willChange: "transform, opacity",
       }}>
         {/* Header */}
         <div>
-          <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--warning)", marginBottom: "4px" }}>
-            Price Change Request
+          <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--warning)", marginBottom: "4px" }}>
+            Change Request
           </p>
-          <h3 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
-            {item.name}
-          </h3>
-          <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+          <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{item.name}</h3>
+          <div style={{ display: "flex", gap: "6px", marginTop: "5px", flexWrap: "wrap" }}>
             <span className="badge badge-strong" style={{ fontSize: "10px" }}>{supplier.fame_name || supplier.name}</span>
             <span className="badge" style={{ fontSize: "10px" }}>{formatMonthLabel(month)}</span>
           </div>
         </div>
 
-        {/* Price diff visual */}
-        <div style={{
-          padding: "12px 16px",
-          background: diff > 0 ? "var(--danger-light)" : "var(--success-light)",
-          border: `1px solid ${diff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
-          borderRadius: "var(--radius)",
-          display: "flex", gap: "16px", alignItems: "center",
-        }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "2px" }}>Current</div>
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-secondary)", textDecoration: "line-through" }}>{formatCurrency(currentPrice)}</div>
+        {/* Price diff card */}
+        {hasPrice && (
+          <div style={{
+            padding: "10px 14px",
+            background: priceDiff > 0 ? "var(--danger-light)" : "var(--success-light)",
+            border: `1px solid ${priceDiff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
+            borderRadius: "var(--radius)", display: "flex", gap: "14px", alignItems: "center",
+          }}>
+            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>Price</span>
+            <span style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>{formatCurrency(currentPrice)}</span>
+            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>→</span>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>{formatCurrency(newPrice)}</span>
+            <span style={{ marginInlineStart: "auto", fontSize: "12px", fontWeight: 700, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
+              {priceDiff > 0 ? "▲" : "▼"} {Math.abs(pricePct).toFixed(1)}%
+            </span>
           </div>
-          <div style={{ fontSize: "20px", color: "var(--text-muted)" }}>→</div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "2px" }}>New</div>
-            <div style={{ fontSize: "18px", fontWeight: 800, color: diff > 0 ? "var(--danger)" : "var(--success)" }}>{formatCurrency(newPrice)}</div>
-          </div>
-          <div style={{ marginInlineStart: "auto", textAlign: "right" }}>
-            <div style={{ fontWeight: 800, fontSize: "14px", color: diff > 0 ? "var(--danger)" : "var(--success)" }}>
-              {diff > 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
-            </div>
-          </div>
-        </div>
+        )}
 
-        {/* Reason */}
-        <label className="field">
-          <span>Reason for Change <span style={{ color: "var(--danger)", fontWeight: 800 }}>*</span></span>
+        {/* Transport diff card */}
+        {hasTrans && (
+          <div style={{
+            padding: "10px 14px",
+            background: transDiff > 0 ? "var(--danger-light)" : "var(--success-light)",
+            border: `1px solid ${transDiff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
+            borderRadius: "var(--radius)", display: "flex", gap: "14px", alignItems: "center",
+          }}>
+            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>Trans.</span>
+            <span style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>{formatCurrency(oldTransport!)}</span>
+            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>→</span>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: transDiff > 0 ? "var(--danger)" : "var(--success)" }}>{formatCurrency(newTransport!)}</span>
+          </div>
+        )}
+
+        {/* Preset reason chips + custom input */}
+        <div>
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "7px" }}>
+            Reason <span style={{ color: "var(--danger)" }}>*</span>
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+            {presets.map(p => (
+              <button key={p} type="button" onClick={() => setReason(p)} style={{
+                padding: "5px 12px", borderRadius: "99px", fontSize: "12px",
+                border: `1.5px solid ${reason === p ? "var(--primary)" : "var(--border-medium)"}`,
+                background: reason === p ? "rgba(99,102,241,0.1)" : "var(--bg-elevated)",
+                color: reason === p ? "var(--primary)" : "var(--text-secondary)",
+                fontWeight: reason === p ? 700 : 400, cursor: "pointer", transition: "all 150ms",
+              }}>{p}</button>
+            ))}
+          </div>
           <input
-            type="text"
-            value={reason}
-            onChange={e => setReason(e.target.value)}
-            placeholder="e.g. Supplier revised price list, transport costs increased…"
-            style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
-            autoFocus
+            type="text" value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="Or type a custom reason…"
+            style={{
+              width: "100%", padding: "8px 12px", borderRadius: "8px",
+              border: "1px solid var(--border-medium)", background: "var(--bg-elevated)",
+              color: "var(--text-primary)", fontSize: "13px",
+            }}
           />
-        </label>
+        </div>
 
         {err && <div style={{ fontSize: "12px", color: "var(--danger)", fontWeight: 600 }}>⚠️ {err}</div>}
         {done && (
-          <div style={{ fontSize: "13px", color: "var(--success)", fontWeight: 700, textAlign: "center", padding: "8px" }}>
-            {done === "direct"
-              ? "✓ Price saved directly. No SC approval was needed."
-              : "✓ Change request submitted — awaiting SC review."}
+          <div style={{ fontSize: "13px", color: "var(--success)", fontWeight: 700, textAlign: "center", padding: "6px" }}>
+            {done === "direct" ? "✓ Saved directly." : "✓ Request submitted — awaiting SC review."}
           </div>
         )}
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={onClose} disabled={pending}>
-            No, Cancel
-          </button>
+          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={onClose} disabled={pending}>Cancel</button>
           <button type="button" className="button button-warning" style={{ flex: 2 }} onClick={handleSubmit} disabled={pending || Boolean(done)}>
-            {pending ? "Submitting…" : "Yes, Submit Request"}
+            {pending ? "Submitting…" : "Submit Request"}
           </button>
         </div>
-
         <p style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
-          This will be sent to SC for approval. The price will not change until approved.
+          This will be sent to SC for approval. Nothing changes until approved.
         </p>
       </div>
     </div>
   );
 }
+
 
 // Modal for SC to extend previous month prices to current month
 function ExtendPricesModal({
@@ -273,11 +287,19 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
   const [historyFilter, setHistoryFilter]           = useState<HistoryFilter>("3");
   const [supplierPrices, setSupplierPrices]         = useState<Record<number, string>>({});
   const [supplierNotes, setSupplierNotes]           = useState<Record<number, string>>({});
+  // T25: Actual transport per supplier for FIRST-ENTRY rows (saved to DB)
+  const [supplierTransportMain, setSupplierTransportMain] = useState<Record<number, string>>({});
+  // T25: WH can record actual transport cost per supplier/item (review modal)
+  const [supplierActualTransport, setSupplierActualTransport] = useState<Record<string, string>>({});
 
   // Change request modal state
   const [changeRequestModal, setChangeRequestModal] = useState<{
     supplier: Supplier; currentPrice: number; newPrice: number;
+    oldTransport?: number | null; newTransport?: number | null;
   } | null>(null);
+
+  // Revised transport for CONFIRMED rows (editable field)
+  const [supplierTransportRevised, setSupplierTransportRevised] = useState<Record<number, string>>({});
 
   // Extend prices modal state (SC only)
   const [extendModal, setExtendModal] = useState(false);
@@ -301,20 +323,26 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
     return suppliers.filter(s => s.category_ids.includes(catId));
   }, [suppliers, selectedCategoryId]);
 
+  // Compute unique submitted supplier count per item for the current month
+  const submittedSuppliersByItemId = useMemo(() => {
+    const map: Record<number, Set<number>> = {};
+    purchasingHistory
+      .filter(e => e.month === month)
+      .forEach(e => {
+        if (!map[e.item_id]) map[e.item_id] = new Set();
+        map[e.item_id].add(e.supplier_id);
+      });
+    return map;
+  }, [purchasingHistory, month]);
+
   useEffect(() => {
-    if (filteredItems.length > 0) {
-      const valid = filteredItems.some(i => String(i.id) === selectedItemId);
-      if (!valid) setSelectedItemId(String(filteredItems[0].id));
-    } else {
-      setSelectedItemId("");
-    }
+    // When category changes, always reset to blank (WH must explicitly select an item)
+    setSelectedItemId("");
   }, [selectedCategoryId]);
 
-  useEffect(() => {
-    if (selectedItemId === "" && filteredItems.length > 0) setSelectedItemId(String(filteredItems[0].id));
-  }, [filteredItems]);
+  // No auto-select: do NOT auto-pick first item
 
-  useEffect(() => { setSupplierPrices({}); setSupplierNotes({}); }, [selectedItemId]);
+  useEffect(() => { setSupplierPrices({}); setSupplierNotes({}); setSupplierTransportMain({}); setSupplierTransportRevised({}); }, [selectedItemId]);
 
   const selectedItem = items.find(i => String(i.id) === selectedItemId);
 
@@ -586,6 +614,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
           month={month}
           currentPrice={changeRequestModal.currentPrice}
           newPrice={changeRequestModal.newPrice}
+          oldTransport={changeRequestModal.oldTransport}
+          newTransport={changeRequestModal.newTransport}
           requestedBy={displayName}
           onClose={() => {
             setChangeRequestModal(null);
@@ -840,9 +870,23 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                             )}
                                           </td>
 
-                                          {/* Transportation Cost */}
-                                          <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle", color: "var(--text-muted)" }}>
-                                            <span style={{ fontSize: "12.5px", fontWeight: 600 }}>{formatCurrency(item.transportation_per_unit ?? 0)}</span>
+                                          {/* T25: Editable Actual Transport Cost */}
+                                          <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle" }}>
+                                            <input
+                                              type="number"
+                                              min="0" step="any"
+                                              value={supplierActualTransport[`${item.id}_${supplier.id}`] ?? String(item.transportation_per_unit ?? 0)}
+                                              onChange={e => setSupplierActualTransport(prev => ({ ...prev, [`${item.id}_${supplier.id}`]: e.target.value }))}
+                                              title="Actual transport cost for this quote (overrides item default)"
+                                              style={{
+                                                width: "90px", padding: "4px 8px", fontSize: "12px",
+                                                border: "1px solid var(--border-medium)",
+                                                borderRadius: "var(--radius-sm)",
+                                                background: "var(--bg-elevated)",
+                                                color: "var(--text-primary)",
+                                                textAlign: "center"
+                                              }}
+                                            />
                                           </td>
                                           
                                           {/* Price */}
@@ -906,14 +950,33 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                                 </button>
                                               </div>
                                             ) : (
-                                              <button
-                                                type="button"
-                                                className="button button-secondary"
-                                                style={{ padding: "4px 10px", fontSize: "11px" }}
-                                                onClick={() => setEditingEntry({ itemId: item.id, supplierId: supplier.id, price: entry ? String(entry.price) : "", notes: entry?.notes ?? "" })}
-                                              >
-                                                {entry ? (isAr ? "تعديل" : "Edit") : (isAr ? "تسجيل السعر" : "Record Price")}
-                                              </button>
+                                              <div style={{ display: "flex", gap: "4px", justifyContent: "center", flexWrap: "wrap" }}>
+                                                <button
+                                                  type="button"
+                                                  className="button button-secondary"
+                                                  style={{ padding: "4px 10px", fontSize: "11px" }}
+                                                  onClick={() => setEditingEntry({ itemId: item.id, supplierId: supplier.id, price: entry ? String(entry.price) : "", notes: entry?.notes ?? "" })}
+                                                >
+                                                  {entry ? (isAr ? "تعديل" : "Edit") : (isAr ? "تسجيل السعر" : "Record Price")}
+                                                </button>
+                                                {/* T23: Negotiate button — open change request modal for existing entries */}
+                                                {entry && role === "WH" && (
+                                                  <button
+                                                    type="button"
+                                                    className="button"
+                                                    style={{
+                                                      padding: "4px 8px", fontSize: "10px",
+                                                      background: "rgba(139,92,246,0.12)",
+                                                      color: "#8b5cf6",
+                                                      border: "1px solid rgba(139,92,246,0.35)",
+                                                      borderRadius: "var(--radius-sm)"
+                                                    }}
+                                                    onClick={() => setChangeRequestModal({ supplier, currentPrice: entry.price, newPrice: entry.price })}
+                                                  >
+                                                    {isAr ? "تفاوض" : "Negotiate ↗"}
+                                                  </button>
+                                                )}
+                                              </div>
                                             )}
                                           </td>
                                         </tr>
@@ -970,18 +1033,36 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
         <label className="field">
           <span>1. {t("purch.selectCategory")}</span>
-          <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}>
+          <select
+            value={selectedCategoryId}
+            onChange={e => setSelectedCategoryId(e.target.value)}
+            dir="rtl"
+            style={{ direction: "rtl", textAlign: "right" }}
+          >
             {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
           </select>
         </label>
         <label className="field">
           <span>2. {t("purch.selectItem")}</span>
-          <select value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={filteredItems.length === 0}>
-            {filteredItems.length === 0
-              ? <option value="">— {t("purch.noItemsInCat")} —</option>
-              : filteredItems.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)
-            }
-          </select>
+          <ItemCombobox
+            items={filteredItems.map((item) => {
+              const submitted = submittedSuppliersByItemId[item.id]?.size ?? 0;
+              const total = suppliers.filter(s => s.category_ids.includes(item.category_id)).length;
+              const badge = total > 0 ? `${submitted}/${total}` : undefined;
+              const badgeVariant = submitted === 0 ? "empty" : submitted >= total ? "complete" : "partial";
+              return {
+                id: item.id,
+                label: item.name,
+                unit: item.unit,
+                badge,
+                badgeVariant: total > 0 ? badgeVariant : undefined,
+              };
+            })}
+            value={selectedItemId}
+            onChange={setSelectedItemId}
+            disabled={filteredItems.length === 0}
+            placeholder={filteredItems.length === 0 ? `— ${t("purch.noItemsInCat")} —` : "— Select an item —"}
+          />
         </label>
       </div>
 
@@ -1048,27 +1129,151 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
               )}
 
               {filteredSuppliers.map((supplier, idx) => {
-                const color = COLORS[idx % COLORS.length];
-                const currentPrice = supplierPrices[supplier.id] ?? "";
-                const lastEntry  = latestMap[`${supplier.id}_${shiftMonth(month, -1)}`];
-                const thisEntry  = currentMonthEntriesBySupplier.get(supplier.id);
-                const isConfirmed = Boolean(thisEntry);
-                const isChangeMode = isConfirmed && currentPrice && Number(currentPrice) > 0;
+                const color         = COLORS[idx % COLORS.length];
+                const currentPrice  = supplierPrices[supplier.id] ?? "";
+                const lastEntry     = latestMap[`${supplier.id}_${shiftMonth(month, -1)}`];
+                const thisEntry     = currentMonthEntriesBySupplier.get(supplier.id);
+                const isConfirmed   = Boolean(thisEntry);
+
+                // ── CONFIRMED (revision) row ────────────────────────────────
+                if (isConfirmed && thisEntry) {
+                  const revisedTransVal = supplierTransportRevised[supplier.id] ?? "";
+                  const revisedTrans    = revisedTransVal && Number(revisedTransVal) > 0 ? Number(revisedTransVal) : null;
+                  const revisedPrice    = currentPrice && Number(currentPrice) > 0 ? Number(currentPrice) : null;
+                  const canNegotiate    = revisedPrice !== null || revisedTrans !== null;
+                  const inputBase       = { height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%" } as const;
+
+                  return (
+                    <div key={supplier.id} style={{
+                      display: "flex", alignItems: "center", gap: "10px",
+                      padding: "14px 18px", borderRadius: "12px",
+                      border: `1.5px solid ${canNegotiate ? "var(--warning)" : "rgba(16,185,129,0.3)"}`,
+                      background: canNegotiate ? "rgba(245,158,11,0.025)" : "rgba(16,185,129,0.025)",
+                      transition: "all 200ms ease",
+                    }}>
+
+                      {/* Supplier identity */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "180px", flexShrink: 0 }}>
+                        <span style={{ width: "34px", height: "34px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color, flexShrink: 0 }}>
+                          {(supplier.fame_name || supplier.name).charAt(0)}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {supplier.fame_name || supplier.name}
+                          </div>
+                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>Last: {formatCurrency(lastEntry.price)}</div>}
+                        </div>
+                      </div>
+
+                      {/* Submitted price — read-only */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted price</span>
+                        <div style={{
+                          ...inputBase, display: "flex", alignItems: "center", whiteSpace: "nowrap",
+                          background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)",
+                          color: "var(--success)", paddingLeft: "10px",
+                        }}>
+                          ✓ {formatCurrency(thisEntry.price)}
+                        </div>
+                      </div>
+
+                      {/* Submitted trans — read-only */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted trans.</span>
+                        <div style={{
+                          ...inputBase, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.18)",
+                          color: "var(--text-secondary)",
+                        }}>
+                          {thisEntry.actual_transport != null ? formatCurrency(thisEntry.actual_transport) : "—"}
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div style={{ width: "1px", height: "40px", background: "var(--border-light)", flexShrink: 0 }} />
+
+                      {/* Revised trans — editable */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Revised trans.</span>
+                        <input
+                          type="number" min="0" step="any"
+                          placeholder={thisEntry.actual_transport != null ? String(thisEntry.actual_transport) : "0"}
+                          value={revisedTransVal}
+                          onChange={e => setSupplierTransportRevised(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          style={{
+                            ...inputBase, textAlign: "center",
+                            border: `1.5px solid ${revisedTrans !== null ? "var(--warning)" : "var(--border-medium)"}`,
+                            background: "var(--bg-surface)",
+                            color: revisedTrans !== null ? "var(--warning)" : "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+
+                      {/* Revised price — editable */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "110px" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Revised price</span>
+                        <input
+                          type="number" min="0.01" step="any"
+                          placeholder={`e.g. ${formatCurrency(thisEntry.price)}`}
+                          value={currentPrice}
+                          onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          style={{
+                            ...inputBase,
+                            border: `1.5px solid ${revisedPrice !== null ? "var(--warning)" : "var(--border-medium)"}`,
+                            background: "var(--bg-surface)",
+                            color: revisedPrice !== null ? "var(--warning)" : "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+
+                      {/* Negotiate button */}
+                      <button
+                        type="button"
+                        disabled={!canNegotiate}
+                        onClick={() => {
+                          if (!canNegotiate) return;
+                          setChangeRequestModal({
+                            supplier,
+                            currentPrice: thisEntry.price,
+                            newPrice: revisedPrice !== null ? revisedPrice : thisEntry.price,
+                            oldTransport: thisEntry.actual_transport,
+                            newTransport: revisedTrans,
+                          });
+                        }}
+                        style={{
+                          height: "40px", padding: "0 14px", flexShrink: 0,
+                          borderRadius: "var(--radius)", alignSelf: "flex-end",
+                          border: `1.5px solid ${canNegotiate ? "var(--warning)" : "var(--border-medium)"}`,
+                          background: canNegotiate ? "rgba(245,158,11,0.12)" : "var(--bg-subtle)",
+                          color: canNegotiate ? "var(--warning)" : "var(--text-muted)",
+                          fontWeight: 600, fontSize: "13px",
+                          cursor: canNegotiate ? "pointer" : "default",
+                          transition: "all 200ms", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isAr ? "تفاوض ↗" : "Negotiate ↗"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                /* ── FIRST ENTRY row ─────────────────────────────────────── */
+                const transportVal = supplierTransportMain[supplier.id] ?? String(selectedItem.transportation_per_unit ?? 0);
+                const priceVal     = currentPrice;
+                const isFilled     = priceVal && Number(priceVal) > 0;
 
                 return (
                   <div key={supplier.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr 270px 120px 160px auto",
-                    gap: "12px", alignItems: "center", padding: "14px 16px",
-                    borderRadius: "var(--radius)",
-                    border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color + "55" : "var(--border)"}`,
-                    background: isChangeMode ? "var(--warning-light)" : currentPrice ? `${color}08` : "var(--bg-elevated)",
+                    display: "flex", alignItems: "center", gap: "14px",
+                    padding: "14px 18px", borderRadius: "12px",
+                    border: `1.5px solid ${isFilled ? color + "66" : "var(--border)"}`,
+                    background: isFilled ? `${color}06` : "var(--bg-elevated)",
                     transition: "all 200ms ease",
-                    position: "relative",
                   }}>
 
-                    {/* Supplier identity */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ width: "32px", height: "32px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0 }}>
+                    {/* Supplier identity — fixed left column */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "190px", flexShrink: 0 }}>
+                      <span style={{ width: "34px", height: "34px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0 }}>
                         {(supplier.fame_name || supplier.name).charAt(0)}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1079,76 +1284,72 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supplier.name}</div>
                         )}
                         {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
-                        {thisEntry && (
-                          <div style={{ fontSize: "10px", color: isChangeMode ? "var(--warning)" : "var(--success)", marginTop: "1px", fontWeight: 600 }}>
-                            {isChangeMode
-                              ? `Current confirmed price: ${formatCurrency(thisEntry.price)}`
-                              : `Current price: ${formatCurrency(thisEntry.price)}`}
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    {/* Notes — same row as supplier identity */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
-                      <input
-                        type="text"
-                        name={isConfirmed ? undefined : `notes_${supplier.id}`}
-                        placeholder={t("purch.notesOptional")}
-                        value={supplierNotes[supplier.id] ?? ""}
-                        onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                        style={{ padding: "6px 10px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "38px", width: "100%" }}
-                      />
-                    </div>
+                    {/* Right: input fields inline */}
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flex: 1 }}>
 
-                    {/* Transportation Cost (Read-Only) */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px", flexShrink: 0 }}>
-                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "تكلفة النقل" : "Trans. Cost"}</span>
-                      <input
-                        type="text"
-                        readOnly
-                        value={formatCurrency(selectedItem.transportation_per_unit ?? 0)}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "1.5px solid var(--border-medium)",
-                          background: "var(--bg-subtle)",
-                          color: "var(--text-muted)",
-                          fontSize: "12.5px",
-                          fontWeight: 600,
-                          textAlign: "center",
-                          height: "38px"
-                        }}
-                      />
-                    </div>
+                      {/* Notes */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "100px" }}>
+                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
+                        <input
+                          type="text"
+                          name={`notes_${supplier.id}`}
+                          placeholder={t("purch.notesOptional")}
+                          value={supplierNotes[supplier.id] ?? ""}
+                          onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          style={{ padding: "8px 12px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "40px", width: "100%" }}
+                        />
+                      </div>
 
-                    {/* Price */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "160px", flexShrink: 0 }}>
-                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "السعر" : "Price"} ({selectedItem.unit})</span>
-                      <input
-                        type="number"
-                        name={isConfirmed ? undefined : `price_${supplier.id}`}
-                        step="any" min="0.01"
-                        placeholder={t("purch.pricePlaceholder")}
-                        value={currentPrice}
-                        onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                        style={{
-                          width: "100%", padding: "8px 12px", borderRadius: "var(--radius)",
-                          border: `1.5px solid ${isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--border-medium)"}`,
-                          background: "var(--bg-surface)",
-                          color: isChangeMode ? "var(--warning)" : currentPrice ? color : "var(--text-primary)",
-                          fontSize: "14px", fontWeight: currentPrice ? 700 : 400,
-                          outline: "none", transition: "all 200ms", height: "38px"
-                        }}
-                      />
-                    </div>
+                      {/* Actual Transport */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "110px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{isAr ? "نقل فعلي" : "Actual Trans. (EGP)"}</span>
+                        <input
+                          type="number"
+                          name={`actual_transport_${supplier.id}`}
+                          min="0" step="any"
+                          value={transportVal}
+                          onChange={e => setSupplierTransportMain(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          style={{
+                            padding: "8px 10px", borderRadius: "var(--radius)", height: "40px",
+                            border: "1.5px solid var(--primary-light)",
+                            background: "var(--bg-surface)", color: "var(--primary)",
+                            fontSize: "13px", fontWeight: 600, textAlign: "center", width: "100%",
+                          }}
+                        />
+                      </div>
 
-                    {/* Status icon */}
-                    <div style={{ width: "20px", display: "flex", justifyContent: "center" }}>
-                      <span style={{ fontSize: "16px", opacity: currentPrice && Number(currentPrice) > 0 ? 1 : 0.3 }}>
-                        {isChangeMode ? "⚠️" : currentPrice && Number(currentPrice) > 0 ? "✓" : "○"}
-                      </span>
+                      {/* Price */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "140px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "السعر" : "Price"} ({selectedItem.unit})</span>
+                        <input
+                          type="number"
+                          name={`price_${supplier.id}`}
+                          step="any" min="0.01"
+                          placeholder={t("purch.pricePlaceholder")}
+                          value={priceVal}
+                          onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          style={{
+                            width: "100%", padding: "8px 12px", height: "40px",
+                            borderRadius: "var(--radius)",
+                            border: `1.5px solid ${isFilled ? color : "var(--border-medium)"}`,
+                            background: "var(--bg-surface)",
+                            color: isFilled ? color : "var(--text-primary)",
+                            fontSize: "14px", fontWeight: isFilled ? 700 : 400,
+                            outline: "none", transition: "all 200ms",
+                          }}
+                        />
+                      </div>
+
+                      {/* Status dot */}
+                      <div style={{ paddingBottom: "10px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "18px", opacity: isFilled ? 1 : 0.25, color: isFilled ? color : "var(--text-muted)", transition: "all 200ms" }}>
+                          {isFilled ? "✓" : "○"}
+                        </span>
+                      </div>
+
                     </div>
                   </div>
                 );

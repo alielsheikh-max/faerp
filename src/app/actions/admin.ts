@@ -16,7 +16,11 @@ import {
   updateSupplier,
   updateUser,
   purgeAllDataExceptUsers,
-  setSupplierCategories
+  setSupplierCategories,
+  bulkSetItemActive,
+  bulkMoveItemCategory,
+  bulkDeleteItems,
+  bulkDeleteCategories,
 } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 import { requireRole } from "@/lib/auth";
@@ -25,13 +29,15 @@ function fail(message: string): never {
   redirect(`/dashboard/admin?error=${encodeURIComponent(message)}`);
 }
 
-function done(message: string): never {
+function done(message: string, returnTo: string = "/dashboard/admin"): never {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin/suppliers");
   revalidatePath("/dashboard/purchasing");
   revalidatePath("/dashboard/manager");
   revalidatePath("/dashboard/sales");
-  redirect(`/dashboard/admin?success=${encodeURIComponent(message)}`);
+  redirect(`${returnTo}?success=${encodeURIComponent(message)}`);
 }
 
 /**
@@ -218,7 +224,7 @@ export async function createSupplierAction(formData: FormData) {
   }
 
   createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
-  done("Supplier created.");
+  done("Supplier created.", "/dashboard/admin/suppliers");
 }
 
 export async function updateSupplierAction(formData: FormData) {
@@ -240,7 +246,7 @@ export async function updateSupplierAction(formData: FormData) {
   }
 
   updateSupplier({ id, name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
-  done("Supplier updated.");
+  done("Supplier updated.", "/dashboard/admin/suppliers");
 }
 
 export async function deleteSupplierAction(formData: FormData) {
@@ -257,7 +263,7 @@ export async function deleteSupplierAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Supplier delete failed.");
   }
 
-  done("Supplier deleted.");
+  done("Supplier deleted.", "/dashboard/admin/suppliers");
 }
 
 export async function createItemAction(formData: FormData) {
@@ -274,7 +280,7 @@ export async function createItemAction(formData: FormData) {
   }
 
   createItem({ categoryId, name, unit, description, transportationPerUnit, moq });
-  done("Item created.");
+  done("Item created.", "/dashboard/admin/items");
 }
 
 export async function updateItemAction(formData: FormData) {
@@ -303,7 +309,7 @@ export async function updateItemAction(formData: FormData) {
     moq
   });
 
-  done("Item updated.");
+  done("Item updated.", "/dashboard/admin/items");
 }
 
 export async function deleteItemAction(formData: FormData) {
@@ -320,7 +326,66 @@ export async function deleteItemAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Item delete failed.");
   }
 
-  done("Item deleted.");
+  done("Item deleted.", "/dashboard/admin/items");
+}
+
+// ── T2: Bulk item operations ───────────────────────────────────────────────
+
+export async function bulkActivateItemsAction(formData: FormData) {
+  requireRole(["AD"]);
+  const ids = formData.getAll("itemId").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (ids.length === 0) fail("No items selected.");
+  bulkSetItemActive(ids, true);
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin");
+  redirect(`/dashboard/admin/items?success=${encodeURIComponent(`${ids.length} item(s) activated.`)}`);
+}
+
+export async function bulkDeactivateItemsAction(formData: FormData) {
+  requireRole(["AD"]);
+  const ids = formData.getAll("itemId").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (ids.length === 0) fail("No items selected.");
+  bulkSetItemActive(ids, false);
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin");
+  redirect(`/dashboard/admin/items?success=${encodeURIComponent(`${ids.length} item(s) deactivated.`)}`);
+}
+
+export async function bulkMoveCategoryAction(formData: FormData) {
+  requireRole(["AD"]);
+  const ids = formData.getAll("itemId").map(Number).filter(n => !isNaN(n) && n > 0);
+  const categoryId = asNumber(formData.get("categoryId"));
+  if (ids.length === 0 || categoryId === null) fail("No items or category selected.");
+  bulkMoveItemCategory(ids, categoryId);
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin");
+  redirect(`/dashboard/admin/items?success=${encodeURIComponent(`${ids.length} item(s) moved.`)}`);
+}
+
+export async function bulkDeleteItemsAction(formData: FormData) {
+  requireRole(["AD"]);
+  const ids = formData.getAll("itemId").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (ids.length === 0) fail("No items selected.");
+  const { deleted, skipped } = bulkDeleteItems(ids);
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin");
+  const msg = skipped > 0
+    ? `${deleted} deleted, ${skipped} skipped (have pricing history).`
+    : `${deleted} item(s) deleted.`;
+  redirect(`/dashboard/admin/items?success=${encodeURIComponent(msg)}`);
+}
+
+export async function bulkDeleteCategoriesAction(formData: FormData) {
+  requireRole(["AD"]);
+  const ids = formData.getAll("categoryId").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (ids.length === 0) fail("No categories selected.");
+  const { deleted, skipped } = bulkDeleteCategories(ids);
+  revalidatePath("/dashboard/admin/items");
+  revalidatePath("/dashboard/admin");
+  const msg = skipped > 0
+    ? `${deleted} deleted, ${skipped} skipped (have items).`
+    : `${deleted} category(ies) deleted.`;
+  redirect(`/dashboard/admin/items?success=${encodeURIComponent(msg)}`);
 }
 
 export async function purgeDataAction(formData: FormData) {

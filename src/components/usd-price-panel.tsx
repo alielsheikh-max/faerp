@@ -289,11 +289,37 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
     return (
       <button
         type="button" onClick={openPanel}
-        style={{ padding: "10px 20px", borderRadius: "10px", border: "1px solid var(--border-medium)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)", cursor: "pointer", fontWeight: "700", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", transition: "all 200ms", width: "100%", justifyContent: "center" }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-medium)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: "16px",
+          padding: "16px 20px", borderRadius: "14px",
+          border: "1.5px solid rgba(6,182,212,0.35)",
+          background: "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)",
+          cursor: "pointer", transition: "all 220ms ease",
+          textAlign: "left", position: "relative", overflow: "hidden",
+          boxShadow: "0 2px 8px rgba(6,182,212,0.12)",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(6,182,212,0.25)"; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 8px rgba(6,182,212,0.12)"; }}
       >
-        💵 {lbl("Show Prices in USD", "عرض الأسعار بالدولار")}
+        {/* Decorative orb */}
+        <span style={{ position: "absolute", top: "-20px", right: "-20px", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(6,182,212,0.08)", pointerEvents: "none" }} />
+        {/* Icon */}
+        <div style={{
+          width: "46px", height: "46px", borderRadius: "12px", flexShrink: 0,
+          background: "linear-gradient(135deg, #0891b2 0%, #0e7490 100%)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 12px rgba(6,182,212,0.4)", fontSize: "20px",
+        }}>💵</div>
+        {/* Text */}
+        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+          <div style={{ fontSize: "15px", fontWeight: 800, letterSpacing: "-0.01em", color: "#164e63", marginBottom: "3px" }}>
+            {lbl("Show Prices in USD", "عرض الأسعار بالدولار")}
+          </div>
+          <div style={{ fontSize: "11px", color: "#0e7490" }}>
+            {lbl("Convert & export published prices", "تحويل وتصدير الأسعار المنشورة")}
+          </div>
+        </div>
+        <span style={{ fontSize: "16px", color: "#0891b2", flexShrink: 0 }}>→</span>
       </button>
     );
   }

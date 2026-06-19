@@ -1,7 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { getPendingPriceChangeRequests, getAllPriceChangeRequests } from "@/lib/db";
 import { SectionIntro, StatCard } from "@/components/app-shell";
-import PriceChangeRequests from "@/components/price-change-requests";
 import ApprovalsHistory from "@/components/approvals-history";
 
 export default function SCApprovalsPage() {
@@ -39,7 +38,7 @@ export default function SCApprovalsPage() {
         <StatCard label="Total Requests"  value={all.length}       note="All time"                accent="indigo" />
       </section>
 
-      {/* ── Pending Queue ── */}
+      {/* ── Pending Queue — now handled in Notifications ── */}
       <section className="panel">
         <div className="panel-header">
           <div>
@@ -50,7 +49,36 @@ export default function SCApprovalsPage() {
             <span className="badge badge-warning">{pending.length} awaiting review</span>
           )}
         </div>
-        <PriceChangeRequests requests={pending} username={session.displayName} />
+        {pending.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--text-muted)", fontSize: "13px" }}>
+            <span style={{ fontSize: "32px", display: "block", marginBottom: "10px" }}>✅</span>
+            No pending requests. All clear.
+          </div>
+        ) : (
+          <div style={{
+            padding: "20px 24px", borderRadius: "12px",
+            background: "rgba(245,158,11,0.06)", border: "1.5px solid rgba(245,158,11,0.3)",
+            display: "flex", alignItems: "center", gap: "16px",
+          }}>
+            <span style={{ fontSize: "32px" }}>🔔</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "4px" }}>
+                {pending.length} pending request{pending.length > 1 ? "s" : ""} — review them in Notifications
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                Price change requests are now reviewed inline in the Notifications page with approve/reject buttons.
+              </div>
+            </div>
+            <a href="/dashboard/notifications" style={{
+              padding: "10px 20px", borderRadius: "99px",
+              background: "linear-gradient(135deg, #f59e0b, #ef4444)",
+              color: "#fff", fontWeight: 800, fontSize: "13px",
+              textDecoration: "none", whiteSpace: "nowrap",
+            }}>
+              Go to Notifications →
+            </a>
+          </div>
+        )}
       </section>
 
       {/* ── History ── */}

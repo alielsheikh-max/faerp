@@ -266,6 +266,44 @@ img { display: block; max-width: 100%; }
   scrollbar-color: rgba(255,255,255,0.25) transparent;
 }
 
+/* Compact icon buttons in sidebar footer */
+.sidebar-icon-btn {
+  position: relative;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.sidebar-icon-btn:hover {
+  background: rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+}
+/* Tooltip */
+.sidebar-icon-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%; transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(15,23,42,0.92);
+  color: #e2e8f0;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 999;
+}
+.sidebar-icon-btn:hover::after { opacity: 1; }
+
+
 /* Brand */
 .brand-block {
   display: flex; align-items: center; gap: 10px;

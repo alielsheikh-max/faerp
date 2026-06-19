@@ -54,9 +54,15 @@ type PricingCalculatorProps = {
   tier2Max?: number;
   tier2Discount?: number;
   tier3Discount?: number;
+  tier3Max?: number;
+  tier4Discount?: number;
   onSuccess?: () => void;
   priceEntries?: PriceEntry[];
   suppliers?: Supplier[];
+  /** T26: admin-controlled — whether SC can override transport fee this month */
+  scTransportOverrideEnabled?: boolean;
+  /** Admin has enabled tier pricing for this month — SC can switch strategy per item */
+  tierEnabled?: boolean;
 };
 
 export default function PricingCalculator({
@@ -78,25 +84,39 @@ export default function PricingCalculator({
   tier1Discount = 0,
   tier2Max = 200,
   tier2Discount = 5,
-  tier3Discount = 10,
+  tier3Discount = 0,
+  tier3Max = 800,
+  tier4Discount = 0,
   onSuccess,
   priceEntries = [],
   suppliers = [],
+  scTransportOverrideEnabled = false,
+  tierEnabled = false,
 }: PricingCalculatorProps) {
   const [sellMinStr, setSellMinStr] = useState<string>("");
   const [sellMaxStr, setSellMaxStr] = useState<string>("");
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
   const [changeReason, setChangeReason] = useState("");
+  // T17: dual note fields
+  const [internalNote, setInternalNote] = useState("");
+  const [saNote, setSaNote] = useState("");
+  // T5: SC transport override per month
+  const [transportOverrideEnabled, setTransportOverrideEnabled] = useState(false);
+  const [transportOverrideAmount, setTransportOverrideAmount] = useState<string>("");
   const [showHistory, setShowHistory] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
+  // Strategy override: SC can switch per-item between Tier and Fixed when admin enables tierEnabled
+  const [usesTierStrategy, setUsesTierStrategy] = useState(isTiered);
+  // Reset when item changes
+  useEffect(() => { setUsesTierStrategy(isTiered); }, [isTiered]);
 
   // ── Markup Assistant state ─────────────────────────────────────────
   const [useMarkup, setUseMarkup]       = useState(false);
   const [markupRef, setMarkupRef]       = useState<"min" | "avg" | "max">("max");
-  const [markupType, setMarkupType]     = useState<"pct" | "fixed">("pct");
+  const [markupType, setMarkupType]     = useState<"pct" | "fixed" | "div">("pct");
   const [markupMinVal, setMarkupMinVal] = useState<string>("");
   const [markupMaxVal, setMarkupMaxVal] = useState<string>("");
 
@@ -150,21 +170,33 @@ export default function PricingCalculator({
     });
   }, [priceEntries, suppliers, itemId, last3Months]);
 
+  // Group history by month, latest record per month, up to 3 most recent months
+  const publishedPriceHistory = useMemo(() => {
+    const byMonth = new Map<string, typeof history[0]>();
+    for (const h of history) {
+      if (!byMonth.has(h.month)) byMonth.set(h.month, h); // ordered DESC, first = most recent
+    }
+    return [...byMonth.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 3);
+  }, [history]);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsPending(true);
     setErrorMsg(null);
 
     // Resolve effective selling prices (same logic as the derived-values block below)
-    const _applyMu = (ref: number, val: string, type: "pct" | "fixed") => {
+    const _applyMu = (ref: number, val: string, type: "pct" | "fixed" | "div") => {
       const v = parseFloat(val) || 0;
+      if (type === "div") return v > 0 ? ref / v : ref;
       return type === "pct" ? ref * (1 + v / 100) : ref + v;
     };
     const _muRef = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
     const sellMinVal = useMarkup
       ? _applyMu(_muRef, markupMinVal, markupType)
       : (parseFloat(sellMinStr) || 0);
-    const sellMaxVal = isTiered ? sellMinVal
+    const sellMaxVal = usesTierStrategy ? sellMinVal
       : useMarkup ? _applyMu(_muRef, markupMaxVal, markupType)
       : (parseFloat(sellMaxStr) || 0);
 
@@ -173,7 +205,7 @@ export default function PricingCalculator({
       setIsPending(false);
       return;
     }
-    if (!isTiered && sellMaxVal < sellMinVal) {
+    if (!usesTierStrategy && sellMaxVal < sellMinVal) {
       setErrorMsg("Max selling price must be greater than or equal to min selling price.");
       setIsPending(false);
       return;
@@ -195,7 +227,7 @@ export default function PricingCalculator({
     formData.set("markupType", "percent");
     formData.set("markupMin", String(Math.max(0, calculatedMarkupMin)));
     formData.set("markupMax", String(Math.max(0, calculatedMarkupMax)));
-    formData.set("tierPricingEnabled", isTiered ? "on" : "off");
+    formData.set("tierPricingEnabled", usesTierStrategy ? "on" : "off");
     formData.set("otherExpenses", String(otherExpenses));
 
     try {
@@ -226,12 +258,12 @@ export default function PricingCalculator({
 
     const baseSellMaxVal = existing?.sell_max
       ? (existing.sell_max - transportation - existingExpenses)
-      : (isTiered ? baseSellMinVal : (buyAvg * 1.1));
+      : (usesTierStrategy ? baseSellMinVal : (buyAvg * 1.1));
 
     setSellMinStr(String(parseFloat(baseSellMinVal.toFixed(2))));
     setSellMaxStr(String(parseFloat(baseSellMaxVal.toFixed(2))));
     setOtherExpenses(existingExpenses);
-  }, [existing, buyMin, buyMax, buyAvg, transportation, isTiered]);
+  }, [existing, buyMin, buyMax, buyAvg, transportation, usesTierStrategy]);
 
   // Reset success and confirmation state ONLY when the active itemId changes
   useEffect(() => {
@@ -242,23 +274,28 @@ export default function PricingCalculator({
   }, [itemId]);
 
   // ── Markup assistant helpers ───────────────────────────────────────
-  const applyMarkup = (ref: number, val: string, type: "pct" | "fixed"): number => {
+  const applyMarkup = (ref: number, val: string, type: "pct" | "fixed" | "div"): number => {
     const v = parseFloat(val) || 0;
+    if (type === "div") return v > 0 ? ref / v : ref;
     return type === "pct" ? ref * (1 + v / 100) : ref + v;
   };
+
+  // ── T8: Round up to nearest 5 EGP ───────────────────────────────────
+  const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
+
   const markupRefPrice = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
 
-  // Effective base selling prices (WITHOUT transport/expenses) — single source of truth
+  // Effective base selling prices (WITHOUT transport/expenses) — rounded up to nearest 5 when markup assistant is active
   const effectiveSellMin = useMarkup
-    ? applyMarkup(markupRefPrice, markupMinVal, markupType)
+    ? roundUp5(applyMarkup(markupRefPrice, markupMinVal, markupType))
     : (parseFloat(sellMinStr) || 0);
   const effectiveSellMax = useMarkup
-    ? (isTiered ? effectiveSellMin : applyMarkup(markupRefPrice, markupMaxVal, markupType))
-    : (isTiered ? effectiveSellMin : (parseFloat(sellMaxStr) || 0));
+    ? (usesTierStrategy ? effectiveSellMin : roundUp5(applyMarkup(markupRefPrice, markupMaxVal, markupType)))
+    : (usesTierStrategy ? effectiveSellMin : (parseFloat(sellMaxStr) || 0));
 
-  // Published prices = base + transport + other expenses
-  const finalSellMin = effectiveSellMin + transportation + otherExpenses;
-  const finalSellMax = isTiered ? finalSellMin : (effectiveSellMax + transportation + otherExpenses);
+  // Published prices = base + transport + other expenses, rounded up to nearest 5 EGP
+  const finalSellMin = roundUp5(effectiveSellMin + transportation + otherExpenses);
+  const finalSellMax = usesTierStrategy ? finalSellMin : roundUp5(effectiveSellMax + transportation + otherExpenses);
 
   // Aliases kept for legacy display labels
   const liveSellMin = effectiveSellMin;
@@ -269,7 +306,7 @@ export default function PricingCalculator({
   const effectiveMarkupMinPct = calculatedMarkupMin;
   const floorViolated = floorPct !== null && calculatedMarkupMin < floorPct;
   const floorWarn = floorPct !== null && calculatedMarkupMin >= floorPct && calculatedMarkupMin < floorPct + 2;
-  const maxViolated = !isTiered && effectiveSellMax < effectiveSellMin;
+  const maxViolated = !usesTierStrategy && effectiveSellMax < effectiveSellMin;
 
   const isUpdate = !!existing;
 
@@ -278,6 +315,51 @@ export default function PricingCalculator({
       {errorMsg && (
         <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", padding: "10px 14px", borderRadius: "8px", fontSize: "12px", margin: 0 }}>
           <strong>Error:</strong> {errorMsg}
+        </div>
+      )}
+
+      {/* Strategy Switcher — only visible when admin has enabled tier pricing for this month */}
+      {tierEnabled && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: "10px",
+          padding: "10px 14px",
+          background: usesTierStrategy
+            ? "linear-gradient(135deg,rgba(99,102,241,0.10) 0%,rgba(59,130,246,0.07) 100%)"
+            : "linear-gradient(135deg,rgba(16,185,129,0.10) 0%,rgba(52,211,153,0.07) 100%)",
+          border: `1.5px solid ${usesTierStrategy ? "rgba(99,102,241,0.35)" : "rgba(16,185,129,0.35)"}`,
+          borderRadius: "10px",
+        }}>
+          <span style={{ fontSize: "18px" }}>{usesTierStrategy ? "⚡" : "📊"}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Pricing Strategy — This Month</div>
+            <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px" }}>Applies to this item only. Does not change permanent settings.</div>
+          </div>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button type="button"
+              onClick={() => setUsesTierStrategy(true)}
+              style={{
+                padding: "6px 12px", borderRadius: "7px", fontSize: "11px", fontWeight: 700, cursor: "pointer",
+                border: "1.5px solid",
+                borderColor: usesTierStrategy ? "var(--primary)" : "var(--border)",
+                background: usesTierStrategy ? "var(--primary)" : "var(--bg-elevated)",
+                color: usesTierStrategy ? "#fff" : "var(--text-secondary)",
+                transition: "all 150ms",
+              }}>
+              ⚡ Tier
+            </button>
+            <button type="button"
+              onClick={() => setUsesTierStrategy(false)}
+              style={{
+                padding: "6px 12px", borderRadius: "7px", fontSize: "11px", fontWeight: 700, cursor: "pointer",
+                border: "1.5px solid",
+                borderColor: !usesTierStrategy ? "var(--success)" : "var(--border)",
+                background: !usesTierStrategy ? "var(--success)" : "var(--bg-elevated)",
+                color: !usesTierStrategy ? "#fff" : "var(--text-secondary)",
+                transition: "all 150ms",
+              }}>
+              📊 Fixed
+            </button>
+          </div>
         </div>
       )}
 
@@ -325,33 +407,54 @@ export default function PricingCalculator({
                 }
               </p>
 
-              {/* Price Summary Panel */}
-              <div style={{
-                background: "var(--bg-subtle)",
-                border: "1px solid var(--border)",
-                borderRadius: "10px",
-                padding: "12px 20px",
-                width: "100%",
-                maxWidth: "320px",
-                marginBottom: "24px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
-                <div style={{ textAlign: "left" }}>
-                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Min Price</span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)", marginTop: "2px" }}>
-                    {formatCurrency(finalSellMin)}
+              {/* Price Summary Panel — show tier table when usesTierStrategy (T9) */}
+              {usesTierStrategy ? (
+                <div style={{
+                  background: "var(--bg-subtle)", border: "1px solid var(--border)",
+                  borderRadius: "10px", padding: "12px 16px", width: "100%",
+                  maxWidth: "340px", marginBottom: "24px",
+                }}>
+                  <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Published Tier Prices</div>
+                  {[
+                    { label: `Tier 1  (1 – ${tier1Max} units)`, price: finalSellMin },
+                    { label: `Tier 2  (${tier1Max + 1} – ${tier2Max} units)`, price: tier2Discount > 0 && tier2Discount < 1 ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses) },
+                    { label: `Tier 3  (${tier2Max + 1} – ${tier3Max} units)`, price: tier3Discount > 0 && tier3Discount < 1 ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses) },
+                    ...(tier4Discount > 0 ? [{ label: `Tier 4  (${tier3Max + 1}+ units)`, price: tier4Discount < 1 ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses) }] : []),
+                  ].map(({ label, price }) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px dashed var(--border-light)", fontSize: "12px" }}>
+                      <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+                      <strong style={{ color: "var(--success)" }}>{formatCurrency(price)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  background: "var(--bg-subtle)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "10px",
+                  padding: "12px 20px",
+                  width: "100%",
+                  maxWidth: "320px",
+                  marginBottom: "24px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}>
+                  <div style={{ textAlign: "left" }}>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Min Price</span>
+                    <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)", marginTop: "2px" }}>
+                      {formatCurrency(finalSellMin)}
+                    </div>
+                  </div>
+                  <div style={{ height: "32px", borderLeft: "1px solid var(--border-medium)", margin: "0 12px" }} />
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Max Price</span>
+                    <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)", marginTop: "2px" }}>
+                      {formatCurrency(finalSellMax)}
+                    </div>
                   </div>
                 </div>
-                <div style={{ height: "32px", borderLeft: "1px solid var(--border-medium)", margin: "0 12px" }} />
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Max Price</span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)", marginTop: "2px" }}>
-                    {formatCurrency(finalSellMax)}
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Actions */}
               <div style={{ display: "flex", gap: "10px", width: "100%", maxWidth: "320px" }}>
@@ -443,32 +546,32 @@ export default function PricingCalculator({
                             {locale === "ar" ? "النوع" : "Type"}
                           </span>
                           <div style={{ display: "flex", borderRadius: "7px", border: "1.5px solid var(--border)", overflow: "hidden" }}>
-                            {(["pct", "fixed"] as const).map(t => (
+                            {(["pct", "fixed", "div"] as const).map(t => (
                               <button key={t} type="button"
                                 onClick={() => setMarkupType(t)}
                                 style={{
-                                  padding: "6px 12px", border: "none", cursor: "pointer",
+                                  padding: "6px 10px", border: "none", cursor: "pointer",
                                   fontSize: "11px", fontWeight: 700,
                                   background: markupType === t ? "var(--primary)" : "transparent",
                                   color: markupType === t ? "#fff" : "var(--text-muted)",
                                 }}
-                              >{t === "pct" ? "%" : "EGP +"}</button>
+                              >{t === "pct" ? "% Markup" : t === "fixed" ? "EGP +" : "÷ Divisor"}</button>
                             ))}
                           </div>
                         </div>
                         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
                           <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            {isTiered ? (locale === "ar" ? "الهامش" : "Markup") : (locale === "ar" ? "هامش الأدنى" : "Min Markup")}
+                            {usesTierStrategy ? (locale === "ar" ? "الهامش" : "Markup") : (locale === "ar" ? "هامش الأدنى" : "Min Markup")}
                           </span>
                           <input
                             type="number" step="any" min="0"
                             value={markupMinVal}
                             onChange={e => setMarkupMinVal(e.target.value)}
-                            placeholder={markupType === "pct" ? "e.g. 10" : "e.g. 5.00"}
+                            placeholder={markupType === "pct" ? "e.g. 10" : markupType === "div" ? "e.g. 0.77" : "e.g. 5.00"}
                             style={{ padding: "7px 10px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontSize: "13px", fontWeight: 700 }}
                           />
                         </div>
-                        {!isTiered && (
+                        {!usesTierStrategy && (
                           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
                             <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               {locale === "ar" ? "هامش الأقصى" : "Max Markup"}
@@ -486,8 +589,13 @@ export default function PricingCalculator({
                       {/* Live preview */}
                       {effectiveSellMin > 0 && (
                         <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: "7px", padding: "8px 12px", fontSize: "11.5px", color: "var(--primary)", fontWeight: 600 }}>
-                          {isTiered ? (
-                            <span>→ Base: <strong>{formatCurrency(effectiveSellMin)}</strong>{" "}({formatCurrency(markupRefPrice)}{markupType === "pct" ? ` + ${markupMinVal || 0}%` : ` + EGP ${markupMinVal || 0}`})</span>
+                          {usesTierStrategy ? (
+                            <span>→ Base (Tier 1): <strong>{formatCurrency(effectiveSellMin)}</strong>{" "}
+                              {markupType === "div"
+                                ? `(${formatCurrency(markupRefPrice)} ÷ ${markupMinVal || "?"})`
+                                : `(${formatCurrency(markupRefPrice)}${markupType === "pct" ? ` + ${markupMinVal || 0}%` : ` + EGP ${markupMinVal || 0}`})`
+                              }
+                            </span>
                           ) : (
                             <span>→ Min: <strong>{formatCurrency(effectiveSellMin)}</strong>{" · "}Max: <strong>{formatCurrency(effectiveSellMax)}</strong></span>
                           )}
@@ -498,7 +606,7 @@ export default function PricingCalculator({
                 </div>
 
                 {/* ── Selling Price Inputs ── */}
-                {isTiered ? (
+                {usesTierStrategy ? (
                   /* Tiered item: single Base Selling Price */
                   <label className="field">
                     <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -509,7 +617,7 @@ export default function PricingCalculator({
                     </span>
                     {useMarkup ? (
                       <input type="text" readOnly
-                        value={effectiveSellMin > 0 ? effectiveSellMin.toFixed(2) : "—"}
+                        value={effectiveSellMin > 0 ? (effectiveSellMin % 1 === 0 ? String(effectiveSellMin) : effectiveSellMin.toFixed(2)) : "—"}
                         style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "16px", fontWeight: 800, border: "1.5px solid var(--primary)", background: "rgba(99,102,241,0.06)", color: "var(--primary)", cursor: "not-allowed" }}
                       />
                     ) : (
@@ -530,7 +638,7 @@ export default function PricingCalculator({
                       <span>{locale === "ar" ? "الحد الأدنى لسعر البيع" : "Min Selling Price"}</span>
                       {useMarkup ? (
                         <input type="text" readOnly
-                          value={effectiveSellMin > 0 ? effectiveSellMin.toFixed(2) : "—"}
+                          value={effectiveSellMin > 0 ? (effectiveSellMin % 1 === 0 ? String(effectiveSellMin) : effectiveSellMin.toFixed(2)) : "—"}
                           style={{ padding: "10px 14px", borderRadius: "8px", fontSize: "15px", fontWeight: 800, border: "1.5px solid var(--success)", background: "rgba(16,185,129,0.06)", color: "var(--success)", cursor: "not-allowed" }}
                         />
                       ) : (
@@ -574,6 +682,7 @@ export default function PricingCalculator({
 
                 {/* ── Transportation & Other Expenses ────────────────────────── */}
                 <div style={{ borderTop: "1px dashed var(--border-light)", paddingTop: "14px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {/* Fixed transport fee card */}
                   {transportation > 0 && (
                     <div style={{
                       display: "flex", alignItems: "center", gap: "12px",
@@ -594,6 +703,43 @@ export default function PricingCalculator({
                       <div style={{ fontSize: "18px", fontWeight: 900, color: "#d97706", whiteSpace: "nowrap" }}>
                         {formatCurrency(transportation)}
                       </div>
+                    </div>
+                  )}
+                  {/* T5 + T26: Transport override toggle — directly under transport card */}
+                  {scTransportOverrideEnabled && (
+                    <div style={{
+                      padding: "10px 14px",
+                      background: transportOverrideEnabled
+                        ? "linear-gradient(135deg,rgba(245,158,11,0.12) 0%,rgba(239,68,68,0.07) 100%)"
+                        : "var(--bg-elevated)",
+                      border: `1.5px solid ${transportOverrideEnabled ? "var(--warning)" : "var(--border)"}`,
+                      borderRadius: "10px", display: "flex", flexDirection: "column", gap: "8px"
+                    }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                        <input type="checkbox" checked={transportOverrideEnabled}
+                          onChange={e => { setTransportOverrideEnabled(e.target.checked); if (!e.target.checked) setTransportOverrideAmount(""); }}
+                          style={{ accentColor: "var(--warning)", width: "15px", height: "15px" }} />
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: transportOverrideEnabled ? "var(--warning)" : "var(--text-secondary)" }}>
+                          Override transport fee this month only
+                        </span>
+                      </label>
+                      {transportOverrideEnabled && (
+                        <input type="number" min="0" step="any"
+                          placeholder={`Default: ${transportation} EGP/unit`}
+                          value={transportOverrideAmount}
+                          onChange={e => setTransportOverrideAmount(e.target.value)}
+                          style={{
+                            padding: "7px 10px", borderRadius: "8px", fontSize: "13px",
+                            border: "1px solid var(--warning)", background: "var(--bg-surface)",
+                            color: "var(--text-primary)", width: "100%"
+                          }} />
+                      )}
+                    </div>
+                  )}
+                  {/* Hint when SC transport override is not enabled by admin */}
+                  {!scTransportOverrideEnabled && transportation > 0 && (
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)", fontStyle: "italic", padding: "2px 2px" }}>
+                      💡 To override this transport fee, ask Admin to enable <strong>SC Transport Override</strong> in Monthly Policy.
                     </div>
                   )}
                   <label className="field">
@@ -637,7 +783,8 @@ export default function PricingCalculator({
                   </div>
                 )}
 
-                {/* Final Price Summary Box */}
+                {/* T7: Final Price Summary Box — hidden when tiered (shown separately in tier preview) */}
+                {!usesTierStrategy && (
                 <div style={{
                   padding: "12px 16px",
                   background: "linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.08) 100%)",
@@ -670,12 +817,17 @@ export default function PricingCalculator({
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* Hidden inputs to pass otherExpenses */}
+                {/* Hidden inputs to pass otherExpenses + T5 transport override */}
                 <input type="hidden" name="otherExpenses" value={otherExpenses} />
+                <input type="hidden" name="transportOverrideEnabled" value={transportOverrideEnabled ? "1" : "0"} />
+                {transportOverrideEnabled && (
+                  <input type="hidden" name="transportOverride" value={transportOverrideAmount} />
+                )}
 
-                {/* Volume Tier Preview (when enabled) */}
-                {isTiered && (
+                {/* Volume Tier Preview — T6: divisor formula (value < 1), fallback to % for legacy */}
+                {usesTierStrategy && (
                   <div style={{
                     padding: "14px",
                     background: "linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%)",
@@ -686,21 +838,50 @@ export default function PricingCalculator({
                     gap: "8px"
                   }}>
                     <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      ⚡ Live Volume Tier Calculation
+                      ⚡ Live Volume Tier Prices (rounded to 5 EGP)
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px" }}>
+                      {/* Tier 1 */}
                       <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                        <span>Base Tier (0 - {tier1Max} units):</span>
+                        <span>Tier 1 (1 – {tier1Max} units):</span>
                         <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(finalSellMin)}</strong>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                        <span>Tier 2 ({tier1Max + 1} - {tier2Max} units) — {tier2Discount}% discount on base:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency((effectiveSellMin * (1 - tier2Discount / 100)) + transportation + otherExpenses)}</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Tier 3 ({tier2Max + 1}+ units) — {tier3Discount}% discount on base:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency((effectiveSellMin * (1 - tier3Discount / 100)) + transportation + otherExpenses)}</strong>
-                      </div>
+                      {/* Tier 2 */}
+                      {tier2Discount > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
+                          <span>Tier 2 ({tier1Max + 1} – {tier2Max} units){tier2Discount < 1 ? ` ÷ ${tier2Discount}` : ` ${tier2Discount}% off`}:</span>
+                          <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                            {formatCurrency(tier2Discount < 1
+                              ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses)
+                              : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses)
+                            )}
+                          </strong>
+                        </div>
+                      )}
+                      {/* Tier 3 */}
+                      {tier3Discount > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: tier4Discount > 0 ? "1px dashed var(--border-light)" : "none", paddingBottom: "4px" }}>
+                          <span>Tier 3 ({tier2Max + 1} – {tier3Max} units){tier3Discount < 1 ? ` ÷ ${tier3Discount}` : ` ${tier3Discount}% off`}:</span>
+                          <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                            {formatCurrency(tier3Discount < 1
+                              ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses)
+                              : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses)
+                            )}
+                          </strong>
+                        </div>
+                      )}
+                      {/* Tier 4 */}
+                      {tier4Discount > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Tier 4 ({tier3Max + 1}+ units){tier4Discount < 1 ? ` ÷ ${tier4Discount}` : ` ${tier4Discount}% off`}:</span>
+                          <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                            {formatCurrency(tier4Discount < 1
+                              ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses)
+                              : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses)
+                            )}
+                          </strong>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -741,6 +922,48 @@ export default function PricingCalculator({
                           color: "var(--text-primary)",
                           fontSize: "13px",
                           marginTop: "4px"
+                        }}
+                      />
+                    </label>
+
+                    {/* T17: SA notification note */}
+                    <label className="field" style={{ margin: 0 }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ color: "var(--primary)" }}>📢</span>
+                        <span>SA Notification Message</span>
+                        <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--primary)", background: "rgba(59,130,246,0.1)", padding: "1px 6px", borderRadius: "4px" }}>Visible to Sales Agent</span>
+                      </span>
+                      <textarea
+                        name="saNote"
+                        rows={2}
+                        value={saNote}
+                        onChange={e => setSaNote(e.target.value)}
+                        placeholder="Optional — message shown in SA price update alert, e.g. 'USD rate change — prices effective immediately'"
+                        style={{
+                          padding: "8px 12px", borderRadius: "8px", fontSize: "12px", resize: "vertical",
+                          border: "1.5px solid rgba(59,130,246,0.4)", background: "var(--bg-elevated)",
+                          color: "var(--text-primary)", marginTop: "4px", width: "100%"
+                        }}
+                      />
+                    </label>
+
+                    {/* T17: Internal SC-only note */}
+                    <label className="field" style={{ margin: 0 }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>🔒</span>
+                        <span>Internal Note</span>
+                        <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-subtle)", padding: "1px 6px", borderRadius: "4px" }}>SC / Admin only</span>
+                      </span>
+                      <textarea
+                        name="internalNote"
+                        rows={2}
+                        value={internalNote}
+                        onChange={e => setInternalNote(e.target.value)}
+                        placeholder="Optional — private note not shown to SA, e.g. 'awaiting confirmation from supplier'"
+                        style={{
+                          padding: "8px 12px", borderRadius: "8px", fontSize: "12px", resize: "vertical",
+                          border: "1px solid var(--border)", background: "var(--bg-elevated)",
+                          color: "var(--text-primary)", marginTop: "4px", width: "100%"
                         }}
                       />
                     </label>
@@ -938,117 +1161,194 @@ export default function PricingCalculator({
             </div>
           )}
 
-          {/* ── Audit History ──────────────────────────────────────────────────── */}
-          {history.length > 0 && (
+          {/* ── Published Price History (Last 3 Months) ───────────────────────── */}
+          {publishedPriceHistory.length > 0 && (
             <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "14px" }}>
-              <button
-                type="button"
-                onClick={() => setShowHistory((v) => !v)}
-                style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  background: "none", border: "none", cursor: "pointer", padding: "0",
-                  fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)",
-                  width: "100%", justifyContent: "space-between",
-                }}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>📋</span>
-                  {locale === "ar" ? "سجل تغييرات الأسعار" : "Price Change Audit Trail"}
-                  <span style={{
-                    fontSize: "10px", fontWeight: 800, background: "var(--bg-subtle)",
-                    border: "1px solid var(--border)", borderRadius: "99px",
-                    padding: "1px 7px", color: "var(--text-muted)",
-                  }}>{history.length}</span>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <span style={{ fontSize: "16px" }}>📋</span>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  {locale === "ar" ? "سجل الأسعار المنشورة" : "Published Price History"}
                 </span>
-                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                  {showHistory ? (locale === "ar" ? "▲ إخفاء" : "▲ Hide") : (locale === "ar" ? "▼ عرض" : "▼ Show")}
+                <span style={{
+                  fontSize: "10px", fontWeight: 700, background: "var(--bg-subtle)",
+                  border: "1px solid var(--border)", borderRadius: "99px",
+                  padding: "1px 7px", color: "var(--text-muted)",
+                }}>
+                  {locale === "ar" ? `آخر ${publishedPriceHistory.length} أشهر` : `Last ${publishedPriceHistory.length} month${publishedPriceHistory.length > 1 ? "s" : ""}`}
                 </span>
-              </button>
+              </div>
 
-              {showHistory && (
-                <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px", maxHeight: "250px", overflowY: "auto", paddingRight: "4px" }}>
-                  {history.map((h) => {
-                    const isFirstPublish = !h.is_update;
-                    return (
-                      <div
-                        key={h.id}
-                        style={{
-                          padding: "10px 14px",
-                          borderRadius: "var(--radius)",
-                          background: isFirstPublish ? "var(--success-light)" : "var(--bg-elevated)",
-                          border: `1px solid ${isFirstPublish ? "rgba(16,185,129,0.25)" : "var(--border-light)"}`,
-                        }}
-                      >
-                        {/* Header row */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", flexWrap: "wrap" }}>
-                          <span style={{
-                            fontSize: "9px", fontWeight: 800, textTransform: "uppercase",
-                            letterSpacing: "0.08em", padding: "2px 7px", borderRadius: "4px",
-                            background: isFirstPublish ? "var(--success)" : "var(--primary)",
-                            color: "#fff",
-                          }}>
-                            {isFirstPublish ? (locale === "ar" ? "نشر أول" : "First Publish") : (locale === "ar" ? "تعديل" : "Updated")}
-                          </span>
-                          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-primary)" }}>
-                            {formatMonthLabel(h.month)}
-                          </span>
-                          <span style={{ fontSize: "11px", color: "var(--text-muted)", marginInlineStart: "auto" }}>
-                            {formatDateTime(h.changed_at)} · {h.changed_by}
-                          </span>
-                        </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "540px", overflowY: "auto", paddingRight: "4px" }}>
+                {publishedPriceHistory.map(([m, h]) => {
+                  const isTierRecord  = h.new_tier_pricing_enabled === 1;
+                  const isFirstPub    = h.is_update === 0;
+                  const histTransport = h.new_transportation ?? 0;
+                  const histOther     = h.new_other_expenses ?? 0;
+                  const hasOverride   = h.new_transport_override_enabled === 1;
+                  const overrideAmt   = h.new_transport_override_amount ?? 0;
+                  const accentColor   = isFirstPub ? "var(--success)" : "var(--primary)";
 
-                        {/* Price change row */}
-                        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "12px" }}>
-                          {h.prev_sell_min !== null && (
-                            <div>
-                              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>{locale === "ar" ? "السابق" : "Previous"}</span>
-                              <div style={{ fontWeight: 700, color: "var(--text-secondary)" }}>
-                                {formatCurrency(h.prev_sell_min)} → {formatCurrency(h.prev_sell_max ?? 0)}
-                              </div>
-                              <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                                {h.prev_markup_min?.toFixed(1)}% – {h.prev_markup_max?.toFixed(1)}%
-                                {h.prev_strategy ? ` · ${h.prev_strategy.toUpperCase()}` : ""}
-                                {h.prev_transportation !== null && h.prev_transportation > 0 && ` · Trans: ${formatCurrency(h.prev_transportation)}`}
-                                {h.prev_other_expenses !== null && h.prev_other_expenses > 0 && ` · Exp: ${formatCurrency(h.prev_other_expenses)}`}
-                              </div>
-                            </div>
-                          )}
-                          {h.prev_sell_min !== null && (
-                            <div style={{ alignSelf: "center", color: "var(--text-dim)", fontSize: "16px" }}>→</div>
-                          )}
+                  // Helper: compute tier price from buy_avg + divisor + hist transport
+                  const histTierPrice = (divisor: number | undefined): number | null => {
+                    if (!divisor || !h.new_buy_avg) return null;
+                    const raw = divisor < 1
+                      ? h.new_buy_avg / divisor + histTransport + histOther
+                      : h.new_buy_avg * (1 + divisor / 100) + histTransport + histOther;
+                    return Math.ceil(raw / 5) * 5;
+                  };
+
+                  return (
+                    <div key={m} style={{
+                      borderRadius: "10px",
+                      border: `1.5px solid ${isFirstPub ? "rgba(16,185,129,0.25)" : "var(--border-light)"}`,
+                      background: isFirstPub ? "rgba(16,185,129,0.03)" : "var(--bg-elevated)",
+                      overflow: "hidden",
+                    }}>
+                      {/* Card header */}
+                      <div style={{
+                        padding: "7px 12px",
+                        background: isFirstPub ? "rgba(16,185,129,0.07)" : "var(--bg-subtle)",
+                        borderBottom: `1px solid ${isFirstPub ? "rgba(16,185,129,0.2)" : "var(--border-light)"}`,
+                        display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap",
+                      }}>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--text-primary)" }}>
+                          {formatMonthLabel(m)}
+                        </span>
+                        <span style={{
+                          fontSize: "9px", fontWeight: 800, textTransform: "uppercase",
+                          padding: "2px 6px", borderRadius: "4px",
+                          background: accentColor, color: "#fff",
+                        }}>
+                          {isFirstPub ? (locale === "ar" ? "أول نشر" : "First Publish") : (locale === "ar" ? "تحديث" : "Updated")}
+                        </span>
+                        <span style={{
+                          fontSize: "9px", fontWeight: 800,
+                          padding: "2px 7px", borderRadius: "4px",
+                          background: isTierRecord ? "rgba(99,102,241,0.10)" : "rgba(59,130,246,0.08)",
+                          color: isTierRecord ? "var(--primary)" : "#0369a1",
+                          border: `1px solid ${isTierRecord ? "rgba(99,102,241,0.25)" : "rgba(59,130,246,0.2)"}`,
+                        }}>
+                          {isTierRecord ? "⚡ TIER" : `📊 ${(h.new_strategy || "").toUpperCase()}`}
+                        </span>
+                        <span style={{ marginInlineStart: "auto", fontSize: "9.5px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                          {formatDateTime(h.changed_at)} · {h.changed_by}
+                        </span>
+                      </div>
+
+                      {/* Card body */}
+                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "7px" }}>
+
+                        {/* Prices */}
+                        {isTierRecord ? (
                           <div>
-                            <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                              {isFirstPublish ? (locale === "ar" ? "تم النشر" : "Published") : (locale === "ar" ? "الجديد" : "New")}
-                            </span>
-                            <div style={{ fontWeight: 800, color: isFirstPublish ? "var(--success)" : "var(--primary)" }}>
-                              {formatCurrency(h.new_sell_min)} → {formatCurrency(h.new_sell_max)}
+                            <div style={{ fontSize: "9px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>
+                              {locale === "ar" ? "أسعار الشرائح" : "Tier Selling Prices"}
                             </div>
-                            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                              {h.new_markup_min.toFixed(1)}% – {h.new_markup_max.toFixed(1)}%
-                              {" · "}{h.new_strategy.toUpperCase()}
-                              {" · Avg buy "}{formatCurrency(h.new_buy_avg)}
-                              {h.new_transportation !== null && h.new_transportation > 0 && ` · Trans: ${formatCurrency(h.new_transportation)}`}
-                              {h.new_other_expenses !== null && h.new_other_expenses > 0 && ` · Exp: ${formatCurrency(h.new_other_expenses)}`}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
+                              {([
+                                { label: `T1 (1–${tier1Max})`, price: h.new_sell_min },
+                                { label: `T2 (${tier1Max + 1}–${tier2Max})`, price: histTierPrice(tier2Discount) },
+                                { label: `T3 (${tier2Max + 1}–${tier3Max})`, price: histTierPrice(tier3Discount) },
+                                ...(tier4Discount > 0 ? [{ label: `T4 (${tier3Max + 1}+)`, price: histTierPrice(tier4Discount) }] : []),
+                              ] as { label: string; price: number | null }[]).map((t, i) => (
+                                <div key={i} style={{
+                                  padding: "5px 8px",
+                                  background: i === 0 ? "rgba(99,102,241,0.07)" : "var(--bg-surface)",
+                                  borderRadius: "6px",
+                                  border: `1px solid ${i === 0 ? "rgba(99,102,241,0.2)" : "var(--border-light)"}`,
+                                }}>
+                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{t.label}</div>
+                                  <div style={{ fontSize: "13px", fontWeight: 800, color: i === 0 ? "var(--primary)" : "var(--text-primary)" }}>
+                                    {t.price !== null ? formatCurrency(t.price) : "—"}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: "9px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>
+                              {locale === "ar" ? "نطاق سعر البيع" : "Selling Price Range"}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <div style={{ padding: "6px 10px", background: "rgba(16,185,129,0.07)", borderRadius: "6px", border: "1px solid rgba(16,185,129,0.2)" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{locale === "ar" ? "الحد الأدنى" : "Min Price"}</div>
+                                <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(h.new_sell_min)}</div>
+                              </div>
+                              <span style={{ color: "var(--text-dim)", fontSize: "16px" }}>→</span>
+                              <div style={{ padding: "6px 10px", background: "rgba(59,130,246,0.07)", borderRadius: "6px", border: "1px solid rgba(59,130,246,0.2)" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{locale === "ar" ? "الحد الأقصى" : "Max Price"}</div>
+                                <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(h.new_sell_max)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cost breakdown */}
+                        <div style={{
+                          display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "10.5px",
+                          padding: "5px 8px", background: "var(--bg-subtle)", borderRadius: "6px",
+                        }}>
+                          <span style={{ color: "var(--text-muted)" }}>💰</span>
+                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "متوسط التكلفة:" : "Buy avg:"}</span>
+                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(h.new_buy_avg)}</span>
+                          <span style={{ color: "var(--border-medium)" }}>·</span>
+                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "الهامش:" : "Markup:"}</span>
+                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+                            {h.new_markup_min.toFixed(1)}%{!isTierRecord && h.new_markup_min !== h.new_markup_max ? ` – ${h.new_markup_max.toFixed(1)}%` : ""}
+                          </span>
+                          {histOther > 0 && (
+                            <>
+                              <span style={{ color: "var(--border-medium)" }}>·</span>
+                              <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "مصاريف:" : "Exp:"}</span>
+                              <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(histOther)}</span>
+                            </>
+                          )}
                         </div>
+
+                        {/* Transport row */}
+                        {histTransport > 0 && (
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: "6px", fontSize: "10.5px",
+                            padding: "5px 8px", borderRadius: "6px",
+                            background: hasOverride ? "rgba(245,158,11,0.07)" : "var(--bg-subtle)",
+                            border: hasOverride ? "1px solid rgba(245,158,11,0.3)" : "1px solid var(--border-light)",
+                          }}>
+                            <span>🚚</span>
+                            <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نقل:" : "Transport:"}</span>
+                            <span style={{ fontWeight: 700, color: hasOverride ? "#b45309" : "var(--text-primary)" }}>
+                              {formatCurrency(hasOverride ? overrideAmt : histTransport)}/unit
+                            </span>
+                            {hasOverride && (
+                              <>
+                                <span style={{ color: "var(--text-dim)", fontSize: "9px" }}>(default: {formatCurrency(histTransport)})</span>
+                                <span style={{
+                                  fontSize: "9px", fontWeight: 800, padding: "1px 5px",
+                                  background: "rgba(245,158,11,0.15)", borderRadius: "4px",
+                                  color: "#92400e", border: "1px solid rgba(245,158,11,0.3)",
+                                }}>⚠️ OVERRIDDEN</span>
+                              </>
+                            )}
+                          </div>
+                        )}
 
                         {/* Change reason */}
                         {h.change_reason && (
                           <div style={{
-                            marginTop: "6px", padding: "5px 10px",
+                            padding: "5px 10px",
                             background: "var(--bg-subtle)", borderRadius: "6px",
-                            fontSize: "11px", color: "var(--text-secondary)",
+                            fontSize: "10.5px", color: "var(--text-secondary)",
                             borderInlineStart: "3px solid var(--primary)",
                           }}>
                             💬 {h.change_reason}
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

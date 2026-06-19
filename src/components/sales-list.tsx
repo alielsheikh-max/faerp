@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { ItemCombobox } from "./item-combobox";
 
 type SalesRow = {
   item_id: number;
@@ -20,15 +21,51 @@ type SalesRow = {
   created_at: string | null;
   moq: number;
   transportation_per_unit: number;
+  // T10: tier fields
+  tier_pricing_enabled: number;
+  is_tiered: number;
+  tier1_max: number;
+  tier1_discount: number;
+  tier2_max: number;
+  tier2_discount: number;
+  tier3_max: number;
+  tier3_discount: number;
+  tier4_max: number;
+  tier4_discount: number;
+  // T20: actual transport stored on selling price
+  transportation: number;
+  other_expenses: number;
+};
+
+/** T10: Compute tier prices from buy_avg ÷ divisor (Phase-1 formula). */
+function calcTierPrices(row: SalesRow) {
+  const base = row.buy_avg ?? 0;
+  function roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+  return [
+    { label: "B",  range: `1–${row.tier1_max}`,  price: row.tier1_discount > 0 ? roundUp5(base / row.tier1_discount) : null },
+    { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: row.tier2_discount > 0 ? roundUp5(base / row.tier2_discount) : null },
+    { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: row.tier3_discount > 0 ? roundUp5(base / row.tier3_discount) : null },
+    { label: "T4", range: `>${row.tier3_max}`,   price: row.tier4_discount > 0 ? roundUp5(base / row.tier4_discount) : null },
+  ].filter(t => t.price !== null);
+}
+
+type PriceHistoryEntry = {
+  prev_sell_min: number | null;
+  prev_sell_max: number | null;
+  changed_at: string;
+  changed_by: string;
 };
 
 type SalesListProps = {
   initialRows: SalesRow[];
   categories: Array<{ id: number; name: string }>;
   month: string;
+  role?: "SC" | "SA";
+  /** SC only: map of item_id → most recent price change (for inline indicator) */
+  priceHistory?: Record<number, PriceHistoryEntry>;
 };
 
-export default function SalesList({ initialRows, categories, month }: SalesListProps) {
+export default function SalesList({ initialRows, categories, month, role, priceHistory }: SalesListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
 
@@ -167,18 +204,18 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
             <div className="form-grid" style={{ gridTemplateColumns: "1fr" }}>
               <label className="field">
                 <span>1. Select Approved Product</span>
-                <select 
+                <ItemCombobox
+                  items={initialRows.map((row) => ({
+                    id: row.item_id,
+                    label: row.item_name,
+                    unit: row.unit,
+                    category: row.category_name,
+                    isPublished: row.sell_min !== null,
+                  }))}
                   value={selectedItemId}
-                  onChange={(e) => setSelectedItemId(e.target.value)}
-                  style={{ width: "100%" }}
-                >
-                  <option value="">-- Choose Product to Quote --</option>
-                  {initialRows.map((row) => (
-                    <option key={row.item_id} value={row.item_id}>
-                      {row.item_name} ({row.unit})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedItemId}
+                  placeholder="-- Choose Product to Quote --"
+                />
               </label>
 
               {selectedItem && (
@@ -484,10 +521,10 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                 <th>Item</th>
                 <th>Unit</th>
                 <th>MOQ</th>
-                <th>Strategy</th>
-                <th>Approved Min Sell</th>
-                <th>Approved Max Sell</th>
-                <th>Publish Timestamp</th>
+                <th title="T16: Which buy price was used as markup base">Ref Base</th>
+                <th>Approved Price(s)</th>
+                <th title="T20: Transport cost per unit included in this price">Trans./Unit</th>
+                <th>Published</th>
               </tr>
             </thead>
             <tbody>
@@ -498,50 +535,111 @@ export default function SalesList({ initialRows, categories, month }: SalesListP
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
-                  <tr key={row.item_id}>
-                    <td>
-                      <span className="badge">{row.category_name}</span>
-                    </td>
-                    <td>
-                      <strong>{row.item_name}</strong>
-                    </td>
-                    <td>{row.unit}</td>
-                    <td>
-                      <span style={{ 
-                        fontSize: "12px", 
-                        fontWeight: "bold", 
-                        color: "var(--warning)", 
-                        backgroundColor: "rgba(245, 158, 11, 0.15)", 
-                        border: "1px solid var(--warning)", 
-                        padding: "4px 8px", 
-                        borderRadius: "6px", 
-                        display: "inline-block" 
-                      }}>
-                        {row.moq}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="badge badge-strong">{row.strategy ? row.strategy.toUpperCase() : "Pending"}</span>
-                    </td>
-                    <td>
-                      <strong style={{ color: "var(--success)", fontSize: "15px" }}>
-                        {formatCurrency(row.sell_min)}
-                      </strong>
-                    </td>
-                    <td>
-                      <strong style={{ color: "var(--primary)", fontSize: "15px" }}>
-                        {formatCurrency(row.sell_max)}
-                      </strong>
-                    </td>
-                    <td>
-                      <div className="cell-stack">
-                        <span>{formatDateTime(row.created_at)}</span>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>by {row.created_by}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filteredRows.map((row) => {
+                  // Show tiers whenever item is configured as tiered + has buy_avg
+                  // (don't require tier_pricing_enabled===1 — that flag may be 0 if item was
+                  //  published before the monthly tier toggle was switched on)
+                  const isTiered = row.is_tiered === 1 && row.buy_avg != null;
+                  const tierPrices = isTiered ? calcTierPrices(row) : [];
+                  const TIER_COLORS = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
+                  const recentChange = priceHistory?.[row.item_id];
+                  // Badge shows for both SC and SA; inline old→new only for SC
+                  const hasChange = !!recentChange;
+                  return (
+                    <tr key={row.item_id} style={hasChange ? {
+                      backgroundColor: "rgba(245,158,11,0.04)",
+                      borderLeft: "3px solid #f59e0b",
+                    } : {}}>
+                      <td><span className="badge">{row.category_name}</span></td>
+                      <td>
+                        <strong>{row.item_name}</strong>
+                        {hasChange && (
+                          <span style={{
+                            display: "inline-block", marginLeft: "8px",
+                            fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                            borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                            border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                            verticalAlign: "middle",
+                          }}>📝 Revised</span>
+                        )}
+                      </td>
+                      <td>{row.unit}</td>
+                      <td>
+                        <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--warning)",
+                          backgroundColor: "rgba(245,158,11,0.15)", border: "1px solid var(--warning)",
+                          padding: "4px 8px", borderRadius: "6px", display: "inline-block" }}>
+                          {row.moq}
+                        </span>
+                      </td>
+                      {/* T16: base reference */}
+                      <td>
+                        {row.strategy ? (
+                          <span className="badge badge-strong" title="Base buy price used for markup">
+                            Ref: {row.strategy.toUpperCase()}
+                          </span>
+                        ) : <span className="badge">—</span>}
+                      </td>
+                      {/* Approved Price(s) — for SC show old→new if revised */}
+                      <td>
+                        {isTiered ? (
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            {tierPrices.map((t, i) => (
+                              <div key={t.label} style={{ textAlign: "center", minWidth: "54px" }}>
+                                <div style={{ fontSize: "9px", fontWeight: 800, color: TIER_COLORS[i], textTransform: "uppercase", letterSpacing: "0.05em" }}>{t.label}</div>
+                                <div style={{ fontSize: "13px", fontWeight: 800, color: TIER_COLORS[i] }}>{formatCurrency(t.price)}</div>
+                                <div style={{ fontSize: "8px", color: "var(--text-muted)" }}>{t.range} {row.unit}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            {/* Inline old → new indicator: SC only */}
+                            {role === "SC" && hasChange && recentChange && recentChange.prev_sell_min !== null && (
+                              <div style={{ display: "flex", gap: "6px", alignItems: "center", fontSize: "11px", color: "var(--text-muted)" }}>
+                                <span style={{ textDecoration: "line-through", opacity: 0.7 }}>
+                                  {formatCurrency(recentChange.prev_sell_min)} – {formatCurrency(recentChange.prev_sell_max)}
+                                </span>
+                                <span style={{ color: "#f59e0b", fontWeight: 800, fontSize: "13px" }}>→</span>
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                              <div style={{ textAlign: "center" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Min</div>
+                                <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(row.sell_min)}</strong>
+                              </div>
+                              <span style={{ color: "var(--text-dim)" }}>—</span>
+                              <div style={{ textAlign: "center" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Max</div>
+                                <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency(row.sell_max)}</strong>
+                              </div>
+                            </div>
+                            {hasChange && (
+                              <div style={{ fontSize: "10px", color: "#b45309", marginTop: "2px" }}>
+                                Updated {formatDateTime(recentChange.changed_at)} · {recentChange.changed_by}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      {/* T20: transportation per unit */}
+                      <td>
+                        {(row.transportation ?? 0) > 0 ? (
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                            {formatCurrency(row.transportation)}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-dim)", fontSize: "12px" }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="cell-stack">
+                          <span>{formatDateTime(row.created_at)}</span>
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>by {row.created_by}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

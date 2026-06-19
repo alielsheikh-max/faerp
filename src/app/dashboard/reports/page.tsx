@@ -11,7 +11,7 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
   const categoryId = searchParams?.categoryId ? Number(searchParams.categoryId) : undefined;
   const categories = getCategories();
   const report = getMonthlyReport(month, categoryId);
-  const printHref = `/dashboard/reports/print?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}`;
+  const printHref = `/dashboard/reports/print?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}&autoprint=1`;
   const exportHref = `/dashboard/reports/export?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}`;
 
   return (
@@ -37,8 +37,8 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
             <h2>{formatMonthLabel(month)}</h2>
           </div>
           <div className="button-row">
-            <a href={printHref} className="button button-secondary" target="_blank">{t("rep.openPrint")}</a>
-            <a href={exportHref} className="button button-primary">{t("rep.exportCSV")}</a>
+            <a href={printHref} className="button button-secondary" target="_blank">📄 Download PDF</a>
+            <a href={exportHref} className="button button-primary">📊 Download XLSX</a>
           </div>
         </div>
         <form method="GET" className="inline-form">

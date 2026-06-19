@@ -171,6 +171,45 @@ function footer(username: string) {
   return `<div class="footer"><span>FAERP · Confidential</span><span>Prepared by ${username}</span><span>${formatDate(new Date())}</span></div>`;
 }
 
+// ── Tier price helpers for reports (same formula as SC pricing engine) ─────────────
+function rpt_roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+function rpt_getTierPrice(buyAvg: number, divisor: number) {
+  if (divisor <= 0 || buyAvg <= 0) return 0;
+  return rpt_roundUp5(buyAvg / divisor);
+}
+/** Returns HTML tier grid or min–max for the PDF "Approved Prices" column */
+function rpt_tierPriceHtml(r: any) {
+  if (r.is_tiered === 1 && r.buy_avg) {
+    const ba = r.buy_avg;
+    const tiers: { label: string; range: string; price: number }[] = [];
+    if (r.tier1_discount > 0) tiers.push({ label: "B",  range: `1–${r.tier1_max}`,               price: rpt_getTierPrice(ba, r.tier1_discount) });
+    if (r.tier2_discount > 0) tiers.push({ label: "T2", range: `${r.tier1_max+1}–${r.tier2_max}`, price: rpt_getTierPrice(ba, r.tier2_discount) });
+    if (r.tier3_discount > 0) tiers.push({ label: "T3", range: `${r.tier2_max+1}–${r.tier3_max}`, price: rpt_getTierPrice(ba, r.tier3_discount) });
+    if (r.tier4_discount > 0) tiers.push({ label: "T4", range: `${r.tier3_max+1}+`,               price: rpt_getTierPrice(ba, r.tier4_discount) });
+    const COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b"];
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;">${tiers.map((t, i) =>
+      `<div style="text-align:center;min-width:54px;background:${i===0?"#eef2ff":i===1?"#f0f9ff":i===2?"#f0fdf4":"#fffbeb"};border:1px solid ${COLORS[i]}33;border-radius:6px;padding:3px 7px;">
+        <div style="font-size:7px;font-weight:800;color:${COLORS[i]};text-transform:uppercase;letter-spacing:.05em;">${t.label}</div>
+        <div style="font-size:11px;font-weight:800;color:${COLORS[i]};">${formatCurrency(t.price)}</div>
+        <div style="font-size:7px;color:#6b7280;">${t.range}</div>
+      </div>`
+    ).join("")}</div>`;
+  }
+  return `<span style="color:#10b981;font-weight:800;font-size:13px;">${formatCurrency(r.sell_min)}</span><span style="color:#9ca3af;margin:0 6px;">–</span><span style="color:#6366f1;font-weight:800;font-size:13px;">${formatCurrency(r.sell_max)}</span>`;
+}
+/** Returns plain text tier description for Excel "Approved Prices" cell */
+function rpt_tierPriceText(r: any): string {
+  if (r.is_tiered === 1 && r.buy_avg) {
+    const ba = r.buy_avg;
+    const parts: string[] = [];
+    if (r.tier1_discount > 0) parts.push(`B (1–${r.tier1_max}): EGP ${rpt_getTierPrice(ba, r.tier1_discount)}`);
+    if (r.tier2_discount > 0) parts.push(`T2 (${r.tier1_max+1}–${r.tier2_max}): EGP ${rpt_getTierPrice(ba, r.tier2_discount)}`);
+    if (r.tier3_discount > 0) parts.push(`T3 (${r.tier2_max+1}–${r.tier3_max}): EGP ${rpt_getTierPrice(ba, r.tier3_discount)}`);
+    if (r.tier4_discount > 0) parts.push(`T4 (${r.tier3_max+1}+): EGP ${rpt_getTierPrice(ba, r.tier4_discount)}`);
+    return parts.join(" | ");
+  }
+  return `Min: EGP ${r.sell_min ?? "—"}  –  Max: EGP ${r.sell_max ?? "—"}`;
+}
 // ── Report data fetcher + renderer ────────────────────────────────────────────
 async function generateReport(presetId: string, startMonth: string, endMonth: string, username: string, locale: string, role: string) {
   const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
@@ -402,14 +441,13 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         const rowsHtml = rows.map((r: any) => `<tr class="highlight-row">
           <td style="max-width:260px;font-weight:600">${r.item_name}</td>
           <td class="muted">${r.unit}</td>
-          <td class="num best" style="font-size:14px">${formatCurrency(r.sell_min)}</td>
-          <td class="num" style="color:#6366f1;font-weight:800;font-size:14px">${formatCurrency(r.sell_max)}</td>
+          <td style="text-align:left;vertical-align:middle">${rpt_tierPriceHtml(r)}</td>
         </tr>`).join("");
         return `<div class="cat-header">${cat}</div><table>
           <thead><tr>
-            <th>${isAr ? "المنتج" : "Product"}</th><th>${isAr ? "الوحدة" : "Unit"}</th>
-            <th class="num">${isAr ? "أدنى سعر" : "Min Price"}</th>
-            <th class="num">${isAr ? "أقصى سعر" : "Max Price"}</th>
+            <th>${isAr ? "المنتج" : "Product"}</th>
+            <th>${isAr ? "الوحدة" : "Unit"}</th>
+            <th>${isAr ? "الأسعار المعتمدة" : "Approved Prices"}</th>
           </tr></thead><tbody>${rowsHtml}</tbody></table>`;
       }).join("");
 
@@ -617,15 +655,17 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           isAr ? "الفئة" : "Category",
           isAr ? "المنتج" : "Product",
           isAr ? "الوحدة" : "Unit",
-          isAr ? "أدنى سعر" : "Min Price",
-          isAr ? "أقصى سعر" : "Max Price"
+          isAr ? "الأسعار المعتمدة" : "Approved Prices",
+          isAr ? "نوع التسعير" : "Price Type",
         ];
         rows = published.map((r: any) => [
           r.category_name,
           r.item_name,
           r.unit,
-          r.sell_min,
-          r.sell_max
+          rpt_tierPriceText(r),
+          r.is_tiered === 1 && r.buy_avg
+            ? (isAr ? "تسعير بالحجم" : "Volume Tier")
+            : (isAr ? "معياري" : "Standard"),
         ]);
       } else if (presetId === "published_selling_prices") {
         const { catalog } = data;

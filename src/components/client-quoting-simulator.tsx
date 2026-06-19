@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { formatCurrency } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -11,6 +12,7 @@ type CatalogItem = {
   category_name: string;
   sell_min: number | null;
   sell_max: number | null;
+  buy_avg?: number | null;
   is_tiered?: number;
   tier_pricing_enabled?: number;
   tier1_max?: number;
@@ -25,6 +27,49 @@ type CatalogItem = {
   transportation_per_unit: number;
 };
 
+/** Round up to nearest 5 EGP — matches SC pricing engine */
+function roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+
+/** Compute tier price from buy_avg ÷ divisor, rounded up to nearest 5 */
+function getTierPrice(buyAvg: number, divisor: number): number {
+  if (divisor <= 0 || buyAvg <= 0) return 0;
+  return roundUp5(buyAvg / divisor);
+}
+
+/** Return tier price and label for the given quantity */
+function getTierForQty(item: CatalogItem, q: number) {
+  const ba    = item.buy_avg ?? 0;
+  const t1Max = item.tier1_max ?? 100;
+  const t2Max = item.tier2_max ?? 200;
+  const t3Max = item.tier3_max ?? 300;
+  const t1Div = item.tier1_discount ?? 0;
+  const t2Div = item.tier2_discount ?? 0;
+  const t3Div = item.tier3_discount ?? 0;
+  const t4Div = item.tier4_discount ?? 0;
+  if (q <= t1Max)                           return { price: getTierPrice(ba, t1Div), tier: 0 };
+  if (q <= t2Max)                           return { price: getTierPrice(ba, t2Div), tier: 1 };
+  if (q <= t3Max)                           return { price: getTierPrice(ba, t3Div), tier: 2 };
+  return { price: getTierPrice(ba, t4Div > 0 ? t4Div : t3Div), tier: 3 };
+}
+
+/** All tiers as display rows — no divisors exposed */
+function getAllTiers(item: CatalogItem) {
+  const ba    = item.buy_avg ?? 0;
+  const t1Max = item.tier1_max ?? 100;
+  const t2Max = item.tier2_max ?? 200;
+  const t3Max = item.tier3_max ?? 300;
+  const t1Div = item.tier1_discount ?? 0;
+  const t2Div = item.tier2_discount ?? 0;
+  const t3Div = item.tier3_discount ?? 0;
+  const t4Div = item.tier4_discount ?? 0;
+  const rows: { range: string; price: number }[] = [];
+  if (t1Div > 0) rows.push({ range: `1 – ${t1Max}`,               price: getTierPrice(ba, t1Div) });
+  if (t2Div > 0) rows.push({ range: `${t1Max + 1} – ${t2Max}`,   price: getTierPrice(ba, t2Div) });
+  if (t3Div > 0) rows.push({ range: `${t2Max + 1} – ${t3Max}`,   price: getTierPrice(ba, t3Div) });
+  if (t4Div > 0) rows.push({ range: `${t3Max + 1}+`,               price: getTierPrice(ba, t4Div) });
+  return rows;
+}
+
 type ClientQuotingSimulatorProps = {
   initialRows: CatalogItem[];
   month: string;
@@ -35,7 +80,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
 
   // Simulator State variables
   const [selectedItemId, setSelectedItemId] = useState<string>("");
-  const [qty, setQty] = useState<number>(100);
+  const [qty, setQty] = useState<number>(1);
   const [targetPrice, setTargetPrice] = useState<number>(0);
   const [clientName, setClientName] = useState<string>("");
   const [showMOQDialog, setShowMOQDialog] = useState<boolean>(false);
@@ -52,48 +97,76 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
     moq: number;
     minAllowed: number;
     maxAllowed: number;
+    isTiered: boolean;
     status: "approved" | "low" | "high";
     clientName: string;
   }>>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownPanelRef = useRef<HTMLDivElement>(null);
+
+  // Mount tracking for portal SSR safety
+  useEffect(() => { setIsMounted(true); }, []);
+
+  // Close dropdown on outside click (checks both trigger and panel)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inTrigger = triggerRef.current?.contains(target);
+      const inPanel = dropdownPanelRef.current?.contains(target);
+      if (!inTrigger && !inPanel) setIsDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Keep portal dropdown anchored to trigger while page scrolls or resizes
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const syncPos = () => {
+      if (triggerRef.current) {
+        const r = triggerRef.current.getBoundingClientRect();
+        setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width });
+      }
+    };
+    // capture:true catches scroll on any ancestor element
+    window.addEventListener("scroll", syncPos, true);
+    window.addEventListener("resize", syncPos);
+    return () => {
+      window.removeEventListener("scroll", syncPos, true);
+      window.removeEventListener("resize", syncPos);
+    };
+  }, [isDropdownOpen]);
 
   const selectedItem = initialRows.find((row) => String(row.item_id) === selectedItemId);
   const isPublished = selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null;
-  const isItemTiered = !!(selectedItem && selectedItem.is_tiered === 1 && selectedItem.tier_pricing_enabled === 1);
+  const isItemTiered = !!(selectedItem && selectedItem.is_tiered === 1 && selectedItem.buy_avg);
 
-  // Sync target price on item selection change
+  // When item changes: reset qty to MOQ so SA starts from a valid quantity
+  useEffect(() => {
+    if (selectedItem) {
+      setQty(selectedItem.moq > 0 ? selectedItem.moq : 1);
+    }
+    setShowMOQDialog(false);
+  }, [selectedItemId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When qty or item changes: update target price
   useEffect(() => {
     if (selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null) {
-      if (isItemTiered) {
-        const base   = selectedItem.sell_min;
-        const t1Max  = selectedItem.tier1_max ?? 100;
-        const t1Disc = selectedItem.tier1_discount ?? 0;
-        const t2Max  = selectedItem.tier2_max ?? 200;
-        const t2Disc = selectedItem.tier2_discount ?? 5;
-        const t3Max  = selectedItem.tier3_max ?? 300;
-        const t3Disc = selectedItem.tier3_discount ?? 10;
-        const t4Max  = selectedItem.tier4_max ?? 0;
-        const t4Disc = selectedItem.tier4_discount ?? 0;
-        let discount = 0;
-        if (qty <= t1Max) {
-          discount = t1Disc;
-        } else if (qty <= t2Max) {
-          discount = t2Disc;
-        } else if (qty <= t3Max) {
-          discount = t3Disc;
-        } else if (t4Disc > 0) {
-          discount = t4Disc;
-        } else {
-          discount = t3Disc;
-        }
-        setTargetPrice(Number((base * (1 - discount / 100)).toFixed(2)));
+      if (isItemTiered && selectedItem.buy_avg) {
+        // Use divisor-based formula, rounded up to nearest 5 EGP
+        const { price } = getTierForQty(selectedItem, qty);
+        setTargetPrice(price);
       } else {
         setTargetPrice(Number(((selectedItem.sell_min + selectedItem.sell_max) / 2).toFixed(2)));
       }
     } else {
       setTargetPrice(0);
     }
-    setShowMOQDialog(false);
   }, [selectedItemId, selectedItem, qty, isItemTiered]);
 
   const handlePriceBlur = () => {
@@ -125,29 +198,10 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
     let finalPrice = targetPrice;
     let status: "approved" | "low" | "high" = "approved";
 
-    if (isItemTiered) {
-      const base   = selectedItem.sell_min;
-      const t1Max  = selectedItem.tier1_max ?? 100;
-      const t1Disc = selectedItem.tier1_discount ?? 0;
-      const t2Max  = selectedItem.tier2_max ?? 200;
-      const t2Disc = selectedItem.tier2_discount ?? 5;
-      const t3Max  = selectedItem.tier3_max ?? 300;
-      const t3Disc = selectedItem.tier3_discount ?? 10;
-      const t4Max  = selectedItem.tier4_max ?? 0;
-      const t4Disc = selectedItem.tier4_discount ?? 0;
-      let discount = 0;
-      if (qty <= t1Max) {
-        discount = t1Disc;
-      } else if (qty <= t2Max) {
-        discount = t2Disc;
-      } else if (qty <= t3Max) {
-        discount = t3Disc;
-      } else if (t4Disc > 0) {
-        discount = t4Disc;
-      } else {
-        discount = t3Disc;
-      }
-      finalPrice = Number((base * (1 - discount / 100)).toFixed(2));
+    if (isItemTiered && selectedItem.buy_avg) {
+      // Divisor-based, rounded to nearest 5 EGP — same as SC pricing engine
+      const { price } = getTierForQty(selectedItem, qty);
+      finalPrice = price;
       status = "approved";
     } else {
       if (finalPrice < selectedItem.sell_min) {
@@ -179,8 +233,11 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
       grandTotal: qty * finalPrice,
       clientPaysTrans: isUnderMOQ,
       moq: selectedItem.moq,
-      minAllowed: selectedItem.sell_min,
+      // For tiered items: both min and max = tier price (fixed — no negotiation range)
+      // For standard: use the published sell_min / sell_max
+      minAllowed: isItemTiered ? finalPrice : selectedItem.sell_min,
       maxAllowed: isItemTiered ? finalPrice : selectedItem.sell_max,
+      isTiered: isItemTiered,
       status,
       clientName: clientName.trim()
     };
@@ -308,19 +365,149 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
 
             <label className="field">
               <span>{t.selectLabel}</span>
-              <select 
-                value={selectedItemId}
-                onChange={(e) => setSelectedItemId(e.target.value)}
-                style={{ width: "100%" }}
+              {/* Trigger button — click captures viewport position then opens portal */}
+              <div
+                ref={triggerRef}
+                onClick={() => {
+                  if (triggerRef.current) {
+                    const r = triggerRef.current.getBoundingClientRect();
+                    setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width });
+                  }
+                  setIsDropdownOpen(prev => !prev);
+                  if (!isDropdownOpen) setSearchQuery("");
+                }}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 12px", border: "1.5px solid var(--border)", borderRadius: "8px",
+                  cursor: "pointer", background: "var(--surface)", minHeight: "40px",
+                  fontSize: "13px", color: selectedItemId ? "var(--text-primary)" : "var(--text-muted)",
+                  boxShadow: isDropdownOpen ? "0 0 0 2px rgba(99,102,241,0.2)" : "none",
+                  transition: "box-shadow 0.15s", userSelect: "none",
+                }}
               >
-                <option value="">{t.chooseOption}</option>
-                {initialRows.map((row) => (
-                  <option key={row.item_id} value={row.item_id}>
-                    {row.item_name} ({row.unit}){row.sell_min === null ? t.noPriceOption : ""}
-                  </option>
-                ))}
-              </select>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  {selectedItem ? `${selectedItem.item_name} (${selectedItem.unit})` : t.chooseOption}
+                </span>
+                <span style={{ fontSize: "10px", marginLeft: "8px", color: "var(--text-muted)", flexShrink: 0 }}>
+                  {isDropdownOpen ? "▲" : "▼"}
+                </span>
+              </div>
             </label>
+
+            {/* Portal dropdown — renders at document.body to escape stacking context */}
+            {isMounted && isDropdownOpen && createPortal(
+              <div
+                ref={dropdownPanelRef}
+                style={{
+                  position: "fixed",
+                  top: dropdownPos.top,
+                  left: dropdownPos.left,
+                  width: dropdownPos.width,
+                  zIndex: 99999,
+                  background: "var(--surface, #fff)",
+                  border: "1.5px solid var(--border, #e5e7eb)",
+                  borderRadius: "10px",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.22)",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  maxHeight: "340px",
+                  fontFamily: "inherit",
+                }}
+              >
+                {/* Search input */}
+                <div style={{ padding: "8px", borderBottom: "1px solid var(--border-light, #f3f4f6)" }}>
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder={locale === "ar" ? "🔍 ابحث بأي كلمة..." : "🔍 Search by any word..."}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: "6px",
+                      border: "1px solid var(--border, #e5e7eb)", fontSize: "13px",
+                      background: "var(--bg, #f9fafb)", color: "var(--text-primary, #111827)",
+                      outline: "none", fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+
+                {/* Options list */}
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {/* Clear option */}
+                  <div
+                    onClick={() => { setSelectedItemId(""); setIsDropdownOpen(false); setSearchQuery(""); }}
+                    style={{
+                      padding: "8px 12px", cursor: "pointer", fontSize: "12px",
+                      color: "var(--text-muted, #9ca3af)",
+                      borderBottom: "1px solid var(--border-light, #f3f4f6)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {t.chooseOption}
+                  </div>
+
+                  {initialRows
+                    .filter(row =>
+                      searchQuery === "" ||
+                      row.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      row.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      row.category_name.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map((row) => {
+                      const isPublishedRow = row.sell_min !== null;
+                      const isSelected = String(row.item_id) === selectedItemId;
+                      return (
+                        <div
+                          key={row.item_id}
+                          onClick={() => { setSelectedItemId(String(row.item_id)); setIsDropdownOpen(false); setSearchQuery(""); }}
+                          style={{
+                            padding: "9px 12px", cursor: "pointer", fontSize: "13px",
+                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px",
+                            borderBottom: "1px solid var(--border-light, #f3f4f6)",
+                            borderLeft: isSelected ? "3px solid #6366f1"
+                              : isPublishedRow ? "3px solid transparent" : "3px solid rgba(239,68,68,0.5)",
+                            background: isSelected ? "rgba(99,102,241,0.08)"
+                              : isPublishedRow ? "transparent" : "rgba(239,68,68,0.05)",
+                            color: isPublishedRow ? "var(--text-primary, #111827)" : "#b91c1c",
+                          }}
+                        >
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, lineHeight: 1.4 }}>
+                            {row.item_name}
+                            <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "11px", marginLeft: "6px" }}>({row.unit})</span>
+                          </span>
+                          {!isPublishedRow && (
+                            <span style={{
+                              fontSize: "9px", fontWeight: 800, flexShrink: 0,
+                              background: "rgba(239,68,68,0.12)", color: "#dc2626",
+                              padding: "2px 7px", borderRadius: "99px",
+                              border: "1px solid rgba(239,68,68,0.3)", whiteSpace: "nowrap",
+                            }}>
+                              {locale === "ar" ? "⛔ لم يُنشر" : "⛔ No Price"}
+                            </span>
+                          )}
+                          {isSelected && isPublishedRow && (
+                            <span style={{ fontSize: "11px", color: "#6366f1", fontWeight: 700, flexShrink: 0 }}>✓</span>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                  {/* Empty state */}
+                  {initialRows.filter(row =>
+                    searchQuery === "" ||
+                    row.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    row.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    row.category_name.toLowerCase().includes(searchQuery.toLowerCase())
+                  ).length === 0 && (
+                    <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted, #9ca3af)", fontSize: "12px" }}>
+                      {locale === "ar" ? "لا توجد نتائج" : "No items match your search"}
+                    </div>
+                  )}
+                </div>
+              </div>,
+              document.body
+            )}
 
             {selectedItemId && !isPublished && (
               <div style={{ 
@@ -420,11 +607,11 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                   <span>{t.priceLabel}</span>
                   <input 
                     type="number" 
-                    step="any"
+                    step="5"
                     min={selectedItem?.sell_min ?? 0}
                     max={selectedItem?.sell_max ?? 0}
                     value={targetPrice}
-                    onChange={(e) => setTargetPrice(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setTargetPrice(Math.round(parseFloat(e.target.value) / 5) * 5 || 0)}
                     onBlur={handlePriceBlur}
                     disabled={!isPublished || isItemTiered}
                   />
@@ -433,9 +620,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                   <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
                     {isItemTiered ? (
                       <span style={{ color: "var(--success)", fontWeight: 600 }}>
-                        {locale === "ar"
-                          ? `✓ تطبيق تسعير الحجم (خصم ${qty <= (selectedItem.tier1_max ?? 100) ? (selectedItem.tier1_discount ?? 0) : qty <= (selectedItem.tier2_max ?? 200) ? (selectedItem.tier2_discount ?? 5) : (selectedItem.tier3_discount ?? 10)}%)`
-                          : `✓ Volume pricing applied (${qty <= (selectedItem.tier1_max ?? 100) ? (selectedItem.tier1_discount ?? 0) : qty <= (selectedItem.tier2_max ?? 200) ? (selectedItem.tier2_discount ?? 5) : (selectedItem.tier3_discount ?? 10)}% discount)`}
+                        {locale === "ar" ? "✓ تسعير الحجم مطبق" : "✓ Volume pricing applied"}
                       </span>
                     ) : (
                       locale === "ar" 
@@ -493,24 +678,36 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                   </div>
 
                   {isItemTiered ? (
-                    <div style={{ 
-                      padding: "12px", 
-                      background: "linear-gradient(135deg, var(--primary-light), transparent)", 
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: "8px", 
-                      fontSize: "11.5px", 
-                      marginTop: "12px", 
-                      lineHeight: 1.5,
-                      textAlign: "left"
+                    <div style={{
+                      padding: "12px 14px",
+                      background: "linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.04))",
+                      border: "1.5px solid rgba(99,102,241,0.2)",
+                      borderRadius: "10px",
+                      marginTop: "12px",
                     }}>
-                      <strong style={{ display: "block", marginBottom: "4px", color: "var(--primary)" }}>
-                        {locale === "ar" ? "قواعد خصم الحجم النشطة:" : "Active Volume Discount Tiers:"}
+                      <strong style={{ display: "block", marginBottom: "10px", fontSize: "11px", fontWeight: 800, color: "#4338ca", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        {locale === "ar" ? "📆 أسعار التسعير بالحجم" : "📆 Volume Pricing Tiers"}
                       </strong>
-                      • {locale === "ar" ? `من 0 إلى ${selectedItem.tier1_max ?? 100}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier1_discount ?? 0}%)` : `0 - ${selectedItem.tier1_max ?? 100}: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier1_discount ?? 0}% discount)`}
-                      <br />
-                      • {locale === "ar" ? `من ${(selectedItem.tier1_max ?? 100) + 1} إلى ${selectedItem.tier2_max ?? 200}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier2_discount ?? 5}%)` : `${(selectedItem.tier1_max ?? 100) + 1} - ${selectedItem.tier2_max ?? 200}: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier2_discount ?? 5}% discount)`}
-                      <br />
-                      • {locale === "ar" ? `أكثر من ${selectedItem.tier2_max ?? 200}: السعر الأساسي ${formatCurrency(selectedItem.sell_min)} (خصم ${selectedItem.tier3_discount ?? 10}%)` : `${(selectedItem.tier2_max ?? 200) + 1}+: Base price ${formatCurrency(selectedItem.sell_min)} (${selectedItem.tier3_discount ?? 10}% discount)`}
+                      {getAllTiers(selectedItem).map((tier, i) => {
+                        const { tier: activeTier } = getTierForQty(selectedItem, qty);
+                        const isActive = i === activeTier;
+                        return (
+                          <div key={i} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center",
+                            padding: "6px 10px", borderRadius: "7px", marginBottom: "4px",
+                            background: isActive ? "rgba(16,185,129,0.12)" : "transparent",
+                            border: isActive ? "1.5px solid rgba(16,185,129,0.35)" : "1px solid transparent",
+                          }}>
+                            <span style={{ fontSize: "12px", color: isActive ? "#065f46" : "var(--text-secondary)" }}>
+                              {locale === "ar" ? `من ${tier.range} وحدة` : `${tier.range} ${selectedItem.unit}`}
+                            </span>
+                            <span style={{ fontSize: "13px", fontWeight: 800, color: isActive ? "#059669" : "var(--text-primary)" }}>
+                              {formatCurrency(tier.price)}
+                              {isActive && <span style={{ fontSize: "9px", fontWeight: 700, marginLeft: "5px", background: "#059669", color: "#fff", padding: "1px 6px", borderRadius: "99px" }}>✓ NOW</span>}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", paddingTop: "8px" }}>
@@ -595,7 +792,15 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                             )}
                         </div>
                       </td>
-                      <td>{formatCurrency(quote.minAllowed)} - {formatCurrency(quote.maxAllowed)}</td>
+                        <td>
+                          {quote.isTiered ? (
+                            <span style={{ fontSize: "12px", fontWeight: 700, color: "#059669" }}>
+                              Tier: {formatCurrency(quote.price)}
+                            </span>
+                          ) : (
+                            <>{formatCurrency(quote.minAllowed)} - {formatCurrency(quote.maxAllowed)}</>
+                          )}
+                        </td>
                       <td>
                         {quote.status === "approved" ? (
                           <span className="badge badge-success" style={{ padding: "4px 8px", fontSize: "10px" }}>{t.badgeApproved}</span>
