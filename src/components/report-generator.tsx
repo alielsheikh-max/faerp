@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { formatCurrency, formatMonthLabel, formatDateTime, currentMonth } from "@/lib/format";
+import { formatCurrency, formatMonthLabel, formatDateTime, formatDate, currentMonth } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import * as XLSX from "xlsx-js-style";
 
@@ -110,29 +110,30 @@ function printWindow(html: string, title: string) {
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Inter',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:ltr}
-      body.rtl{direction:rtl;font-family:'Cairo',sans-serif;text-align:right}
-      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:24px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:ltr}
+      body.rtl{direction:rtl;font-family:'Readex Pro',sans-serif;text-align:right}
+      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
-      .brand-mark{width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px}
+      .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
       .report-meta{text-align:right}
       .report-meta .title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .report-meta .subtitle{font-size:11px;color:#6b7280}
-      .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
+      .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe}
       .badge-success{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+      .badge-info{background:#f0f9ff;color:#0369a1;border-color:#bae6fd}
       .badge-warning{background:#fffbeb;color:#92400e;border-color:#fcd34d}
       .badge-danger{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
-      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#6366f1;margin:20px 0 10px}
+      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#1e3a8a;margin:20px 0 10px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}
-      th{background:#f9fafb;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;padding:8px 10px;border-bottom:2px solid #e5e7eb;text-align:left}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
-      .best{color:#059669;font-weight:800}
+      .best{color:#0284c7;font-weight:800}
       .danger{color:#dc2626;font-weight:700}
       .muted{color:#9ca3af}
       .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -140,38 +141,75 @@ function printWindow(html: string, title: string) {
       .stat-box{padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}
       .stat-box .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:4px}
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
-      .cat-header{background:#f5f3ff;padding:8px 12px;font-weight:800;font-size:12px;color:#4338ca;border-left:3px solid #6366f1;margin:12px 0 6px}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:12px 0 6px}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-      .highlight-row td{background:#f0fdf4}
+      .highlight-row td{background:#f0f9ff}
       .pending-row td{background:#fffbeb}
-      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4}}
+      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
     </style>
   </head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
   win.document.close();
 }
 
-function formatDate() {
-  return new Date().toLocaleDateString("en-EG", { day: "2-digit", month: "long", year: "numeric" });
-}
+// formatDate() imported from @/lib/format (dd-mm-yyyy)
 
 function header(title: string, subtitle: string, month: string, stats?: Record<string, string | number>) {
   const statsHtml = stats ? `<div class="stat-row">${Object.entries(stats).map(([lbl, val]) => `<div class="stat-box"><div class="lbl">${lbl}</div><div class="val">${val}</div></div>`).join("")}</div>` : "";
   return `<div class="report-header">
     <div class="brand">
-      <div class="brand-mark">F</div>
+      <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
       <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
     </div>
     <div class="report-meta">
       <div class="title">${title}</div>
-      <div class="subtitle">${subtitle} · Generated ${formatDate()}</div>
+      <div class="subtitle">${subtitle} · Generated ${formatDate(new Date())}</div>
     </div>
   </div>${statsHtml}`;
 }
 
 function footer(username: string) {
-  return `<div class="footer"><span>FAERP · Confidential</span><span>Prepared by ${username}</span><span>${formatDate()}</span></div>`;
+  return `<div class="footer"><span>FAERP · Confidential</span><span>Prepared by ${username}</span><span>${formatDate(new Date())}</span></div>`;
 }
 
+// ── Tier price helpers for reports (same formula as SC pricing engine) ─────────────
+function rpt_roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+function rpt_getTierPrice(buyAvg: number, divisor: number) {
+  if (divisor <= 0 || buyAvg <= 0) return 0;
+  return rpt_roundUp5(buyAvg / divisor);
+}
+/** Returns HTML tier grid or min–max for the PDF "Approved Prices" column */
+function rpt_tierPriceHtml(r: any) {
+  if (r.is_tiered === 1 && r.buy_avg) {
+    const ba = r.buy_avg;
+    const tiers: { label: string; range: string; price: number }[] = [];
+    if (r.tier1_discount > 0) tiers.push({ label: "B",  range: `1–${r.tier1_max}`,               price: rpt_getTierPrice(ba, r.tier1_discount) });
+    if (r.tier2_discount > 0) tiers.push({ label: "T2", range: `${r.tier1_max+1}–${r.tier2_max}`, price: rpt_getTierPrice(ba, r.tier2_discount) });
+    if (r.tier3_discount > 0) tiers.push({ label: "T3", range: `${r.tier2_max+1}–${r.tier3_max}`, price: rpt_getTierPrice(ba, r.tier3_discount) });
+    if (r.tier4_discount > 0) tiers.push({ label: "T4", range: `${r.tier3_max+1}+`,               price: rpt_getTierPrice(ba, r.tier4_discount) });
+    const COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b"];
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;">${tiers.map((t, i) =>
+      `<div style="text-align:center;min-width:54px;background:${i===0?"#eef2ff":i===1?"#f0f9ff":i===2?"#f0fdf4":"#fffbeb"};border:1px solid ${COLORS[i]}33;border-radius:6px;padding:3px 7px;">
+        <div style="font-size:7px;font-weight:800;color:${COLORS[i]};text-transform:uppercase;letter-spacing:.05em;">${t.label}</div>
+        <div style="font-size:11px;font-weight:800;color:${COLORS[i]};">${formatCurrency(t.price)}</div>
+        <div style="font-size:7px;color:#6b7280;">${t.range}</div>
+      </div>`
+    ).join("")}</div>`;
+  }
+  return `<span style="color:#10b981;font-weight:800;font-size:13px;">${formatCurrency(r.sell_min)}</span><span style="color:#9ca3af;margin:0 6px;">–</span><span style="color:#6366f1;font-weight:800;font-size:13px;">${formatCurrency(r.sell_max)}</span>`;
+}
+/** Returns plain text tier description for Excel "Approved Prices" cell */
+function rpt_tierPriceText(r: any): string {
+  if (r.is_tiered === 1 && r.buy_avg) {
+    const ba = r.buy_avg;
+    const parts: string[] = [];
+    if (r.tier1_discount > 0) parts.push(`B (1–${r.tier1_max}): EGP ${rpt_getTierPrice(ba, r.tier1_discount)}`);
+    if (r.tier2_discount > 0) parts.push(`T2 (${r.tier1_max+1}–${r.tier2_max}): EGP ${rpt_getTierPrice(ba, r.tier2_discount)}`);
+    if (r.tier3_discount > 0) parts.push(`T3 (${r.tier2_max+1}–${r.tier3_max}): EGP ${rpt_getTierPrice(ba, r.tier3_discount)}`);
+    if (r.tier4_discount > 0) parts.push(`T4 (${r.tier3_max+1}+): EGP ${rpt_getTierPrice(ba, r.tier4_discount)}`);
+    return parts.join(" | ");
+  }
+  return `Min: EGP ${r.sell_min ?? "—"}  –  Max: EGP ${r.sell_max ?? "—"}`;
+}
 // ── Report data fetcher + renderer ────────────────────────────────────────────
 async function generateReport(presetId: string, startMonth: string, endMonth: string, username: string, locale: string, role: string) {
   const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
@@ -291,7 +329,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         const cells = suppliers.map((s: any, i: number) => {
           const p = prices[i];
           const isBest = p !== null && p === minP;
-          return `<td class="num ${isBest ? "best" : ""}">${p !== null ? formatCurrency(p) : '<span class="muted">—</span>'}${isBest ? ' <span class="badge badge-success" style="font-size:8px">★</span>' : ""}</td>`;
+          return `<td class="num ${isBest ? "best" : ""}">${p !== null ? formatCurrency(p) : '<span class="muted">—</span>'}${isBest ? ' <span class="badge badge-info" style="font-size:8px">★</span>' : ""}</td>`;
         }).join("");
         const spread = validPrices.length >= 2 ? (((Math.max(...validPrices) - Math.min(...validPrices)) / Math.min(...validPrices)) * 100).toFixed(1) + "%" : "—";
         return `<tr><td>${row.categoryName}</td><td style="max-width:200px">${row.itemName}</td>${cells}<td class="num muted">${spread}</td></tr>`;
@@ -403,14 +441,13 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         const rowsHtml = rows.map((r: any) => `<tr class="highlight-row">
           <td style="max-width:260px;font-weight:600">${r.item_name}</td>
           <td class="muted">${r.unit}</td>
-          <td class="num best" style="font-size:14px">${formatCurrency(r.sell_min)}</td>
-          <td class="num" style="color:#6366f1;font-weight:800;font-size:14px">${formatCurrency(r.sell_max)}</td>
+          <td style="text-align:left;vertical-align:middle">${rpt_tierPriceHtml(r)}</td>
         </tr>`).join("");
         return `<div class="cat-header">${cat}</div><table>
           <thead><tr>
-            <th>${isAr ? "المنتج" : "Product"}</th><th>${isAr ? "الوحدة" : "Unit"}</th>
-            <th class="num">${isAr ? "أدنى سعر" : "Min Price"}</th>
-            <th class="num">${isAr ? "أقصى سعر" : "Max Price"}</th>
+            <th>${isAr ? "المنتج" : "Product"}</th>
+            <th>${isAr ? "الوحدة" : "Unit"}</th>
+            <th>${isAr ? "الأسعار المعتمدة" : "Approved Prices"}</th>
           </tr></thead><tbody>${rowsHtml}</tbody></table>`;
       }).join("");
 
@@ -618,15 +655,17 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           isAr ? "الفئة" : "Category",
           isAr ? "المنتج" : "Product",
           isAr ? "الوحدة" : "Unit",
-          isAr ? "أدنى سعر" : "Min Price",
-          isAr ? "أقصى سعر" : "Max Price"
+          isAr ? "الأسعار المعتمدة" : "Approved Prices",
+          isAr ? "نوع التسعير" : "Price Type",
         ];
         rows = published.map((r: any) => [
           r.category_name,
           r.item_name,
           r.unit,
-          r.sell_min,
-          r.sell_max
+          rpt_tierPriceText(r),
+          r.is_tiered === 1 && r.buy_avg
+            ? (isAr ? "تسعير بالحجم" : "Volume Tier")
+            : (isAr ? "معياري" : "Standard"),
         ]);
       } else if (presetId === "published_selling_prices") {
         const { catalog } = data;
@@ -683,25 +722,25 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
       worksheet["!rows"] = [
         { hpt: 35 }, // Title row
         { hpt: 10 }, // Spacer row
-        { hpt: 26 }, // Headers row
+        { hpt: 28 }, // Headers row
         ...Array(rows.length).fill({ hpt: 22 }) // Data rows
       ];
 
-      // Styles definitions
+      // Styles definitions — matching FAERP Brand Theme
       const titleStyle = {
-        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "065F46" } }, // Emerald-800
+        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } },
         alignment: { horizontal: isAr ? "right" : "left", vertical: "center" }
       };
 
       const headerStyle = {
-        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "059669" } }, // Emerald-600
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
+        fill: { fgColor: { rgb: "F1F5F9" } },
         alignment: { horizontal: "center", vertical: "center", wrapText: true },
         border: {
-          top: { style: "thin", color: { rgb: "047857" } },
-          bottom: { style: "medium", color: { rgb: "047857" } },
-          left: { style: "thin", color: { rgb: "047857" } },
-          right: { style: "thin", color: { rgb: "047857" } }
+          top: { style: "thin", color: { rgb: "CBD5E1" } },
+          bottom: { style: "medium", color: { rgb: "94A3B8" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
         }
       };
 
@@ -732,6 +771,9 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           align = "right";
         }
 
+        const priceKeywords = ["price", "sell", "avg", "low", "high", "سعر", "متوسط", "أدنى", "أقصى"];
+        const isPriceCol = priceKeywords.some(k => hClean.includes(k));
+
         return {
           font: { name: "Segoe UI", sz: 10, color: { rgb: "334155" } },
           fill: { fgColor: { rgb: bgRgb } },
@@ -741,7 +783,8 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
             bottom: { style: "thin", color: { rgb: "E2E8F0" } },
             left: { style: "thin", color: { rgb: "E2E8F0" } },
             right: { style: "thin", color: { rgb: "E2E8F0" } }
-          }
+          },
+          ...(isPriceCol && typeof cellValue === "number" ? { numFmt: '"EGP" #,##0.00' } : {})
         };
       };
 
@@ -786,43 +829,43 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           gap: "16px",
           padding: "16px 20px",
           borderRadius: "14px",
-          border: "1.5px solid rgba(16,185,129,0.4)",
-          background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+          border: "1.5px solid rgba(30,58,138,0.25)",
+          background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)",
           cursor: "pointer",
           transition: "all 220ms ease",
           textAlign: "left",
-          boxShadow: "0 2px 8px rgba(16,185,129,0.12)",
+          boxShadow: "0 2px 8px rgba(30,58,138,0.08)",
           position: "relative",
           overflow: "hidden",
         }}
         onMouseEnter={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(16,185,129,0.7)";
-          b.style.boxShadow = "0 6px 20px rgba(16,185,129,0.22)";
+          b.style.borderColor = "rgba(59,130,246,0.6)";
+          b.style.boxShadow = "0 6px 20px rgba(30,58,138,0.18)";
           b.style.transform = "translateY(-2px)";
-          b.style.background = "linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)";
+          b.style.background = "linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)";
         }}
         onMouseLeave={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(16,185,129,0.4)";
-          b.style.boxShadow = "0 2px 8px rgba(16,185,129,0.12)";
+          b.style.borderColor = "rgba(30,58,138,0.25)";
+          b.style.boxShadow = "0 2px 8px rgba(30,58,138,0.08)";
           b.style.transform = "translateY(0)";
-          b.style.background = "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)";
+          b.style.background = "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)";
         }}
       >
         {/* Icon block */}
         <div style={{
           width: "46px", height: "46px", borderRadius: "12px", flexShrink: 0,
-          background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+          background: "linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(16,185,129,0.4)",
+          boxShadow: "0 4px 12px rgba(30,58,138,0.25)",
           fontSize: "20px",
         }}>
           📄
         </div>
         {/* Text */}
         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-          <div style={{ fontSize: "15px", fontWeight: 800, color: "#065f46", letterSpacing: "-0.01em" }}>
+          <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a8a", letterSpacing: "-0.01em" }}>
             {locale === "ar" ? "تقارير PDF" : "PDF Reports"}
           </div>
           <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px", fontWeight: 500 }}>
@@ -832,9 +875,9 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
         {/* Arrow */}
         <div style={{
           width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-          background: "rgba(16,185,129,0.15)",
+          background: "rgba(30,58,138,0.10)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "14px", color: "#059669", fontWeight: 800,
+          fontSize: "14px", color: "#1e3a8a", fontWeight: 800,
           transition: "transform 220ms ease",
         }}>
           →

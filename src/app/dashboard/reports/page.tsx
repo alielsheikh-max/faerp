@@ -11,7 +11,7 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
   const categoryId = searchParams?.categoryId ? Number(searchParams.categoryId) : undefined;
   const categories = getCategories();
   const report = getMonthlyReport(month, categoryId);
-  const printHref = `/dashboard/reports/print?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}`;
+  const printHref = `/dashboard/reports/print?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}&autoprint=1`;
   const exportHref = `/dashboard/reports/export?month=${encodeURIComponent(month)}${categoryId ? `&categoryId=${categoryId}` : ""}`;
 
   return (
@@ -37,8 +37,8 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
             <h2>{formatMonthLabel(month)}</h2>
           </div>
           <div className="button-row">
-            <a href={printHref} className="button button-secondary" target="_blank">{t("rep.openPrint")}</a>
-            <a href={exportHref} className="button button-primary">{t("rep.exportCSV")}</a>
+            <a href={printHref} className="button button-secondary" target="_blank">📄 Download PDF</a>
+            <a href={exportHref} className="button button-primary">📊 Download XLSX</a>
           </div>
         </div>
         <form method="GET" className="inline-form">
@@ -82,12 +82,24 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
                 {report.comparisonRows.map((row) => (
                   <tr key={row.itemId}>
                     <td>{row.categoryName}</td>
-                    <td>{row.itemName}</td>
+                    <td>
+                      <span
+                        onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.itemId } }))}
+                        className="clickable-detail-trigger"
+                      >
+                        {row.itemName}
+                      </span>
+                    </td>
                     <td>{row.unit}</td>
                     <td>
                       <div className="report-chip-wrap">
-                        {Object.values(row.quotes).map((q) => (
-                          <span key={`${row.itemId}-${q.supplierName}`} className="report-chip">
+                        {Object.entries(row.quotes).map(([supId, q]) => (
+                          <span
+                            key={`${row.itemId}-${supId}`}
+                            onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: Number(supId) } }))}
+                            style={{ cursor: "pointer" }}
+                            className="report-chip"
+                          >
                             {q.supplierName}: {formatCurrency(q.price)}
                           </span>
                         ))}
@@ -121,7 +133,14 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
               <tbody>
                 {report.monthlySellingPrices.map((row) => (
                   <tr key={row.item_id}>
-                    <td>{row.item_name}</td>
+                    <td>
+                      <span
+                        onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                        className="clickable-detail-trigger"
+                      >
+                        {row.item_name}
+                      </span>
+                    </td>
                     <td>{row.strategy?.toUpperCase()}</td>
                     <td>{formatCurrency(row.sell_min)}</td>
                     <td>{formatCurrency(row.sell_max)}</td>
@@ -156,8 +175,22 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
             <tbody>
               {report.volatilityRows.map((row, i) => (
                 <tr key={`${row.item_name}-${row.supplier_name}-${i}`}>
-                  <td>{row.item_name}</td>
-                  <td>{row.supplier_name}</td>
+                  <td>
+                    <span
+                      onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                      className="clickable-detail-trigger"
+                    >
+                      {row.item_name}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier_id } }))}
+                      className="clickable-detail-trigger"
+                    >
+                      {row.supplier_name}
+                    </span>
+                  </td>
                   <td>{row.updates}</td>
                   <td>{formatCurrency(row.low_price)}</td>
                   <td>{formatCurrency(row.high_price)}</td>

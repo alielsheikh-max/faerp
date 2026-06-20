@@ -1,6 +1,16 @@
 "use client";
 
-export default function PrintButton() {
+import { useEffect } from "react";
+
+export default function PrintButton({ autoprint = false }: { autoprint?: boolean }) {
+  useEffect(() => {
+    if (autoprint) {
+      // Small delay lets the page fully render before opening the print dialog
+      const t = setTimeout(() => window.print(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [autoprint]);
+
   return (
     <button
       onClick={() => window.print()}
@@ -11,10 +21,10 @@ export default function PrintButton() {
         background: "#2f6fed",
         color: "#fff",
         fontWeight: 700,
-        cursor: "pointer"
+        cursor: "pointer",
       }}
     >
-      Print
+      🖨 Print / Save as PDF
     </button>
   );
 }

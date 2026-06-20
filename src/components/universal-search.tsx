@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useTransition, useCallback } from "react";
+import { useState, useEffect, useRef, useTransition, useCallback, useMemo } from "react";
+import Link from "next/link";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import { fetchItemCard, fetchSupplierCard } from "@/app/actions/search";
 import { useI18n } from "@/lib/i18n-context";
@@ -8,7 +9,7 @@ import { useI18n } from "@/lib/i18n-context";
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
 
 type SearchItem     = { id: number; name: string; unit: string; active: number; category_name: string; category_id: number };
-type SearchSupplier = { id: number; name: string; contact_person: string; phone: string; quote_count: number };
+type SearchSupplier = { id: number; name: string; fame_name?: string | null; contact_person: string; phone: string; quote_count: number };
 type SearchIndex    = { items: SearchItem[]; suppliers: SearchSupplier[] };
 type ItemCardData     = Awaited<ReturnType<typeof fetchItemCard>>;
 type SupplierCardData = Awaited<ReturnType<typeof fetchSupplierCard>>;
@@ -19,7 +20,7 @@ function fuzzy(query: string, target: string) {
 }
 
 // ── Item Detail ───────────────────────────────────────────────────────────────
-function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: string }) {
+function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; role: string; onClose: () => void }) {
   const { t } = useI18n();
   const [window, setWindow] = useState<6|12|"all">(6);
   const { item, supplierStats, monthStats, months, supplierNames, grid, sellingRows } = data;
@@ -40,6 +41,14 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
             <span className="badge">{months.length} months</span>
           </div>
         </div>
+        <Link
+          href={`/dashboard/admin/items/${item.id}`}
+          onClick={onClose}
+          className="button button-secondary"
+          style={{ fontSize: "12px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}
+        >
+          <span>View All ↗</span>
+        </Link>
       </div>
 
       <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -53,13 +62,13 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
               const color = COLORS[idx % COLORS.length];
               const isBest = idx === 0;
               return (
-                <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--success)" : color + "44"}`, background: isBest ? "var(--success-light)" : color + "0a", position: "relative" }}>
-                  {isBest && <span style={{ position: "absolute", top: "5px", right: "6px", fontSize: "8px", fontWeight: 800, background: "var(--success)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>BEST</span>}
+                <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--info)" : color + "44"}`, background: isBest ? "var(--info-light)" : color + "0a", position: "relative" }}>
+                  {isBest && <span style={{ position: "absolute", top: "5px", right: "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>BEST</span>}
                   <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
                     <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
                     <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sup.name}</span>
                   </div>
-                  <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--success)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
+                  <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
                   <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>avg {formatCurrency(sup.avg)}</div>
                 </div>
               );
@@ -132,7 +141,7 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
                         const entry = monthRow?.get(s);
                         const isBest = entry && minP !== null && entry.price === minP;
                         return (
-                          <td key={s} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.07)" : "transparent" }}>
+                          <td key={s} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(2,132,199,0.08)" : "transparent" }}>
                             {entry ? formatCurrency(entry.price) : "—"}
                           </td>
                         );
@@ -156,7 +165,7 @@ function ItemDetail({ data, role }: { data: NonNullable<ItemCardData>; role: str
 }
 
 // ── Supplier Detail ───────────────────────────────────────────────────────────
-function SupplierDetail({ data, role }: { data: NonNullable<SupplierCardData>; role: string }) {
+function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCardData>; role: string; onClose: () => void }) {
   const [catFilter, setCatFilter] = useState("all");
   const { supplier, itemStats, monthStats } = data;
   const categories = Array.from(new Set(itemStats.map(i => i.categoryName))).sort();
@@ -173,7 +182,10 @@ function SupplierDetail({ data, role }: { data: NonNullable<SupplierCardData>; r
           <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🏭</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "#3b82f6", marginBottom: "3px" }}>Supplier Profile</div>
-            <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{supplier.name}</h2>
+            <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{supplier.fame_name || supplier.name}</h2>
+            {supplier.fame_name && supplier.fame_name !== supplier.name && (
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{supplier.name}</div>
+            )}
             {supplier.contact_person && <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "3px" }}>{supplier.contact_person}{supplier.phone ? ` · ${supplier.phone}` : ""}</div>}
             <div style={{ display: "flex", gap: "8px", marginTop: "7px", flexWrap: "wrap" }}>
               <span className="badge badge-strong">{totalQuotes} quotes</span>
@@ -183,6 +195,14 @@ function SupplierDetail({ data, role }: { data: NonNullable<SupplierCardData>; r
               {avgDev > 1 && <span className="badge badge-warning">Above market avg</span>}
             </div>
           </div>
+          <Link
+            href={`/dashboard/admin/suppliers/${supplier.id}`}
+            onClick={onClose}
+            className="button button-secondary"
+            style={{ fontSize: "12px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0, alignSelf: "center" }}
+          >
+            <span>View All ↗</span>
+          </Link>
         </div>
 
         {/* KPI row */}
@@ -262,29 +282,23 @@ function SupplierDetail({ data, role }: { data: NonNullable<SupplierCardData>; r
 
 // ── Main Universal Search ─────────────────────────────────────────────────────
 export default function UniversalSearch({ index, role }: { index: SearchIndex; role: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState("");
   const [card, setCard]       = useState<CardState>(null);
   const [loading, startLoad]  = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ⌘K / Ctrl+K global shortcut
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); openModal(); }
-      if (e.key === "Escape") { if (card) setCard(null); else { setOpen(false); setQuery(""); } }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [card]);
-
   const openModal = () => { setOpen(true); setCard(null); setTimeout(() => inputRef.current?.focus(), 60); };
   const closeModal = () => { setOpen(false); setQuery(""); setCard(null); };
 
   const filteredItems     = query.trim().length >= 1 ? index.items.filter(i => fuzzy(query, i.name) || fuzzy(query, i.category_name)) : [];
-  const filteredSuppliers = query.trim().length >= 1 ? index.suppliers.filter(s => fuzzy(query, s.name)) : [];
+  const filteredSuppliers = (query.trim().length >= 1 && role !== "SA") ? index.suppliers.filter(s => fuzzy(query, s.name) || fuzzy(query, s.fame_name || "")) : [];
   const hasResults = filteredItems.length > 0 || filteredSuppliers.length > 0;
+
+  const categoriesList = useMemo(() => {
+    return Array.from(new Set(index.items.map(i => i.category_name))).slice(0, 4);
+  }, [index.items]);
 
   const openItemCard = useCallback((id: number) => {
     startLoad(async () => {
@@ -300,19 +314,90 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
     });
   }, []);
 
+  // ⌘K / Ctrl+K global shortcut & Details Card event listeners
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); openModal(); }
+      if (e.key === "Escape") { if (card) setCard(null); else { setOpen(false); setQuery(""); } }
+    };
+    window.addEventListener("keydown", onKey);
+
+    const handleShowSupplier = (ev: Event) => {
+      const customEvent = ev as CustomEvent<{ supplierId: number }>;
+      const id = customEvent.detail.supplierId;
+      if (id) {
+        setOpen(true);
+        openSupplierCard(id);
+      }
+    };
+
+    const handleShowItem = (ev: Event) => {
+      const customEvent = ev as CustomEvent<{ itemId: number }>;
+      const id = customEvent.detail.itemId;
+      if (id) {
+        setOpen(true);
+        openItemCard(id);
+      }
+    };
+
+    window.addEventListener("show-supplier-details", handleShowSupplier);
+    window.addEventListener("show-item-details", handleShowItem);
+
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("show-supplier-details", handleShowSupplier);
+      window.removeEventListener("show-item-details", handleShowItem);
+    };
+  }, [card, openItemCard, openSupplierCard]);
+
   return (
     <>
       {/* ── Sidebar trigger button ── */}
       <button
         type="button"
         onClick={openModal}
-        style={{ width: "100%", display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.45)", fontSize: "12px", cursor: "pointer", transition: "all 150ms", textAlign: "left" }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.09)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.45)"; }}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "10px 14px",
+          borderRadius: "10px",
+          border: "1px solid rgba(255,255,255,0.25)",
+          background: "rgba(255,255,255,0.12)",
+          color: "#ffffff",
+          fontSize: "12px",
+          fontWeight: "600",
+          cursor: "pointer",
+          transition: "all 150ms ease",
+          textAlign: "left",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+        }}
+        onMouseEnter={e => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.background = "rgba(255,255,255,0.18)";
+          btn.style.borderColor = "rgba(96,165,250,0.6)";
+          btn.style.boxShadow = "0 0 12px rgba(59, 130, 246, 0.4)";
+        }}
+        onMouseLeave={e => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.background = "rgba(255,255,255,0.12)";
+          btn.style.borderColor = "rgba(255,255,255,0.25)";
+          btn.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
+        }}
       >
         <span style={{ fontSize: "13px" }}>🔍</span>
         <span style={{ flex: 1 }}>{t("sidebar.search")}</span>
-        <span style={{ fontSize: "9px", padding: "2px 5px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>⌘K</span>
+        <span style={{
+          fontSize: "9px",
+          padding: "2px 5px",
+          borderRadius: "4px",
+          border: "1px solid rgba(255,255,255,0.3)",
+          background: "rgba(255,255,255,0.15)",
+          color: "rgba(255,255,255,0.8)",
+          fontFamily: "monospace",
+          fontWeight: "bold"
+        }}>⌘K</span>
       </button>
 
       {/* ── Full-screen modal ── */}
@@ -350,16 +435,59 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                 /* ── Results list ── */
                 <div>
                   {query.trim().length < 1 ? (
-                    <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
-                      <div style={{ fontSize: "28px", marginBottom: "10px" }}>🔍</div>
-                      {t("search.typeToSearch")}
-                      <div style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-                        {index.items.slice(0, 3).map(item => (
-                          <button key={item.id} type="button" onClick={() => openItemCard(item.id)} style={{ padding: "5px 12px", borderRadius: "20px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: "11px", cursor: "pointer" }}>
-                            📦 {item.name.slice(0, 30)}…
-                          </button>
-                        ))}
-                      </div>
+                    <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px", color: "var(--text-muted)", fontSize: "13px" }}>
+                      
+                      {/* Categories section */}
+                      {categoriesList.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
+                            📁 {locale === "ar" ? "تصفح الفئات" : "Browse Categories"}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            {categoriesList.map(cat => (
+                              <button key={cat} type="button" onClick={() => { setQuery(cat); inputRef.current?.focus(); }}
+                                style={{ padding: "5px 12px", borderRadius: "20px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: "11px", cursor: "pointer", transition: "all 150ms" }}>
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Suggested Items section */}
+                      {index.items.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
+                            📦 {locale === "ar" ? "أصناف مقترحة" : "Suggested Items"}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            {index.items.slice(0, 3).map(item => (
+                              <button key={item.id} type="button" onClick={() => openItemCard(item.id)}
+                                style={{ padding: "5px 12px", borderRadius: "20px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: "11px", cursor: "pointer", transition: "all 150ms" }}>
+                                {item.name.slice(0, 35)}…
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Suggested Suppliers section (SC & WH only) */}
+                      {role !== "SA" && index.suppliers.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
+                            🏭 {locale === "ar" ? "موردون مقترحون" : "Suggested Suppliers"}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            {index.suppliers.slice(0, 3).map(sup => (
+                              <button key={sup.id} type="button" onClick={() => openSupplierCard(sup.id)}
+                                style={{ padding: "5px 12px", borderRadius: "20px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: "11px", cursor: "pointer", transition: "all 150ms" }}>
+                                {sup.fame_name || sup.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
                     </div>
                   ) : !hasResults ? (
                     <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
@@ -402,7 +530,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                             >
                               <span style={{ width: "34px", height: "34px", borderRadius: "9px", background: COLORS[i % COLORS.length] + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>🏭</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{sup.name}</div>
+                                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{sup.fame_name || sup.name}</div>
                                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>{sup.quote_count} quotes{sup.contact_person ? ` · ${sup.contact_person}` : ""}</div>
                               </div>
                               <span style={{ fontSize: "18px", color: "var(--text-muted)", flexShrink: 0 }}>›</span>
@@ -416,8 +544,8 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
               ) : (
                 /* ── Detail card ── */
                 <div style={{ animation: "fadeIn 0.18s ease-out" }}>
-                  {card.type === "item"     && <ItemDetail     data={card.data} role={role} />}
-                  {card.type === "supplier" && <SupplierDetail data={card.data} role={role} />}
+                  {card.type === "item"     && <ItemDetail     data={card.data} role={role} onClose={closeModal} />}
+                  {card.type === "supplier" && <SupplierDetail data={card.data} role={role} onClose={closeModal} />}
                 </div>
               )}
             </div>

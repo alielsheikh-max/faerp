@@ -1,11 +1,12 @@
 import { SectionIntro } from "@/components/app-shell";
 import PurchasingForm from "@/components/purchasing-form";
+import RecentPricesTable from "@/components/recent-prices-table";
 import { requireRole } from "@/lib/auth";
 import { getCategories, getItems, getRecentPriceEntries, getSuppliers, getPurchasingHistory } from "@/lib/db";
-import { currentMonth, formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
+import { currentMonth, formatMonthLabel } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
 
-export default function PurchasingPage({ searchParams }: { searchParams?: { month?: string; saved?: string; error?: string } }) {
+export default function PurchasingPage({ searchParams }: { searchParams?: { month?: string; saved?: string; error?: string; categoryId?: string; itemId?: string } }) {
   const session = requireRole(["WH", "SC"]);
   const t = getServerT();
   const role = session.role;
@@ -14,7 +15,7 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
   const categories = getCategories();
   const items = getItems();
   const suppliers = getSuppliers();
-  const recentEntries = getRecentPriceEntries(20);
+  const recentEntries = getRecentPriceEntries(40);
   const purchasingHistory = getPurchasingHistory(month);
 
   return (
@@ -51,6 +52,8 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
         displayName={session.displayName}
         purchasingHistory={purchasingHistory}
         wasSaved={!!searchParams?.saved}
+        initialCategoryId={searchParams?.categoryId}
+        initialItemId={searchParams?.itemId}
       />
 
       <section className="panel">
@@ -62,41 +65,15 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
           <span className="badge">{recentEntries.length} {t("purch.rows")}</span>
         </div>
 
-        <div className="table-wrap table-wrap-short">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t("purch.month")}</th>
-                <th>{t("purch.category")}</th>
-                <th>{t("purch.item")}</th>
-                <th>{t("gen.supplier")}</th>
-                <th>{t("purch.price")}</th>
-                <th>{t("purch.capturedBy")}</th>
-                <th>{t("purch.recordedAt")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentEntries.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: "center", color: "var(--text-muted)", padding: "24px" }}>
-                    {t("purch.noEntries")}
-                  </td>
-                </tr>
-              ) : (
-                recentEntries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td><span className="badge">{entry.month}</span></td>
-                    <td><span className="badge badge-strong">{entry.category_name}</span></td>
-                    <td><strong>{entry.item_name}</strong></td>
-                    <td>{entry.supplier_name}</td>
-                    <td><strong style={{ color: "var(--success)" }}>{formatCurrency(entry.price)}</strong></td>
-                    <td><div className="cell-stack"><strong>{entry.collected_by}</strong></div></td>
-                    <td>{formatDateTime(entry.recorded_at)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div style={{ padding: "0 0 4px" }}>
+          <RecentPricesTable
+            entries={recentEntries}
+            suppliers={suppliers}
+            username={session.displayName}
+            month={month}
+            items={items}
+            role={role}
+          />
         </div>
       </section>
     </div>

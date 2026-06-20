@@ -169,8 +169,9 @@ flowchart TD
     FloorCheck -- Yes --> Publish["Publish Approved Selling Catalog"]:::sc
     
     Publish --> SA["4. Sales Agents view approved ranges"]:::sa
-    SA --> DealSim["Interactive Deal Simulator<br/>with instant warnings"]:::sa
-    DealSim --> CopyQuote["Copy formatted Client Quote"]:::sa
+    SA --> DealSim["Interactive Deal Simulator<br/>with real-time margin compliance"]:::sa
+    DealSim --> DealBoard["Add to Active Session Deal Board<br/>aggregates multiple quotes"]:::sa
+    DealBoard --> CopyQuote["Copy formatted Client Quote"]:::sa
     CopyQuote --> End([Deal Completed])
         </pre>
       </div>
@@ -194,6 +195,7 @@ flowchart TD
             <li><strong>Guided Step-by-Step Collection:</strong> A clean, two-step wizard where users select a product category, then select specific items to record pricing.</li>
             <li><strong>Smart Duplication Warning (Change Requests):</strong> If a purchasing officer attempts to alter a price that has already been submitted and confirmed for the month, the app forces them to submit a <strong>Price Change Request</strong> with a mandatory business justification.</li>
             <li><strong>Contextual Historical Matrix:</strong> While entering prices, the input screen displays a 3-month, 6-month, or full history comparison grid for each supplier so purchasing agents can immediately spot vendor inflation or anomalies.</li>
+            <li><strong>Purchasing &amp; Collection Reports:</strong> Generate real-time reports such as the **Price Collection Log** (itemized supplier quotes) and the **WH Monthly Summary** (supplier coverage and missing quote status).</li>
           </ul>
         </div>
 
@@ -206,6 +208,7 @@ flowchart TD
             <li><strong>Real-time Pricing Engine:</strong> Allows managers to dynamically calculate selling prices based on the cheapest, average, or highest supplier quote for the month.</li>
             <li><strong>Flexible Margin Modes:</strong> Supports setting margins as a <strong>Percentage (%)</strong> of cost or a <strong>Fixed Amount (EGP)</strong>.</li>
             <li><strong>Margin Floor Enforcement:</strong> Enforces a strict profit floor configured at either the Category level or Item level (which overrides the category floor). The UI blocks publishing if the proposed price drops below the minimum acceptable markup.</li>
+            <li><strong>Full System Administration CRUD:</strong> Manage items, categories, suppliers, and users dynamically from the Admin Panel, including configuring margin floors.</li>
             <li><strong>Independent Market Intelligence:</strong> High-end charts and analytical gauges to track:
               <ul class="list-circle pl-5 mt-1 space-y-1">
                 <li><strong>Supplier Scorecard:</strong> Identifies cost leaders and vendor participation/coverage rates.</li>
@@ -213,6 +216,7 @@ flowchart TD
                 <li><strong>Markup Strategy Advisor:</strong> Suggests markup strategies based on calculated volatility levels.</li>
               </ul>
             </li>
+            <li><strong>Consolidated SC Manager Reports:</strong> Export dynamic reports such as **Published Selling Prices** (with custom month range selectors), **Monthly Market Overview** (market trend and min/avg/max spreads), **Supplier Price Comparison** (highlighting the cheapest rates), and **Price Volatility Alerts** (warning of multi-revision price changes).</li>
             <li><strong>Approval Dashboard:</strong> An inbox containing all price changes submitted by the warehouse. The SC Manager can approve or reject with a custom review note.</li>
             <li><strong>Inline Monthly Review:</strong> A collapsible, side-by-side dashboard modal showing every item in the catalog. Managers can quickly inspect all supplier quotes and submit selling prices item-by-item without leaving the screen.</li>
           </ul>
@@ -225,9 +229,10 @@ flowchart TD
           </h3>
           <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
             <li><strong>Secure Price Catalog:</strong> Agents can view approved min/max selling prices for the month. To protect purchasing leverage, <strong>raw buy costs are completely hidden</strong> from sales agents.</li>
-            <li><strong>Interactive Deal Simulator:</strong> Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately.</li>
+            <li><strong>Interactive Deal Simulator:</strong> Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately. Warns the agent if the price is below the min allowed or above the max.</li>
             <li><strong>Visual Compliance Indicators:</strong> Displays green (compliant), yellow (above maximum), and red (below minimum allowed margin) warnings in real-time as agents type their pricing.</li>
             <li><strong>Active Session Deal Board:</strong> Allows agents to combine multiple item quotes into a single deal board, check total profitability, and copy a formatted text summary to their clipboard for instant WhatsApp/email delivery to clients.</li>
+            <li><strong>Sales Reports:</strong> Generate client-ready reports such as the **Approved Selling Price List** and the **Sales Price Catalog** (displaying dynamic stats cards for active periods, categories count, and catalog status).</li>
           </ul>
         </div>
 
@@ -242,7 +247,7 @@ flowchart TD
             <li><strong>Zero-Dependency PDF &amp; Excel Generation:</strong>
               <ul class="list-circle pl-5 mt-1 space-y-1">
                 <li>Export dynamic price requests for vendors with zebra-striped, auto-fitting columns.</li>
-                <li>Export manager spreadsheets with emerald headers, formatted currencies, and highlighted input fields.</li>
+                <li>Export manager spreadsheets using `xlsx-js-style` with custom emerald headers, formatted currencies, and highlighted input fields.</li>
                 <li>On-screen print layouts optimized for physical archiving.</li>
               </ul>
             </li>

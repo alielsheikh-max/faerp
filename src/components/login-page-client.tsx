@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { loginAs } from "@/app/actions/auth";
 import { QUICK_LOGIN_CREDENTIALS, ROLE_PROFILES } from "@/lib/constants";
 import { useI18n } from "@/lib/i18n-context";
@@ -11,6 +11,16 @@ export default function LoginPageClient({ error }: { error?: string }) {
   const { t, toggleLocale, locale } = useI18n();
   const [signingIn, setSigningIn] = useState(false);
   const [signingInRole, setSigningInRole] = useState<string | null>(null);
+
+  // ── Reset loading overlay when the server returns an error ──────────────
+  // Next.js App Router does a soft navigation back to the same page, so the
+  // component does NOT unmount — we have to reset state manually.
+  useEffect(() => {
+    if (error) {
+      setSigningIn(false);
+      setSigningInRole(null);
+    }
+  }, [error]);
 
   const handleManualSubmit = () => {
     setSigningIn(true);
@@ -25,56 +35,70 @@ export default function LoginPageClient({ error }: { error?: string }) {
   return (
     <main className="login-page">
 
-      {/* ── Sign-in transition overlay ────────────────────────────────────── */}
+      {/* ── Sign-in transition overlay ─────────────────────────────────────── */}
       {signingIn && (
         <div className="signin-overlay">
           <div className="signin-overlay-inner">
-            <div className="signin-spinner" />
+            {/* Logo */}
+            <div className="signin-logo-wrap">
+              <img src="/faerp logo.svg" alt="FAERP" className="signin-logo-img" />
+            </div>
+            {/* App name */}
+            <div className="signin-overlay-appname">FAERP</div>
+            {/* Role label */}
             <div className="signin-overlay-text">
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "rgba(255,255,255,0.9)", letterSpacing: "0.05em" }}>
-                Signing in{signingInRole && signingInRole !== "user" ? ` as ${signingInRole}` : ""}…
+              <span>
+                {signingInRole && signingInRole !== "user"
+                  ? t("login.signingInAs").replace("{role}", t(`role.${signingInRole}.title` as any) || signingInRole)
+                  : t("login.authenticating")}
               </span>
+            </div>
+            {/* Calm progress bar */}
+            <div className="signin-progress-track">
+              <div className="signin-progress-bar" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Language toggle — top right corner */}
-      <button
-        type="button"
-        onClick={toggleLocale}
-        style={{
-          position: "fixed", top: "18px", right: "18px",
-          zIndex: 100, padding: "7px 14px",
-          background: "rgba(255,255,255,0.08)",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: "20px", color: "rgba(255,255,255,0.7)",
-          fontSize: "12px", fontWeight: 700, cursor: "pointer",
-          backdropFilter: "blur(8px)",
-          display: "flex", alignItems: "center", gap: "6px",
-          transition: "all 150ms",
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.14)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-      >
-        🌐 {t("sidebar.langToggle")}
-      </button>
+
+      {/* Language toggle — top right, inside page flow */}
+      <div style={{ position: "absolute", top: "18px", insetInlineEnd: "18px", zIndex: 200 }}>
+        <button
+          type="button"
+          onClick={toggleLocale}
+          style={{
+            padding: "7px 14px",
+            background: "rgba(30,58,138,0.82)",
+            border: "1px solid rgba(255,255,255,0.22)",
+            borderRadius: "20px", color: "#fff",
+            fontSize: "12px", fontWeight: 700, cursor: "pointer",
+            backdropFilter: "blur(8px)",
+            display: "flex", alignItems: "center", gap: "6px",
+            transition: "all 150ms",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = "rgba(30,58,138,1)")}
+          onMouseLeave={e => (e.currentTarget.style.background = "rgba(30,58,138,0.82)")}
+        >
+          🌐 {t("sidebar.langToggle")}
+        </button>
+      </div>
 
       <section className="login-hero">
         {/* Left Brand */}
         <div className="hero-copy">
-          <div className="hero-brand">
-            <div className="hero-brand-logo">
-              <svg width="24" height="24" viewBox="0 0 22 22" fill="none">
-                <rect x="2" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.95)"/>
-                <rect x="12" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.6)"/>
-                <rect x="7" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.8)"/>
-                <rect x="4" y="17" width="14" height="2.5" rx="1.25" fill="rgba(255,255,255,0.45)"/>
-              </svg>
+
+          {/* ── Brand Identity Block ── */}
+          <div className="hero-brand-identity">
+            <div className="hero-logo-tile">
+              <img src="/faerp logo.svg" alt="FAERP" className="hero-logo-img" />
             </div>
-            <span className="hero-brand-name">FAERP</span>
+            <div className="hero-wordmark">FAERP</div>
+            <div className="hero-wordmark-tag">Enterprise Resource Platform</div>
           </div>
 
+          {/* ── Headline & Features ── */}
           <div className="hero-main-content">
             <h1>
               {t("login.heroTitle").split("&").map((part, i) =>
@@ -121,11 +145,35 @@ export default function LoginPageClient({ error }: { error?: string }) {
               {signingIn && signingInRole === "user" ? (
                 <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                   <span className="btn-spinner" />
-                  Signing in…
+                  {t("login.signingIn")}
                 </span>
               ) : t("login.signInBtn")}
             </button>
-            {error && (
+
+            {/* ── Error banners ───────────────────────────────────────── */}
+            {error === "disabled" && (
+              <div style={{
+                background: "rgba(217,119,6,0.08)",
+                borderColor: "rgba(217,119,6,0.35)",
+                color: "#92400e",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                border: "1px solid",
+                fontSize: "12.5px",
+                marginTop: "8px",
+                display: "flex",
+                gap: "10px",
+                alignItems: "flex-start",
+                lineHeight: 1.55,
+              }}>
+                <span style={{ fontSize: "18px", flexShrink: 0 }}>🔒</span>
+                <div>
+                  <strong style={{ display: "block", marginBottom: "3px" }}>{t("login.accountDisabled")}</strong>
+                  {t("login.accountDisabledDesc")}
+                </div>
+              </div>
+            )}
+            {error && error !== "disabled" && (
               <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", padding: "10px 12px", borderRadius: "8px", border: "1px solid", fontSize: "12.5px", marginTop: "4px" }}>
                 <strong>{t("login.invalidCreds")}</strong> {t("login.invalidCredsDesc")}
               </div>
@@ -145,10 +193,10 @@ export default function LoginPageClient({ error }: { error?: string }) {
                   <input type="hidden" name="password" value={QUICK_LOGIN_CREDENTIALS[profile.code].password} />
                   <button type="submit" className="quick-role-btn" disabled={signingIn}>
                     <div className="role-icon">
-                      {profile.code === "SC" ? "📊" : profile.code === "WH" ? "📦" : "💰"}
+                      {profile.code === "SC" ? "📊" : profile.code === "WH" ? "📦" : profile.code === "SA" ? "💰" : "⚙️"}
                     </div>
                     <div className="role-details">
-                      <strong>{profile.code === "SC" ? t("role.SC.title") : profile.code === "WH" ? t("role.WH.title") : t("role.SA.title")} ({profile.code})</strong>
+                      <strong>{t(`role.${profile.code}.title` as any) || profile.title} ({profile.code})</strong>
                       <span>{profile.shortTitle} · {QUICK_LOGIN_CREDENTIALS[profile.code].username}</span>
                     </div>
                   </button>

@@ -34,8 +34,9 @@ flowchart TD
     FloorCheck -- Yes --> Publish["Publish Approved Selling Catalog"]:::sc
     
     Publish --> SA["4. Sales Agents view approved ranges"]:::sa
-    SA --> DealSim["Interactive Deal Simulator<br/>with instant warnings"]:::sa
-    DealSim --> CopyQuote["Copy formatted Client Quote"]:::sa
+    SA --> DealSim["Interactive Deal Simulator<br/>with real-time margin compliance"]:::sa
+    DealSim --> DealBoard["Add to Active Session Deal Board<br/>aggregates multiple quotes"]:::sa
+    DealBoard --> CopyQuote["Copy formatted Client Quote"]:::sa
     CopyQuote --> End([Deal Completed])
 ```
 
@@ -49,30 +50,34 @@ This app is structured into three specialized access roles (Warehouse, Supply Ch
 * **Guided Step-by-Step Collection**: A clean, two-step wizard where users select a product category, then select specific items to record pricing.
 * **Smart Duplication Warning (Change Requests)**: If a purchasing officer attempts to alter a price that has already been submitted and confirmed for the month, the app forces them to submit a **Price Change Request** with a mandatory business justification.
 * **Contextual Historical Matrix**: While entering prices, the input screen displays a 3-month, 6-month, or full history comparison grid for each supplier so purchasing agents can immediately spot vendor inflation or anomalies.
+* **Purchasing & Collection Reports**: Generate real-time reports such as the **Price Collection Log** (itemized supplier quotes) and the **WH Monthly Summary** (supplier coverage and missing quote status).
 
 ### 📊 B. Supply Chain Management Module (Controls & Analytics)
 * **Real-time Pricing Engine**: Allows managers to dynamically calculate selling prices based on the cheapest, average, or highest supplier quote for the month.
 * **Flexible Margin Modes**: Supports setting margins as a **Percentage (%)** of cost or a **Fixed Amount (EGP)**.
 * **Margin Floor Enforcement**: Enforces a strict profit floor configured at either the Category level or Item level (which overrides the category floor). The UI blocks publishing if the proposed price drops below the minimum acceptable markup.
+* **Full System Administration CRUD**: Manage items, categories, suppliers, and users dynamically from the Admin Panel, including configuring margin floors.
 * **Independent Market Intelligence**: High-end charts and analytical gauges to track:
   * **Supplier Scorecard**: Identifies cost leaders and vendor participation/coverage rates.
   * **Month-over-Month Breakdowns**: Visualizes volatility spread (Min, Max, Avg) per month.
   * **Markup Strategy Advisor**: Suggests markup strategies based on calculated volatility levels.
+* **Consolidated SC Manager Reports**: Export dynamic reports such as **Published Selling Prices** (with custom month range selectors), **Monthly Market Overview** (market trend and min/avg/max spreads), **Supplier Price Comparison** (highlighting the cheapest rates), and **Price Volatility Alerts** (warning of multi-revision price changes).
 * **Approval Dashboard**: An inbox containing all price changes submitted by the warehouse. The SC Manager can approve or reject with a custom review note.
 * **Inline Monthly Review**: A collapsible, side-by-side dashboard modal showing every item in the catalog. Managers can quickly inspect all supplier quotes and submit selling prices item-by-item without leaving the screen.
 
 ### 🏷 C. Sales Agent Module (Quoting & Deal Simulation)
 * **Secure Price Catalog**: Agents can view approved min/max selling prices for the month. To protect purchasing leverage, **raw buy costs are completely hidden** from sales agents.
-* **Interactive Deal Simulator**: Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately.
+* **Interactive Deal Simulator**: Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately. Warns the agent if the price is below the min allowed or above the max.
 * **Visual Compliance Indicators**: Displays green (compliant), yellow (above maximum), and red (below minimum allowed margin) warnings in real-time as agents type their pricing.
 * **Active Session Deal Board**: Allows agents to combine multiple item quotes into a single deal board, check total profitability, and copy a formatted text summary to their clipboard for instant WhatsApp/email delivery to clients.
+* **Sales Reports**: Generate client-ready reports such as the **Approved Selling Price List** and the **Sales Price Catalog** (displaying dynamic stats cards for active periods, categories count, and catalog status).
 
 ### 🌐 D. Core System Utilities
 * **Multilingual RTL Support**: Fully localized in English and Arabic. RTL layout adjustments (aligned grids, padding, and font sizes) are applied automatically on language toggle.
 * **Theme Customizer**: Toggle between clean light mode and premium dark mode interfaces.
 * **Zero-Dependency PDF & Excel Generation**:
   * Export dynamic price requests for vendors with zebra-striped, auto-fitting columns.
-  * Export manager spreadsheets with emerald headers, formatted currencies, and highlighted input fields.
+  * Export manager spreadsheets using `xlsx-js-style` with custom emerald headers, formatted currencies, and highlighted input fields.
   * On-screen print layouts optimized for physical archiving.
 * **Automated Audit History**: Collapsible visual timeline showing every past price modification, who made it, and the stated reason.
 

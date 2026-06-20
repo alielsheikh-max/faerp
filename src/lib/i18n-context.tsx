@@ -34,12 +34,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute("lang", l);
     // Set cookie for server components to read
     document.cookie = `faerp-locale=${l}; path=/; max-age=31536000`;
-    // Apply Arabic font stack when RTL
-    if (l === "ar") {
-      document.documentElement.style.setProperty("--font-sans", "'Cairo', 'Tajawal', 'Segoe UI', sans-serif");
-    } else {
-      document.documentElement.style.setProperty("--font-sans", "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-    }
+    // Readex Pro Variable supports both Arabic and Latin scripts natively —
+    // keep the same font for both locales (Cairo/Tajawal/Inter are not preloaded)
+    document.documentElement.style.setProperty(
+      "--font-sans",
+      "'Readex Pro Variable', -apple-system, BlinkMacSystemFont, sans-serif"
+    );
   };
 
   const toggleLocale = useCallback(() => {

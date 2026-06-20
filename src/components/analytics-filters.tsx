@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import SupplierDropdown from "./supplier-dropdown";
+import { currentMonth, shiftMonth } from "@/lib/format";
 
 type Category = {
   id: number;
@@ -16,6 +17,7 @@ type Item = {
 type Supplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
 };
 
 type AnalyticsFiltersProps = {
@@ -63,6 +65,37 @@ export default function AnalyticsFilters({
 
   return (
     <section className="panel" style={{ padding: "16px 20px" }}>
+      {/* T27: Quick Duration Presets */}
+      <div style={{ display: "flex", gap: "6px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginRight: "4px" }}>Quick Range:</span>
+        {([3, 6, 9, 12, "all"] as const).map((n) => {
+          const end = currentMonth();
+          const start = n === "all" ? "2024-01" : shiftMonth(end, -(n as number) + 1);
+          const isActive = startMonth === start && endMonth === end;
+          return (
+            <button
+              key={String(n)}
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(window.location.search);
+                params.set("startMonth", start);
+                params.set("endMonth", end);
+                router.push(`?${params.toString()}`);
+              }}
+              style={{
+                padding: "4px 12px", fontSize: "11px", fontWeight: 700,
+                borderRadius: "20px", cursor: "pointer", transition: "all 150ms",
+                border: `1.5px solid ${isActive ? "var(--primary)" : "var(--border)"}`,
+                background: isActive ? "var(--primary-light)" : "var(--bg-elevated)",
+                color: isActive ? "var(--primary)" : "var(--text-secondary)",
+              }}
+            >
+              {n === "all" ? "All" : `${n}M`}
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", alignItems: "flex-end" }}>
         
         {/* From Month */}

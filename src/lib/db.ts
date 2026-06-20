@@ -26,11 +26,12 @@ function openDatabase() {
   const db = new Database(databasePath);
   db.pragma("journal_mode = WAL");
   initializeSchema(db);
+  migrateItemTiers(db);
   seedDatabase(db);
   return db;
 }
 
-function database() {
+export function database() {
   if (!global.__faerpDb) {
     global.__faerpDb = openDatabase();
   }
@@ -53,6 +54,8 @@ function initializeSchema(db: Db) {
       unit TEXT NOT NULL,
       description TEXT,
       active INTEGER NOT NULL DEFAULT 1,
+      transportation_per_unit REAL NOT NULL DEFAULT 0.0,
+      moq INTEGER NOT NULL DEFAULT 0,
       UNIQUE(category_id, name),
       FOREIGN KEY (category_id) REFERENCES categories(id)
     );
@@ -61,7 +64,21 @@ function initializeSchema(db: Db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       contact_person TEXT,
-      phone TEXT
+      phone TEXT,
+      code TEXT,
+      contact_job_title TEXT,
+      represented_products TEXT,
+      email TEXT,
+      region TEXT,
+      address TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS supplier_categories (
+      supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      assigned_by TEXT,
+      assigned_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (supplier_id, category_id)
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -84,6 +101,7 @@ function initializeSchema(db: Db) {
       collected_role TEXT NOT NULL,
       notes TEXT,
       recorded_at TEXT NOT NULL,
+      actual_transport REAL,
       FOREIGN KEY (item_id) REFERENCES items(id),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
@@ -103,6 +121,9 @@ function initializeSchema(db: Db) {
       sell_max REAL NOT NULL,
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      transportation REAL NOT NULL DEFAULT 0.0,
+      other_expenses REAL NOT NULL DEFAULT 0.0,
+      tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
       UNIQUE(item_id, month),
       FOREIGN KEY (item_id) REFERENCES items(id)
     );
@@ -120,6 +141,8 @@ function initializeSchema(db: Db) {
       prev_markup_min REAL,
       prev_markup_max REAL,
       prev_strategy   TEXT,
+      prev_transportation REAL,
+      prev_other_expenses REAL,
       -- new values being written
       new_sell_min  REAL    NOT NULL,
       new_sell_max  REAL    NOT NULL,
@@ -128,6 +151,9 @@ function initializeSchema(db: Db) {
       new_strategy  TEXT    NOT NULL,
       new_markup_type TEXT  NOT NULL,
       new_buy_avg   REAL    NOT NULL,
+      new_transportation REAL NOT NULL DEFAULT 0.0,
+      new_other_expenses REAL NOT NULL DEFAULT 0.0,
+      new_tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
       -- who / when
       changed_by    TEXT    NOT NULL,
       changed_at    TEXT    NOT NULL,
@@ -182,10 +208,62 @@ function initializeSchema(db: Db) {
   // Safe migrations for columns added after initial release
   const migrations = [
     "ALTER TABLE selling_prices ADD COLUMN markup_type TEXT NOT NULL DEFAULT 'percent'",
+    "ALTER TABLE selling_prices ADD COLUMN transportation REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_prices ADD COLUMN other_expenses REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_transportation REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_other_expenses REAL NOT NULL DEFAULT 0.0",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_transportation REAL",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_other_expenses REAL",
+    "ALTER TABLE selling_prices ADD COLUMN tier_pricing_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_tier_pricing_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_tier_pricing_enabled INTEGER",
+    "ALTER TABLE selling_price_history ADD COLUMN new_transport_override_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_price_history ADD COLUMN new_transport_override_amount REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE suppliers ADD COLUMN code TEXT",
+    "ALTER TABLE suppliers ADD COLUMN contact_job_title TEXT",
+    "ALTER TABLE suppliers ADD COLUMN represented_products TEXT",
+    "ALTER TABLE suppliers ADD COLUMN email TEXT",
+    "ALTER TABLE suppliers ADD COLUMN region TEXT",
+    "ALTER TABLE suppliers ADD COLUMN address TEXT",
+    "ALTER TABLE suppliers ADD COLUMN fame_name TEXT",
+    // T5: per-month transport override by SC
+    "ALTER TABLE selling_prices ADD COLUMN transport_override_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE selling_prices ADD COLUMN transport_override_amount REAL NOT NULL DEFAULT 0.0",
+    // T17: two note fields — internal (SC-only) and SA notification
+    "ALTER TABLE selling_prices ADD COLUMN internal_note TEXT",
+    "ALTER TABLE selling_prices ADD COLUMN sa_note TEXT",
+    "ALTER TABLE selling_price_history ADD COLUMN internal_note TEXT",
+    "ALTER TABLE selling_price_history ADD COLUMN sa_note TEXT",
+    // T25: WH can record actual transportation cost per price entry
+    "ALTER TABLE price_entries ADD COLUMN actual_transport REAL",
+    // T26: Admin can allow SC to override transportation per item/month
+    "ALTER TABLE monthly_settings ADD COLUMN sc_transport_override_enabled INTEGER NOT NULL DEFAULT 0",
+    // T27: Support transport revision in price change requests
+    "ALTER TABLE price_change_requests ADD COLUMN old_transport REAL",
+    "ALTER TABLE price_change_requests ADD COLUMN new_transport REAL",
+    "ALTER TABLE price_entries ADD COLUMN negotiated_price REAL",
+    "ALTER TABLE price_entries ADD COLUMN negotiated_notes TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
   }
+
+  // Auto-populate fame_name for any supplier that doesn't have one yet
+  function autoFameName(name: string): string {
+    const dashIdx = name.lastIndexOf(" - ");
+    if (dashIdx !== -1) {
+      const afterDash = name.substring(dashIdx + 3).trim();
+      if (afterDash.length > 0 && afterDash.length <= 25) return afterDash;
+    }
+    if (name.length <= 20) return name;
+    const words = name.split(/\s+/).filter(Boolean);
+    return words.slice(0, 2).join(" ");
+  }
+  const suppliersNoFame = db.prepare(
+    "SELECT id, name FROM suppliers WHERE fame_name IS NULL OR TRIM(fame_name) = ''"
+  ).all() as Array<{ id: number; name: string }>;
+  const setFame = db.prepare("UPDATE suppliers SET fame_name = ? WHERE id = ?");
+  for (const s of suppliersNoFame) setFame.run(autoFameName(s.name), s.id);
 
   // Safe table migrations — CREATE IF NOT EXISTS is idempotent; safe to run every startup
   db.exec(`
@@ -243,21 +321,92 @@ function initializeSchema(db: Db) {
       FOREIGN KEY (item_id)     REFERENCES items(id),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
+
+    CREATE TABLE IF NOT EXISTS monthly_settings (
+      month TEXT PRIMARY KEY,
+      tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
+      sc_transport_override_enabled INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS item_tiers (
+      item_id INTEGER PRIMARY KEY,
+      is_tiered INTEGER NOT NULL DEFAULT 0,
+      tier1_max INTEGER NOT NULL DEFAULT 100,
+      tier1_discount REAL NOT NULL DEFAULT 0.0,
+      tier2_max INTEGER NOT NULL DEFAULT 200,
+      tier2_discount REAL NOT NULL DEFAULT 5.0,
+      tier3_max INTEGER NOT NULL DEFAULT 300,
+      tier3_discount REAL NOT NULL DEFAULT 10.0,
+      tier4_max INTEGER NOT NULL DEFAULT 0,
+      tier4_discount REAL NOT NULL DEFAULT 0.0,
+      FOREIGN KEY (item_id) REFERENCES items(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      currency   TEXT    NOT NULL,
+      rate       REAL    NOT NULL,
+      source     TEXT,
+      fetched_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- T18: SA acknowledges price changes — SC gets notified
+    CREATE TABLE IF NOT EXISTS price_acknowledgments (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      history_id     INTEGER NOT NULL,
+      acknowledged_by TEXT   NOT NULL,
+      acknowledged_at TEXT   NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(history_id),
+      FOREIGN KEY (history_id) REFERENCES selling_price_history(id)
+    );
+
+    -- Activity / Audit Log — captures main business events
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor        TEXT NOT NULL,    -- username of the person
+      role         TEXT NOT NULL,    -- WH | SC | SA | AD | system
+      event_type   TEXT NOT NULL,    -- snake_case event key
+      summary      TEXT NOT NULL,    -- human-readable one-liner
+      detail       TEXT,             -- JSON blob (item name, price, month, etc.)
+      performed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+}
+
+// ── Migrate existing item_tiers table to add tier3_max / tier4 columns ──────
+function migrateItemTiers(db: Db) {
+  const cols = (db.prepare("PRAGMA table_info(item_tiers)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!cols.includes("tier3_max"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier3_max INTEGER NOT NULL DEFAULT 300").run();
+  if (!cols.includes("tier4_max"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_max INTEGER NOT NULL DEFAULT 0").run();
+  if (!cols.includes("tier4_discount"))
+    db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_discount REAL NOT NULL DEFAULT 0.0").run();
 }
 
 function seedDatabase(db: Db) {
   const checkItem = db.prepare("SELECT name FROM items LIMIT 1").get() as { name: string } | undefined;
   
-  if (!checkItem || !checkItem.name.match(/[\u0600-\u06FF]/)) {
-    // Drop existing items/categories/suppliers/quotes data to allow a clean migration to the Arabic dataset
+  if (checkItem && !checkItem.name.match(/[\u0600-\u06FF]/)) {
+    // Drop existing data in FK-safe order (children before parents) to allow
+    // a clean migration to the Arabic seed dataset
     db.exec(`
-      DELETE FROM price_entries;
+      DELETE FROM price_change_requests;
+      DELETE FROM selling_price_history;
       DELETE FROM selling_prices;
+      DELETE FROM price_entries;
+      DELETE FROM item_tiers;
+      DELETE FROM margin_floors;
+      DELETE FROM monthly_settings;
       DELETE FROM items;
       DELETE FROM categories;
       DELETE FROM suppliers;
-      DELETE FROM sqlite_sequence WHERE name IN ('categories', 'items', 'suppliers', 'price_entries', 'selling_prices');
+      DELETE FROM sqlite_sequence WHERE name IN (
+        'categories', 'items', 'suppliers',
+        'price_entries', 'selling_prices', 'selling_price_history',
+        'price_change_requests', 'item_tiers', 'margin_floors'
+      );
     `);
   }
 
@@ -292,16 +441,22 @@ function seedDatabase(db: Db) {
   const users = [
     { username: "wh", password: "wh123", role: "WH", display_name: "WH Purchasing" },
     { username: "sc", password: "sc123", role: "SC", display_name: "SC Manager" },
-    { username: "sa", password: "sa123", role: "SA", display_name: "SA Sales" }
+    { username: "sa", password: "sa123", role: "SA", display_name: "SA Sales" },
+    { username: "admin", password: "admin123", role: "AD", display_name: "System Admin" }
   ];
 
   if (userCount.count === 0) {
     users.forEach((user) => insertUser.run(user));
+  } else {
+    // If users already seeded, ensure admin user exists
+    const adminExists = db.prepare("SELECT COUNT(*) as count FROM users WHERE username = 'admin'").get() as { count: number };
+    if (adminExists.count === 0) {
+      insertUser.run({ username: "admin", password: "admin123", role: "AD", display_name: "System Admin" });
+    }
   }
 
-  if (categoryCount.count > 0) {
-    return;
-  }
+  // We no longer seed mock categories, items, suppliers, or price entries
+  return;
 
   const categories = [
     { name: "بالتات (طبليات)", description: "بالتات خشبية، بلاستيكية، ومعدنية بمختلف المقاسات والحمولات والألوان." },
@@ -520,9 +675,42 @@ export function getCategories() {
 }
 
 export function getSuppliers() {
-  return database()
-    .prepare("SELECT id, name, contact_person, phone FROM suppliers ORDER BY name")
-    .all() as Array<{ id: number; name: string; contact_person: string; phone: string }>;
+  const db = database();
+  const rows = db
+    .prepare("SELECT id, name, fame_name, contact_person, phone, code, contact_job_title, represented_products, email, region, address FROM suppliers ORDER BY name")
+    .all() as Array<{
+      id: number; name: string; fame_name: string | null;
+      contact_person: string; phone: string;
+      code: string | null; contact_job_title: string | null;
+      represented_products: string | null; email: string | null;
+      region: string | null; address: string | null;
+    }>;
+
+  // Attach category_ids per supplier from the junction table
+  const catRows = db.prepare(
+    "SELECT supplier_id, category_id FROM supplier_categories"
+  ).all() as Array<{ supplier_id: number; category_id: number }>;
+
+  const catMap = new Map<number, number[]>();
+  for (const r of catRows) {
+    if (!catMap.has(r.supplier_id)) catMap.set(r.supplier_id, []);
+    catMap.get(r.supplier_id)!.push(r.category_id);
+  }
+
+  return rows.map(s => ({ ...s, category_ids: catMap.get(s.id) ?? [] }));
+}
+
+/** Replace all category assignments for a supplier (transactional). */
+export function setSupplierCategories(supplierId: number, categoryIds: number[], assignedBy: string): void {
+  const db = database();
+  const del = db.prepare("DELETE FROM supplier_categories WHERE supplier_id = ?");
+  const ins = db.prepare(
+    "INSERT OR IGNORE INTO supplier_categories (supplier_id, category_id, assigned_by) VALUES (?, ?, ?)"
+  );
+  db.transaction(() => {
+    del.run(supplierId);
+    for (const catId of categoryIds) ins.run(supplierId, catId, assignedBy);
+  })();
 }
 
 export function getUsers() {
@@ -567,6 +755,30 @@ export function getUserByCredentials(username: string, password: string) {
     | undefined;
 }
 
+/** Like getUserByCredentials but ignores the active flag — used to detect disabled-account logins. */
+export function getUserByUsernameAndPassword(username: string, password: string) {
+  return database()
+    .prepare(`
+      SELECT
+        id,
+        username,
+        role,
+        display_name,
+        active
+      FROM users
+      WHERE username = ? AND password = ?
+    `)
+    .get(username, password) as
+    | {
+        id: number;
+        username: string;
+        role: string;
+        display_name: string;
+        active: number;
+      }
+    | undefined;
+}
+
 export function getUserByUsername(username: string) {
   return database()
     .prepare(`
@@ -605,11 +817,23 @@ export function getItems(categoryId?: number) {
         i.description,
         i.active,
         i.category_id,
-        c.name as category_name
+        c.name as category_name,
+        i.transportation_per_unit,
+        i.moq,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount
       FROM items i
       JOIN categories c ON c.id = i.category_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
-      ORDER BY i.active DESC, c.name, i.name
+      ORDER BY i.active DESC, c.name, i.id
     `)
     .all(params) as Array<{
       id: number;
@@ -619,6 +843,17 @@ export function getItems(categoryId?: number) {
       active: number;
       category_id: number;
       category_name: string;
+      transportation_per_unit: number;
+      moq: number;
+      is_tiered: number;
+      tier1_max: number;
+      tier1_discount: number;
+      tier2_max: number;
+      tier2_discount: number;
+      tier3_max: number;
+      tier3_discount: number;
+      tier4_max: number;
+      tier4_discount: number;
     }>;
 }
 
@@ -719,41 +954,80 @@ export function deleteCategory(id: number) {
 
 export function createSupplier(input: {
   name: string;
+  fameName?: string;
   contactPerson: string;
   phone: string;
+  code?: string;
+  contactJobTitle?: string;
+  representedProducts?: string;
+  email?: string;
+  region?: string;
+  address?: string;
 }) {
   database()
     .prepare(`
-      INSERT INTO suppliers (name, contact_person, phone)
-      VALUES (@name, @contact_person, @phone)
+      INSERT INTO suppliers (
+        name, fame_name, contact_person, phone, code, contact_job_title, represented_products, email, region, address
+      )
+      VALUES (
+        @name, @fame_name, @contact_person, @phone, @code, @contact_job_title, @represented_products, @email, @region, @address
+      )
     `)
     .run({
       name: input.name,
+      fame_name: input.fameName || null,
       contact_person: input.contactPerson,
-      phone: input.phone
+      phone: input.phone,
+      code: input.code || null,
+      contact_job_title: input.contactJobTitle || null,
+      represented_products: input.representedProducts || null,
+      email: input.email || null,
+      region: input.region || null,
+      address: input.address || null
     });
 }
 
 export function updateSupplier(input: {
   id: number;
   name: string;
+  fameName?: string;
   contactPerson: string;
   phone: string;
+  code?: string;
+  contactJobTitle?: string;
+  representedProducts?: string;
+  email?: string;
+  region?: string;
+  address?: string;
 }) {
   database()
     .prepare(`
       UPDATE suppliers
       SET
         name = @name,
+        fame_name = @fame_name,
         contact_person = @contact_person,
-        phone = @phone
+        phone = @phone,
+        code = @code,
+        contact_job_title = @contact_job_title,
+        represented_products = @represented_products,
+        email = @email,
+        region = @region,
+        address = @address
       WHERE id = @id
     `)
     .run({
       id: input.id,
       name: input.name,
+      fame_name: input.fameName || null,
       contact_person: input.contactPerson,
-      phone: input.phone
+      phone: input.phone,
+      code: input.code || null,
+      contact_job_title: input.contactJobTitle || null,
+      represented_products: input.representedProducts || null,
+      email: input.email || null,
+      region: input.region || null,
+      address: input.address || null
     });
 }
 
@@ -774,17 +1048,21 @@ export function createItem(input: {
   name: string;
   unit: string;
   description: string;
+  transportationPerUnit: number;
+  moq: number;
 }) {
   database()
     .prepare(`
-      INSERT INTO items (category_id, name, unit, description, active)
-      VALUES (@category_id, @name, @unit, @description, 1)
+      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq)
+      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq)
     `)
     .run({
       category_id: input.categoryId,
       name: input.name,
       unit: input.unit,
-      description: input.description
+      description: input.description,
+      transportation_per_unit: input.transportationPerUnit,
+      moq: input.moq
     });
 }
 
@@ -795,6 +1073,8 @@ export function updateItem(input: {
   unit: string;
   description: string;
   active: boolean;
+  transportationPerUnit: number;
+  moq: number;
 }) {
   database()
     .prepare(`
@@ -804,7 +1084,9 @@ export function updateItem(input: {
         name = @name,
         unit = @unit,
         description = @description,
-        active = @active
+        active = @active,
+        transportation_per_unit = @transportation_per_unit,
+        moq = @moq
       WHERE id = @id
     `)
     .run({
@@ -813,7 +1095,9 @@ export function updateItem(input: {
       name: input.name,
       unit: input.unit,
       description: input.description,
-      active: input.active ? 1 : 0
+      active: input.active ? 1 : 0,
+      transportation_per_unit: input.transportationPerUnit,
+      moq: input.moq
     });
 }
 
@@ -832,6 +1116,54 @@ export function deleteItem(id: number) {
   }
 
   db.prepare("DELETE FROM items WHERE id = ?").run(id);
+}
+
+/** Bulk-set active flag for multiple items. */
+export function bulkSetItemActive(ids: number[], active: boolean) {
+  if (ids.length === 0) return;
+  const db = database();
+  const val = active ? 1 : 0;
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`UPDATE items SET active = ? WHERE id IN (${placeholders})`).run(val, ...ids);
+}
+
+/** Bulk-move items to a different category. */
+export function bulkMoveItemCategory(ids: number[], categoryId: number) {
+  if (ids.length === 0) return;
+  const db = database();
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`UPDATE items SET category_id = ? WHERE id IN (${placeholders})`).run(categoryId, ...ids);
+}
+
+/** Bulk-delete items (only those with no pricing history). Returns count deleted. */
+export function bulkDeleteItems(ids: number[]): { deleted: number; skipped: number } {
+  const db = database();
+  let deleted = 0;
+  let skipped = 0;
+  for (const id of ids) {
+    const usage = db.prepare(`
+      SELECT (SELECT COUNT(*) FROM price_entries WHERE item_id = ?) +
+             (SELECT COUNT(*) FROM selling_prices WHERE item_id = ?) as count
+    `).get(id, id) as { count: number };
+    if (usage.count > 0) { skipped++; continue; }
+    db.prepare("DELETE FROM items WHERE id = ?").run(id);
+    deleted++;
+  }
+  return { deleted, skipped };
+}
+
+/** Bulk-delete categories (only those with no items). Returns count deleted. */
+export function bulkDeleteCategories(ids: number[]): { deleted: number; skipped: number } {
+  const db = database();
+  let deleted = 0;
+  let skipped = 0;
+  for (const id of ids) {
+    const usage = db.prepare("SELECT COUNT(*) as count FROM items WHERE category_id = ?").get(id) as { count: number };
+    if (usage.count > 0) { skipped++; continue; }
+    db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+    deleted++;
+  }
+  return { deleted, skipped };
 }
 
 export function getMonthlyMetrics(month: string) {
@@ -878,14 +1210,20 @@ export function getRecentPriceEntries(limit = 10) {
     .prepare(`
       SELECT
         pe.id,
+        pe.supplier_id,
         pe.month,
         pe.price,
         pe.collected_by,
         pe.notes,
         pe.recorded_at,
+        pe.negotiated_price,
+        pe.negotiated_notes,
+        pe.actual_transport,
         i.name as item_name,
+        i.id as item_id,
         c.name as category_name,
-        s.name as supplier_name
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_display_name
       FROM price_entries pe
       JOIN items i ON i.id = pe.item_id
       JOIN categories c ON c.id = i.category_id
@@ -895,15 +1233,33 @@ export function getRecentPriceEntries(limit = 10) {
     `)
     .all(limit) as Array<{
       id: number;
+      supplier_id: number;
       month: string;
       price: number;
       collected_by: string;
       notes: string;
       recorded_at: string;
+      negotiated_price: number | null;
+      negotiated_notes: string | null;
+      actual_transport: number | null;
       item_name: string;
+      item_id: number;
       category_name: string;
       supplier_name: string;
+      supplier_display_name: string;
     }>;
+}
+
+export function updatePriceEntry(id: number, price: number, notes: string, actualTransport?: number) {
+  if (actualTransport != null) {
+    database()
+      .prepare(`UPDATE price_entries SET price = ?, notes = ?, actual_transport = ?, recorded_at = ? WHERE id = ?`)
+      .run(price, notes, actualTransport, new Date().toISOString(), id);
+  } else {
+    database()
+      .prepare(`UPDATE price_entries SET price = ?, notes = ?, recorded_at = ? WHERE id = ?`)
+      .run(price, notes, new Date().toISOString(), id);
+  }
 }
 
 export function addPriceEntry(input: {
@@ -914,6 +1270,7 @@ export function addPriceEntry(input: {
   collectedBy: string;
   collectedRole: string;
   notes: string;
+  actualTransport?: number;
 }) {
   // Server-side month lock: only allow writes to the current month
   const now = currentMonth();
@@ -924,9 +1281,9 @@ export function addPriceEntry(input: {
   database()
     .prepare(`
       INSERT INTO price_entries (
-        item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at
+        item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport
       ) VALUES (
-        @item_id, @supplier_id, @month, @price, 'EGP', @collected_by, @collected_role, @notes, @recorded_at
+        @item_id, @supplier_id, @month, @price, 'EGP', @collected_by, @collected_role, @notes, @recorded_at, @actual_transport
       )
     `)
     .run({
@@ -937,7 +1294,8 @@ export function addPriceEntry(input: {
       collected_by: input.collectedBy,
       collected_role: input.collectedRole,
       notes: input.notes,
-      recorded_at: new Date().toISOString()
+      recorded_at: new Date().toISOString(),
+      actual_transport: input.actualTransport ?? null,
     });
 }
 
@@ -1032,7 +1390,7 @@ function getLatestComparisonRows(filters: FilterInput) {
         i.name as item_name,
         i.unit,
         c.name as category_name,
-        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id, pe.month
           ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -1110,7 +1468,7 @@ function getHistoryRows(filters: FilterInput) {
       pe.month,
       pe.price,
       pe.recorded_at,
-      s.name as supplier_name
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
     FROM price_entries pe
     JOIN items i ON i.id = pe.item_id
     JOIN suppliers s ON s.id = pe.supplier_id
@@ -1131,6 +1489,8 @@ function getVolatilityRows(filters: FilterInput) {
 
   return db.prepare(`
     SELECT
+      pe.item_id as item_id,
+      pe.supplier_id as supplier_id,
       i.name as item_name,
       s.name as supplier_name,
       COUNT(*) as updates,
@@ -1145,6 +1505,8 @@ function getVolatilityRows(filters: FilterInput) {
     HAVING COUNT(*) > 1
     ORDER BY updates DESC, (MAX(pe.price) - MIN(pe.price)) DESC, item_name, supplier_name
   `).all(params) as Array<{
+    item_id: number;
+    supplier_id: number;
     item_name: string;
     supplier_name: string;
     updates: number;
@@ -1195,7 +1557,8 @@ export function getRecommendation(month: string, itemId: number) {
       sell_min,
       sell_max,
       created_by,
-      created_at
+      created_at,
+      tier_pricing_enabled
     FROM selling_prices
     WHERE month = ? AND item_id = ?
   `).get(month, itemId) as {
@@ -1210,6 +1573,7 @@ export function getRecommendation(month: string, itemId: number) {
     sell_max: number;
     created_by: string;
     created_at: string;
+    tier_pricing_enabled: number;
   } | undefined;
 
   return {
@@ -1241,11 +1605,19 @@ export function saveSellingPrice(input: {
   itemId: number;
   month: string;
   strategy: "min" | "max" | "avg";
-  markupType: "percent" | "amount";
+  markupType: "percent" | "amount" | "divisor";
   markupMin: number;
   markupMax: number;
   createdBy: string;
   changeReason?: string;
+  otherExpenses: number;
+  tierPricingEnabled?: number;
+  /** T5: if provided, overrides the item’s transportation_per_unit for this month only */
+  transportOverride?: number | null;
+  /** T17: SC internal note (not visible to SA) */
+  internalNote?: string;
+  /** T17: SA notification message (visible in price update alerts) */
+  saNote?: string;
 }) {
   const db = database();
   const recommendation = getRecommendation(input.month, input.itemId);
@@ -1265,13 +1637,27 @@ export function saveSellingPrice(input: {
         ? recommendation.buyMax
         : recommendation.buyAvg;
 
-  const sellMin = input.markupType === "amount"
-    ? strategyBase + input.markupMin
-    : strategyBase * (1 + input.markupMin / 100);
+  // Retrieve the item's fixed transportation cost, or use SC override (T5)
+  const itemRow = db.prepare("SELECT transportation_per_unit FROM items WHERE id = ?").get(input.itemId) as { transportation_per_unit: number } | undefined;
+  const transportation = (input.transportOverride != null && input.transportOverride >= 0)
+    ? input.transportOverride
+    : (itemRow?.transportation_per_unit ?? 0);
+  const transportOverrideEnabled = (input.transportOverride != null && input.transportOverride >= 0) ? 1 : 0;
 
-  const sellMax = input.markupType === "amount"
-    ? strategyBase + input.markupMax
-    : strategyBase * (1 + input.markupMax / 100);
+  // T15: divisor mode — sell = cost / divisor, same for min and max
+  const baseSellMin =
+    input.markupType === "amount"  ? strategyBase + input.markupMin :
+    input.markupType === "divisor" ? (input.markupMin > 0 ? strategyBase / input.markupMin : strategyBase) :
+    strategyBase * (1 + input.markupMin / 100);
+
+  const baseSellMax =
+    input.markupType === "amount"  ? strategyBase + input.markupMax :
+    input.markupType === "divisor" ? (input.markupMin > 0 ? strategyBase / input.markupMin : strategyBase) :
+    strategyBase * (1 + input.markupMax / 100);
+
+  // The final prices to be published to SA:
+  const sellMin = baseSellMin + transportation + input.otherExpenses;
+  const sellMax = baseSellMax + transportation + input.otherExpenses;
 
   // ── Improvement #3: Margin floor enforcement ──────────────────────────────
   // Resolve effective floor: item-level overrides category-level
@@ -1300,10 +1686,16 @@ export function saveSellingPrice(input: {
 
   // For percent mode, markupMin must be >= floor
   // For amount mode, convert floor pct to amount and check
+  // For divisor mode, convert to implied margin %
   if (effectiveFloor !== null) {
     let effectiveMarkupMinPct: number;
     if (input.markupType === "percent") {
       effectiveMarkupMinPct = input.markupMin;
+    } else if (input.markupType === "divisor") {
+      // implied margin = (sell/cost - 1) * 100
+      effectiveMarkupMinPct = strategyBase > 0 && input.markupMin > 0
+        ? ((strategyBase / input.markupMin) / strategyBase - 1) * 100
+        : 0;
     } else {
       effectiveMarkupMinPct = strategyBase > 0 ? (input.markupMin / strategyBase) * 100 : 0;
     }
@@ -1314,14 +1706,16 @@ export function saveSellingPrice(input: {
     }
   }
 
-  // ── Improvement #2: Snapshot existing price before overwriting ────────────
   const existingRow = db.prepare(`
-    SELECT sell_min, sell_max, markup_min, markup_max, strategy
+    SELECT sell_min, sell_max, markup_min, markup_max, strategy, transportation, other_expenses, tier_pricing_enabled
     FROM selling_prices WHERE item_id = ? AND month = ?
   `).get(input.itemId, input.month) as {
     sell_min: number; sell_max: number;
     markup_min: number; markup_max: number;
     strategy: string;
+    transportation: number;
+    other_expenses: number;
+    tier_pricing_enabled: number;
   } | undefined;
 
   const now = new Date().toISOString();
@@ -1331,14 +1725,20 @@ export function saveSellingPrice(input: {
     INSERT INTO selling_price_history (
       item_id, month,
       prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+      prev_transportation, prev_other_expenses, prev_tier_pricing_enabled,
       new_sell_min, new_sell_max, new_markup_min, new_markup_max,
       new_strategy, new_markup_type, new_buy_avg,
+      new_transportation, new_other_expenses, new_tier_pricing_enabled,
+      new_transport_override_enabled, new_transport_override_amount,
       changed_by, changed_at, change_reason, is_update
     ) VALUES (
       @item_id, @month,
       @prev_sell_min, @prev_sell_max, @prev_markup_min, @prev_markup_max, @prev_strategy,
+      @prev_transportation, @prev_other_expenses, @prev_tier_pricing_enabled,
       @new_sell_min, @new_sell_max, @new_markup_min, @new_markup_max,
       @new_strategy, @new_markup_type, @new_buy_avg,
+      @new_transportation, @new_other_expenses, @new_tier_pricing_enabled,
+      @new_transport_override_enabled, @new_transport_override_amount,
       @changed_by, @changed_at, @change_reason, @is_update
     )
   `).run({
@@ -1349,6 +1749,9 @@ export function saveSellingPrice(input: {
     prev_markup_min:  existingRow?.markup_min  ?? null,
     prev_markup_max:  existingRow?.markup_max  ?? null,
     prev_strategy:    existingRow?.strategy    ?? null,
+    prev_transportation: existingRow?.transportation ?? null,
+    prev_other_expenses: existingRow?.other_expenses ?? null,
+    prev_tier_pricing_enabled: existingRow?.tier_pricing_enabled ?? null,
     new_sell_min:     sellMin,
     new_sell_max:     sellMax,
     new_markup_min:   input.markupMin,
@@ -1356,6 +1759,11 @@ export function saveSellingPrice(input: {
     new_strategy:     input.strategy,
     new_markup_type:  input.markupType,
     new_buy_avg:      recommendation.buyAvg,
+    new_transportation: transportation,
+    new_other_expenses: input.otherExpenses,
+    new_tier_pricing_enabled: input.tierPricingEnabled ?? 0,
+    new_transport_override_enabled: transportOverrideEnabled,
+    new_transport_override_amount: (input.transportOverride != null && input.transportOverride >= 0) ? input.transportOverride : 0,
     changed_by:       input.createdBy,
     changed_at:       now,
     change_reason:    input.changeReason ?? null,
@@ -1365,9 +1773,17 @@ export function saveSellingPrice(input: {
   // Upsert current selling price
   db.prepare(`
       INSERT INTO selling_prices (
-        item_id, month, strategy, markup_type, buy_min, buy_max, buy_avg, markup_min, markup_max, sell_min, sell_max, created_by, created_at
+        item_id, month, strategy, markup_type, buy_min, buy_max, buy_avg, markup_min, markup_max,
+        sell_min, sell_max, created_by, created_at,
+        transportation, other_expenses, tier_pricing_enabled,
+        transport_override_enabled, transport_override_amount,
+        internal_note, sa_note
       ) VALUES (
-        @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max, @sell_min, @sell_max, @created_by, @created_at
+        @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max,
+        @sell_min, @sell_max, @created_by, @created_at,
+        @transportation, @other_expenses, @tier_pricing_enabled,
+        @transport_override_enabled, @transport_override_amount,
+        @internal_note, @sa_note
       )
       ON CONFLICT(item_id, month) DO UPDATE SET
         strategy = excluded.strategy,
@@ -1380,7 +1796,14 @@ export function saveSellingPrice(input: {
         sell_min = excluded.sell_min,
         sell_max = excluded.sell_max,
         created_by = excluded.created_by,
-        created_at = excluded.created_at
+        created_at = excluded.created_at,
+        transportation = excluded.transportation,
+        other_expenses = excluded.other_expenses,
+        tier_pricing_enabled = excluded.tier_pricing_enabled,
+        transport_override_enabled = excluded.transport_override_enabled,
+        transport_override_amount = excluded.transport_override_amount,
+        internal_note = excluded.internal_note,
+        sa_note = excluded.sa_note
     `)
     .run({
       item_id: input.itemId,
@@ -1396,6 +1819,13 @@ export function saveSellingPrice(input: {
       sell_max: sellMax,
       created_by: input.createdBy,
       created_at: now,
+      transportation,
+      other_expenses: input.otherExpenses,
+      tier_pricing_enabled: input.tierPricingEnabled ?? 0,
+      transport_override_enabled: transportOverrideEnabled,
+      transport_override_amount: (input.transportOverride != null && input.transportOverride >= 0) ? input.transportOverride : 0,
+      internal_note: input.internalNote ?? null,
+      sa_note: input.saNote ?? null,
     });
 }
 
@@ -1424,12 +1854,27 @@ export function getSalesCatalog(month: string, categoryId?: number) {
         sp.sell_min,
         sp.sell_max,
         sp.created_by,
-        sp.created_at
+        sp.created_at,
+        IFNULL(sp.tier_pricing_enabled, 0) as tier_pricing_enabled,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
+        IFNULL(sp.transportation, 0.0) as transportation,
+        IFNULL(sp.other_expenses, 0.0) as other_expenses,
+        i.transportation_per_unit,
+        i.moq
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = @month
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       ${where}
-      ORDER BY c.name, i.name
+      ORDER BY c.name, i.id
     `)
     .all(params) as Array<{
       item_id: number;
@@ -1447,6 +1892,20 @@ export function getSalesCatalog(month: string, categoryId?: number) {
       sell_max: number | null;
       created_by: string | null;
       created_at: string | null;
+      tier_pricing_enabled: number;
+      is_tiered: number;
+      tier1_max: number;
+      tier1_discount: number;
+      tier2_max: number;
+      tier2_discount: number;
+      tier3_max: number;
+      tier3_discount: number;
+      tier4_max: number;
+      tier4_discount: number;
+      transportation: number;
+      other_expenses: number;
+      transportation_per_unit: number;
+      moq: number;
     }>;
 }
 
@@ -1467,7 +1926,7 @@ export function getSalesCatalogForMonths(startMonth: string, endMonth: string) {
       JOIN selling_prices sp ON sp.item_id = i.id
       WHERE sp.month >= @startMonth AND sp.month <= @endMonth AND sp.sell_min IS NOT NULL
       GROUP BY i.id, i.name, i.unit, c.name
-      ORDER BY c.name, i.name
+      ORDER BY c.name, i.id
     `)
     .all({ startMonth, endMonth }) as Array<{
       item_id: number;
@@ -1501,25 +1960,37 @@ export function getAdminSnapshot() {
     item_count: number;
   }>;
 
-  const suppliers = db.prepare(`
-    SELECT
-      s.id,
-      s.name,
-      s.contact_person,
-      s.phone,
-      COUNT(pe.id) as quote_count
-    FROM suppliers s
-    LEFT JOIN price_entries pe ON pe.supplier_id = s.id
-    GROUP BY s.id, s.name, s.contact_person, s.phone
-    ORDER BY s.name
-  `).all() as Array<{
-    id: number;
-    name: string;
-    contact_person: string;
-    phone: string;
-    quote_count: number;
-  }>;
+  const suppliers = (() => {
+    const rows = db.prepare(`
+      SELECT
+        s.id, s.name, s.fame_name, s.contact_person, s.phone, s.code, s.contact_job_title,
+        s.represented_products, s.email, s.region, s.address,
+        COUNT(pe.id) as quote_count,
+        GROUP_CONCAT(DISTINCT i.name) as quoted_item_names,
+        GROUP_CONCAT(DISTINCT sc.category_id) as category_ids_str
+      FROM suppliers s
+      LEFT JOIN price_entries pe ON pe.supplier_id = s.id
+      LEFT JOIN items i ON pe.item_id = i.id
+      LEFT JOIN supplier_categories sc ON sc.supplier_id = s.id
+      GROUP BY s.id, s.name, s.fame_name, s.contact_person, s.phone, s.code,
+               s.contact_job_title, s.represented_products, s.email, s.region, s.address
+      ORDER BY s.name
+    `).all() as Array<{
+      id: number; name: string; fame_name: string | null;
+      contact_person: string; phone: string;
+      code: string | null; contact_job_title: string | null;
+      represented_products: string | null; email: string | null;
+      region: string | null; address: string | null;
+      quote_count: number; quoted_item_names: string | null;
+      category_ids_str: string | null;
+    }>;
+    return rows.map(s => ({
+      ...s,
+      category_ids: s.category_ids_str ? s.category_ids_str.split(',').map(Number) : [] as number[],
+    }));
+  })();
 
+  const month = currentMonth();
   const items = db.prepare(`
     SELECT
       i.id,
@@ -1529,20 +2000,17 @@ export function getAdminSnapshot() {
       i.active,
       i.category_id,
       c.name as category_name,
-      COUNT(pe.id) as quote_count
+      i.transportation_per_unit,
+      i.moq,
+      (SELECT COUNT(*) FROM price_entries pe WHERE pe.item_id = i.id) as quote_count,
+      (SELECT sp.sell_min FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_min,
+      (SELECT sp.sell_max FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_max,
+      (SELECT AVG(pe.price) FROM price_entries pe WHERE pe.item_id = i.id AND pe.month = ?) as buy_avg,
+      (SELECT COUNT(*) FROM price_change_requests pcr WHERE pcr.item_id = i.id AND pcr.status = 'pending') as pending_request_count
     FROM items i
     JOIN categories c ON c.id = i.category_id
-    LEFT JOIN price_entries pe ON pe.item_id = i.id
-    GROUP BY
-      i.id,
-      i.name,
-      i.unit,
-      i.description,
-      i.active,
-      i.category_id,
-      c.name
-    ORDER BY i.active DESC, c.name, i.name
-  `).all() as Array<{
+    ORDER BY i.active DESC, c.name, i.id
+  `).all(month, month, month) as Array<{
     id: number;
     name: string;
     unit: string;
@@ -1550,7 +2018,13 @@ export function getAdminSnapshot() {
     active: number;
     category_id: number;
     category_name: string;
+    transportation_per_unit: number;
+    moq: number;
     quote_count: number;
+    sell_min: number | null;
+    sell_max: number | null;
+    buy_avg: number | null;
+    pending_request_count: number;
   }>;
 
   return {
@@ -1593,6 +2067,86 @@ export function getQuotesBySupplier(month: string) {
       ORDER BY count DESC, s.name
     `)
     .all(month) as Array<{ name: string; count: number }>;
+}
+
+/** T26: WH collection overview — per-category completion + missing quotes + totals */
+export function getWHCollectionOverview(month: string): {
+  totals: { possible: number; submitted: number; categories: number };
+  byCategory: Array<{
+    category_name: string;
+    possible: number;
+    submitted: number;
+    pct: number;
+  }>;
+  missing: Array<{
+    category_name: string;
+    category_id: number;
+    item_name: string;
+    unit: string;
+    supplier_name: string;
+    supplier_id: number;
+    item_id: number;
+    prev_price: number | null;
+  }>;
+} {
+  const db = database();
+
+  // Per-category: number of possible quotes (item × supplier combos) vs submitted
+  const byCategory = db.prepare(`
+    SELECT
+      c.name AS category_name,
+      COUNT(DISTINCT i.id || '_' || sc.supplier_id) AS possible,
+      COUNT(DISTINCT pe.item_id || '_' || pe.supplier_id) AS submitted
+    FROM categories c
+    JOIN items i ON i.category_id = c.id
+    JOIN supplier_categories sc ON sc.category_id = c.id
+    LEFT JOIN price_entries pe
+      ON pe.item_id = i.id AND pe.supplier_id = sc.supplier_id AND pe.month = ?
+    GROUP BY c.id, c.name
+    ORDER BY c.name
+  `).all(month) as Array<{ category_name: string; possible: number; submitted: number }>;
+
+  const categoriesWithPct = byCategory.map(r => ({
+    ...r,
+    pct: r.possible > 0 ? Math.round((r.submitted / r.possible) * 100) : 0,
+  }));
+
+  const totals = {
+    possible: categoriesWithPct.reduce((s, r) => s + r.possible, 0),
+    submitted: categoriesWithPct.reduce((s, r) => s + r.submitted, 0),
+    categories: categoriesWithPct.length,
+  };
+
+  // Missing quotes: item × supplier combos with no entry this month
+  const prevMonth = (() => {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(y, m - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+
+  const missing = db.prepare(`
+    SELECT
+      c.name AS category_name,
+      c.id AS category_id,
+      i.name AS item_name, i.unit,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
+      s.id AS supplier_id, i.id AS item_id,
+      prev.price AS prev_price
+    FROM items i
+    JOIN categories c ON c.id = i.category_id
+    JOIN supplier_categories sc ON sc.category_id = i.category_id
+    JOIN suppliers s ON s.id = sc.supplier_id
+    LEFT JOIN price_entries pe ON pe.item_id = i.id AND pe.supplier_id = s.id AND pe.month = ?
+    LEFT JOIN price_entries prev ON prev.item_id = i.id AND prev.supplier_id = s.id AND prev.month = ?
+    WHERE pe.id IS NULL AND i.active = 1
+    ORDER BY c.name, i.name, s.name
+    LIMIT 80
+  `).all(month, prevMonth) as Array<{
+    category_name: string; category_id: number; item_name: string; unit: string;
+    supplier_name: string; supplier_id: number; item_id: number; prev_price: number | null;
+  }>;
+
+  return { totals, byCategory: categoriesWithPct, missing };
 }
 
 export function getQuotesByCategory(month: string) {
@@ -1687,7 +2241,7 @@ export function getAnalyticsData(filters: {
         pe.recorded_at,
         i.name as item_name,
         i.unit,
-        s.name as supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
         c.name as category_name,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id, pe.month
@@ -1746,7 +2300,10 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
       pe.recorded_at,
       pe.collected_role,
       pe.notes,
-      s.name  as supplier_name,
+      pe.actual_transport,
+      pe.negotiated_price,
+      pe.negotiated_notes,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  as supplier_name,
       i.name  as item_name,
       i.unit  as item_unit,
       c.name  as category_name,
@@ -1765,6 +2322,9 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
     recorded_at: string;
     collected_role: string;
     notes: string | null;
+    actual_transport: number | null;
+    negotiated_price: number | null;
+    negotiated_notes: string | null;
     supplier_name: string;
     item_name: string;
     item_unit: string;
@@ -1828,7 +2388,18 @@ export function getMonthlyReviewData(month: string) {
         i.unit,
         i.category_id,
         c.name        AS category_name,
-        s.name        AS supplier_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
+        i.transportation_per_unit,
+        i.moq,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id
           ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -1837,11 +2408,15 @@ export function getMonthlyReviewData(month: string) {
       JOIN items      i ON i.id = pe.item_id
       JOIN categories c ON c.id = i.category_id
       JOIN suppliers  s ON s.id = pe.supplier_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
       WHERE pe.month = ?
     )
     SELECT
       item_id, supplier_id, price, recorded_at,
-      item_name, unit, category_id, category_name, supplier_name
+      item_name, unit, category_id, category_name, supplier_name,
+      transportation_per_unit, moq, is_tiered,
+      tier1_max, tier1_discount, tier2_max, tier2_discount,
+      tier3_max, tier3_discount, tier4_max, tier4_discount
     FROM ranked
     WHERE rn = 1
     ORDER BY category_name, item_name, supplier_name
@@ -1855,12 +2430,24 @@ export function getMonthlyReviewData(month: string) {
     category_id: number;
     category_name: string;
     supplier_name: string;
+    transportation_per_unit: number;
+    moq: number;
+    is_tiered: number;
+    tier1_max: number;
+    tier1_discount: number;
+    tier2_max: number;
+    tier2_discount: number;
+    tier3_max: number;
+    tier3_discount: number;
+    tier4_max: number;
+    tier4_discount: number;
   }>;
 
   // Pull existing selling prices for this month
   const sellingRows = db.prepare(`
     SELECT item_id, sell_min, sell_max, strategy, markup_type,
-           markup_min, markup_max, created_by, created_at
+           markup_min, markup_max, created_by, created_at,
+           tier_pricing_enabled, other_expenses
     FROM selling_prices WHERE month = ?
   `).all(month) as Array<{
     item_id: number;
@@ -1872,6 +2459,8 @@ export function getMonthlyReviewData(month: string) {
     markup_max: number;
     created_by: string;
     created_at: string;
+    tier_pricing_enabled: number;
+    other_expenses: number;
   }>;
   const sellingMap = new Map(sellingRows.map(r => [r.item_id, r]));
 
@@ -1902,7 +2491,7 @@ export function getMonthlyReviewData(month: string) {
           pe.supplier_id,
           pe.month,
           pe.price,
-          s.name AS supplier_name,
+          COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
           ROW_NUMBER() OVER (
             PARTITION BY pe.item_id, pe.supplier_id, pe.month
             ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -1940,6 +2529,17 @@ export function getMonthlyReviewData(month: string) {
     avgPrice: number;
     existingSell: typeof sellingRows[0] | null;
     history: HistoryRow[];
+    transportation_per_unit: number;
+    moq: number;
+    is_tiered: number;
+    tier1_max: number;
+    tier1_discount: number;
+    tier2_max: number;
+    tier2_discount: number;
+    tier3_max: number;
+    tier3_discount: number;
+    tier4_max: number;
+    tier4_discount: number;
   };
   type ReviewCategory = { categoryId: number; categoryName: string; items: ReviewItem[] };
 
@@ -1958,6 +2558,17 @@ export function getMonthlyReviewData(month: string) {
         avgPrice: 0,
         existingSell: sellingMap.get(row.item_id) ?? null,
         history: historyByItem.get(row.item_id) ?? [],
+        transportation_per_unit: row.transportation_per_unit,
+        moq: row.moq,
+        is_tiered: row.is_tiered,
+        tier1_max: row.tier1_max,
+        tier1_discount: row.tier1_discount,
+        tier2_max: row.tier2_max,
+        tier2_discount: row.tier2_discount,
+        tier3_max: row.tier3_max,
+        tier3_discount: row.tier3_discount,
+        tier4_max: row.tier4_max,
+        tier4_discount: row.tier4_discount,
       });
     }
     const item = itemMap.get(row.item_id)!;
@@ -2006,21 +2617,21 @@ export function getSearchIndex() {
     SELECT i.id, i.name, i.unit, i.active, c.name AS category_name, c.id AS category_id
     FROM items i
     JOIN categories c ON c.id = i.category_id
-    ORDER BY c.name, i.name
+    ORDER BY c.name, i.id
   `).all() as Array<{
     id: number; name: string; unit: string; active: number;
     category_name: string; category_id: number;
   }>;
 
   const suppliers = db.prepare(`
-    SELECT s.id, s.name, s.contact_person, s.phone,
+    SELECT s.id, s.name, s.fame_name, s.contact_person, s.phone,
            COUNT(pe.id) AS quote_count
     FROM suppliers s
     LEFT JOIN price_entries pe ON pe.supplier_id = s.id
     GROUP BY s.id
     ORDER BY s.name
   `).all() as Array<{
-    id: number; name: string; contact_person: string;
+    id: number; name: string; fame_name: string | null; contact_person: string;
     phone: string; quote_count: number;
   }>;
 
@@ -2035,12 +2646,14 @@ export function getItemCardData(itemId: number) {
 
   const item = db.prepare(`
     SELECT i.id, i.name, i.unit, i.description, i.active,
-           c.name AS category_name, c.id AS category_id
+           c.name AS category_name, c.id AS category_id,
+           i.transportation_per_unit, i.moq
     FROM items i JOIN categories c ON c.id = i.category_id
     WHERE i.id = ?
   `).get(itemId) as {
     id: number; name: string; unit: string; description: string;
     active: number; category_name: string; category_id: number;
+    transportation_per_unit: number; moq: number;
   } | undefined;
 
   if (!item) return null;
@@ -2049,7 +2662,7 @@ export function getItemCardData(itemId: number) {
   const priceRows = db.prepare(`
     WITH ranked AS (
       SELECT pe.supplier_id, pe.month, pe.price, pe.recorded_at,
-             s.name AS supplier_name,
+             COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
              ROW_NUMBER() OVER (
                PARTITION BY pe.supplier_id, pe.month
                ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -2118,15 +2731,18 @@ export function getSupplierCardData(supplierId: number) {
   const db = database();
 
   const supplier = db.prepare(`
-    SELECT s.id, s.name, s.contact_person, s.phone,
+    SELECT s.id, s.name, s.fame_name, s.contact_person, s.phone,
+           s.code, s.contact_job_title, s.represented_products, s.email, s.region, s.address,
            COUNT(pe.id) AS total_quotes
     FROM suppliers s
     LEFT JOIN price_entries pe ON pe.supplier_id = s.id
     WHERE s.id = ?
     GROUP BY s.id
   `).get(supplierId) as {
-    id: number; name: string; contact_person: string;
-    phone: string; total_quotes: number;
+    id: number; name: string; fame_name: string | null; contact_person: string;
+    phone: string; code: string | null; contact_job_title: string | null;
+    represented_products: string | null; email: string | null;
+    region: string | null; address: string | null; total_quotes: number;
   } | undefined;
 
   if (!supplier) return null;
@@ -2212,6 +2828,9 @@ export type SellingPriceHistoryRow = {
   prev_markup_min: number | null;
   prev_markup_max: number | null;
   prev_strategy: string | null;
+  prev_transportation: number | null;
+  prev_other_expenses: number | null;
+  prev_tier_pricing_enabled: number | null;
   new_sell_min: number;
   new_sell_max: number;
   new_markup_min: number;
@@ -2219,6 +2838,11 @@ export type SellingPriceHistoryRow = {
   new_strategy: string;
   new_markup_type: string;
   new_buy_avg: number;
+  new_transportation: number;
+  new_other_expenses: number;
+  new_tier_pricing_enabled: number;
+  new_transport_override_enabled: number;
+  new_transport_override_amount: number;
   changed_by: string;
   changed_at: string;
   change_reason: string | null;
@@ -2245,6 +2869,99 @@ export function getSellingPriceHistoryForItem(itemId: number, limit = 20): Selli
     `)
     .all(itemId, limit) as SellingPriceHistoryRow[];
 }
+
+// Published sell price per month (latest per month from selling_prices)
+export type ItemPublishedPrice = {
+  month: string;
+  sell_min: number;
+  sell_max: number;
+  strategy: string;
+  markup_type: string;
+  markup_min: number;
+  markup_max: number;
+  transport_override_enabled: number;
+  transport_override_amount: number;
+  created_at: string;
+};
+
+export function getItemPublishedPriceHistory(itemId: number, limit = 3): ItemPublishedPrice[] {
+  return database()
+    .prepare(`
+      SELECT month, sell_min, sell_max, strategy, markup_type,
+             markup_min, markup_max,
+             transport_override_enabled, transport_override_amount, created_at
+      FROM selling_prices
+      WHERE item_id = ?
+      ORDER BY month DESC
+      LIMIT ?
+    `)
+    .all(itemId, limit) as ItemPublishedPrice[];
+}
+
+export function getRecentPriceUpdates(month: string, limit = 5): any[] {
+  return database()
+    .prepare(`
+      WITH latest AS (
+        SELECT item_id, MAX(id) as max_id
+        FROM selling_price_history
+        WHERE month = ? AND is_update = 1
+        GROUP BY item_id
+      )
+      SELECT
+        h.*,
+        i.name as item_name, i.unit as item_unit, c.name as category_name,
+        pa.acknowledged_by as ack_by,
+        pa.acknowledged_at as ack_at
+      FROM selling_price_history h
+      JOIN latest ON h.id = latest.max_id
+      JOIN items i ON h.item_id = i.id
+      JOIN categories c ON i.category_id = c.id
+      LEFT JOIN price_acknowledgments pa ON pa.history_id = h.id
+      ORDER BY h.changed_at DESC
+      LIMIT ?
+    `)
+    .all(month, limit) as any[];
+}
+
+/** T18: SA marks a price update as seen/acknowledged. */
+export function acknowledgePrice(historyId: number, acknowledgedBy: string) {
+  const now = new Date().toISOString();
+  try {
+    database().prepare(`
+      INSERT OR IGNORE INTO price_acknowledgments (history_id, acknowledged_by, acknowledged_at)
+      VALUES (?, ?, ?)
+    `).run(historyId, acknowledgedBy, now);
+  } catch (_) { /* unique constraint: already acknowledged */ }
+}
+
+/** T18: List acknowledgments visible to SC — recent N entries. */
+export function getPriceAcknowledgments(limit = 20): Array<{
+  id: number; history_id: number;
+  acknowledged_by: string; acknowledged_at: string;
+  item_name: string; new_sell_min: number; new_sell_max: number; month: string;
+}> {
+  return database().prepare(`
+    SELECT pa.*, h.new_sell_min, h.new_sell_max, h.month,
+           i.name as item_name
+    FROM price_acknowledgments pa
+    JOIN selling_price_history h ON h.id = pa.history_id
+    JOIN items i ON i.id = h.item_id
+    ORDER BY pa.acknowledged_at DESC
+    LIMIT ?
+  `).all(limit) as any[];
+}
+
+/** T18: Count unacknowledged price updates for this month — for SC badge. */
+export function getUnacknowledgedCount(month: string): number {
+  const row = database().prepare(`
+    SELECT COUNT(*) as cnt
+    FROM selling_price_history h
+    LEFT JOIN price_acknowledgments pa ON pa.history_id = h.id
+    WHERE h.month = ? AND h.is_update = 1 AND pa.id IS NULL
+  `).get(month) as { cnt: number };
+  return row?.cnt ?? 0;
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Improvement #3 — Margin Floor Management
@@ -2349,10 +3066,11 @@ export function applyCategoryMarkup(input: {
   categoryId: number;
   month: string;
   strategy: "min" | "avg" | "max";
-  markupType: "percent" | "amount";
+  markupType: "percent" | "amount" | "divisor";
   markupMin: number;
   markupMax: number;
   createdBy: string;
+  tierPricingEnabled?: number;
 }): { applied: number; skipped: number; errors: string[] } {
   const db = database();
 
@@ -2374,15 +3092,24 @@ export function applyCategoryMarkup(input: {
           skipped++;
           continue;
         }
+        const existingSp = db.prepare("SELECT other_expenses FROM selling_prices WHERE item_id = ? AND month = ?").get(item.id, input.month) as { other_expenses: number } | undefined;
+        const otherExpenses = existingSp?.other_expenses ?? 0;
+
+        // Auto-detect if item is tiered from the database
+        const itemTierRow = db.prepare("SELECT is_tiered FROM item_tiers WHERE item_id = ?").get(item.id) as { is_tiered: number } | undefined;
+        const isTiered = itemTierRow?.is_tiered === 1;
+
         saveSellingPrice({
           itemId: item.id,
           month: input.month,
           strategy: input.strategy,
           markupType: input.markupType,
           markupMin: input.markupMin,
-          markupMax: input.markupMax,
+          markupMax: isTiered ? input.markupMin : input.markupMax,
           createdBy: input.createdBy,
           changeReason: `Bulk category markup applied by ${input.createdBy}`,
+          otherExpenses,
+          tierPricingEnabled: isTiered ? 1 : 0,
         });
         applied++;
       } catch (err) {
@@ -2413,6 +3140,8 @@ export type PriceChangeRequest = {
   month: string;
   old_price: number;
   new_price: number;
+  old_transport?: number | null;
+  new_transport?: number | null;
   reason: string;
   requested_by: string;
   requested_at: string;
@@ -2432,17 +3161,21 @@ export function submitPriceChangeRequest(input: {
   month: string;
   oldPrice: number;
   newPrice: number;
+  oldTransport?: number | null;
+  newTransport?: number | null;
   reason: string;
   requestedBy: string;
 }): void {
   database().prepare(`
     INSERT INTO price_change_requests
-      (item_id, supplier_id, month, old_price, new_price, reason, requested_by, requested_at, status)
+      (item_id, supplier_id, month, old_price, new_price, old_transport, new_transport, reason, requested_by, requested_at, status)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
   `).run(
     input.itemId, input.supplierId, input.month,
-    input.oldPrice, input.newPrice, input.reason,
+    input.oldPrice, input.newPrice,
+    input.oldTransport ?? null, input.newTransport ?? null,
+    input.reason,
     input.requestedBy, new Date().toISOString()
   );
 }
@@ -2452,7 +3185,7 @@ export function getPendingPriceChangeRequests(): PriceChangeRequest[] {
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id
@@ -2468,7 +3201,7 @@ export function getAllPriceChangeRequests(limit = 50): PriceChangeRequest[] {
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id
@@ -2494,13 +3227,14 @@ export function approvePriceChangeRequest(input: {
     // Write the new price as a new price_entry (latest wins via ROW_NUMBER)
     db.prepare(`
       INSERT INTO price_entries
-        (item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at)
-      VALUES (?, ?, ?, ?, 'EGP', ?, 'WH', ?, ?)
+        (item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport)
+      VALUES (?, ?, ?, ?, 'EGP', ?, 'WH', ?, ?, ?)
     `).run(
       req.item_id, req.supplier_id, req.month, req.new_price,
       req.requested_by,
       `Price change approved by ${input.reviewedBy}. Reason: ${req.reason}`,
-      now
+      now,
+      req.new_transport ?? null
     );
 
     // Mark request as approved
@@ -2549,7 +3283,7 @@ export function getPriceChangeRequestsByUser(requestedBy: string): PriceChangeRe
     SELECT
       pcr.*,
       i.name  AS item_name,
-      s.name  AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  AS supplier_name,
       c.name  AS category_name
     FROM price_change_requests pcr
     JOIN items      i ON i.id = pcr.item_id
@@ -2580,6 +3314,8 @@ export function purgeAllDataExceptUsers() {
     DELETE FROM items;
     DELETE FROM categories;
     DELETE FROM suppliers;
+    DELETE FROM monthly_settings;
+    DELETE FROM item_tiers;
     DELETE FROM sqlite_sequence WHERE name IN (
       'categories', 'items', 'suppliers', 'price_entries', 'selling_prices', 
       'selling_price_history', 'margin_floors', 'price_change_requests'
@@ -2587,3 +3323,269 @@ export function purgeAllDataExceptUsers() {
   `);
 }
 
+export function isTierPricingEnabled(month: string): boolean {
+  const row = database()
+    .prepare("SELECT tier_pricing_enabled FROM monthly_settings WHERE month = ?")
+    .get(month) as { tier_pricing_enabled: number } | undefined;
+  return row ? row.tier_pricing_enabled === 1 : false;
+}
+
+export function setMonthlyTierPricing(month: string, enabled: boolean): void {
+  database()
+    .prepare(`
+      INSERT INTO monthly_settings (month, tier_pricing_enabled)
+      VALUES (?, ?)
+      ON CONFLICT(month) DO UPDATE SET tier_pricing_enabled = excluded.tier_pricing_enabled
+    `)
+    .run(month, enabled ? 1 : 0);
+}
+
+// T26: SC transport override — admin-controlled per month
+export function isScTransportOverrideEnabled(month: string): boolean {
+  const row = database()
+    .prepare("SELECT sc_transport_override_enabled FROM monthly_settings WHERE month = ?")
+    .get(month) as { sc_transport_override_enabled: number } | undefined;
+  return row ? row.sc_transport_override_enabled === 1 : false;
+}
+
+export function setScTransportOverride(month: string, enabled: boolean): void {
+  database()
+    .prepare(`
+      INSERT INTO monthly_settings (month, sc_transport_override_enabled)
+      VALUES (?, ?)
+      ON CONFLICT(month) DO UPDATE SET sc_transport_override_enabled = excluded.sc_transport_override_enabled
+    `)
+    .run(month, enabled ? 1 : 0);
+}
+
+export type ItemTierConfig = {
+  item_id: number;
+  item_name: string;
+  category_name: string;
+  is_tiered: number;
+  tier1_max: number;
+  tier1_discount: number;
+  tier2_max: number;
+  tier2_discount: number;
+  tier3_max: number;
+  tier3_discount: number;
+  tier4_max: number;
+  tier4_discount: number;
+};
+
+export function getItemTiers(): ItemTierConfig[] {
+  return database()
+    .prepare(`
+      SELECT 
+        i.id as item_id,
+        i.name as item_name,
+        c.name as category_name,
+        IFNULL(it.is_tiered, 0) as is_tiered,
+        IFNULL(it.tier1_max, 100) as tier1_max,
+        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
+        IFNULL(it.tier2_max, 200) as tier2_max,
+        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
+        IFNULL(it.tier3_max, 300) as tier3_max,
+        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
+        IFNULL(it.tier4_max, 0) as tier4_max,
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount
+      FROM items i
+      JOIN categories c ON c.id = i.category_id
+      LEFT JOIN item_tiers it ON it.item_id = i.id
+      ORDER BY c.name, i.id
+    `)
+    .all() as ItemTierConfig[];
+}
+
+export function upsertItemTier(config: {
+  itemId: number;
+  isTiered: number;
+  tier1Max: number;
+  tier1Discount: number;
+  tier2Max: number;
+  tier2Discount: number;
+  tier3Max: number;
+  tier3Discount: number;
+  tier4Max: number;
+  tier4Discount: number;
+}): void {
+  database()
+    .prepare(`
+      INSERT INTO item_tiers
+        (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount,
+         tier3_max, tier3_discount, tier4_max, tier4_discount)
+      VALUES
+        (@itemId, @isTiered, @tier1Max, @tier1Discount, @tier2Max, @tier2Discount,
+         @tier3Max, @tier3Discount, @tier4Max, @tier4Discount)
+      ON CONFLICT(item_id) DO UPDATE SET
+        is_tiered = excluded.is_tiered,
+        tier1_max = excluded.tier1_max,
+        tier1_discount = excluded.tier1_discount,
+        tier2_max = excluded.tier2_max,
+        tier2_discount = excluded.tier2_discount,
+        tier3_max = excluded.tier3_max,
+        tier3_discount = excluded.tier3_discount,
+        tier4_max = excluded.tier4_max,
+        tier4_discount = excluded.tier4_discount
+    `)
+    .run(config);
+}
+
+export function deleteItemTier(itemId: number): void {
+  database()
+    .prepare("DELETE FROM item_tiers WHERE item_id = ?")
+    .run(itemId);
+}
+
+// ── Exchange Rate helpers ─────────────────────────────────────────────────────
+
+export type ExchangeRateRow = {
+  id: number;
+  currency: string;
+  rate: number;
+  source: string | null;
+  fetched_at: string;
+};
+
+/** Returns the most recently saved rate for the given currency (default USD). */
+export function getExchangeRate(currency = "USD"): ExchangeRateRow | null {
+  return database()
+    .prepare(
+      "SELECT id, currency, rate, source, fetched_at FROM exchange_rates WHERE currency = ? ORDER BY fetched_at DESC LIMIT 1"
+    )
+    .get(currency) as ExchangeRateRow | null;
+}
+
+/** Saves a new rate record (keeps history, does not overwrite). */
+export function saveExchangeRate(currency: string, rate: number, source: string): void {
+  database()
+    .prepare(
+      "INSERT INTO exchange_rates (currency, rate, source, fetched_at) VALUES (?, ?, ?, datetime('now'))"
+    )
+    .run(currency, rate, source);
+}
+
+export function saveNegotiatedPrice(itemId: number, supplierId: number, month: string, negotiatedPrice: number, notes: string | null): void {
+  const db = database();
+  const latestEntry = db.prepare(`
+    SELECT id FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND month = ? AND collected_role = 'WH'
+    ORDER BY recorded_at DESC, id DESC
+    LIMIT 1
+  `).get(itemId, supplierId, month) as { id: number } | undefined;
+
+  if (!latestEntry) {
+    throw new Error("No existing submitted price entry found to negotiate on.");
+  }
+
+  db.prepare(`
+    UPDATE price_entries
+    SET negotiated_price = ?, negotiated_notes = ?
+    WHERE id = ?
+  `).run(negotiatedPrice, notes, latestEntry.id);
+}
+
+export function getNegotiatedPriceEntries(month: string): any[] {
+  return database()
+    .prepare(`
+      SELECT
+        pe.id,
+        pe.item_id,
+        pe.supplier_id,
+        pe.month,
+        pe.price as original_price,
+        pe.negotiated_price,
+        pe.negotiated_notes,
+        pe.recorded_at,
+        pe.collected_by,
+        i.name as item_name,
+        c.name as category_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
+      FROM price_entries pe
+      JOIN items i ON i.id = pe.item_id
+      JOIN categories c ON c.id = i.category_id
+      JOIN suppliers s ON s.id = pe.supplier_id
+      WHERE pe.month = ? AND pe.negotiated_price IS NOT NULL
+      ORDER BY pe.recorded_at DESC
+    `)
+    .all(month) as any[];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ACTIVITY / AUDIT LOG
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface ActivityLogEntry {
+  id: number;
+  actor: string;
+  role: string;
+  event_type: string;
+  summary: string;
+  detail: string | null;
+  performed_at: string;
+}
+
+/** Fire-and-forget INSERT — never crashes the calling business action. */
+export function logActivity(entry: {
+  actor: string;
+  role: string;
+  eventType: string;
+  summary: string;
+  detail?: Record<string, unknown>;
+}) {
+  try {
+    database()
+      .prepare(
+        `INSERT INTO activity_log (actor, role, event_type, summary, detail)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        entry.actor,
+        entry.role,
+        entry.eventType,
+        entry.summary,
+        entry.detail ? JSON.stringify(entry.detail) : null
+      );
+  } catch {
+    // intentionally swallowed — logging must never block business logic
+  }
+}
+
+/** Paginated read with optional role / event_type / actor filters, newest-first. */
+export function getActivityLog(opts: {
+  limit?: number;
+  offset?: number;
+  role?: string;
+  eventType?: string;
+  actor?: string;
+} = {}): ActivityLogEntry[] {
+  const { limit = 100, offset = 0, role, eventType, actor } = opts;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  if (role)      { conditions.push("role = ?");       params.push(role); }
+  if (eventType) { conditions.push("event_type = ?"); params.push(eventType); }
+  if (actor)     { conditions.push("actor = ?");      params.push(actor); }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  return database()
+    .prepare(
+      `SELECT id, actor, role, event_type, summary, detail, performed_at
+       FROM activity_log ${where}
+       ORDER BY performed_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset) as ActivityLogEntry[];
+}
+
+export function countActivityLog(opts: { role?: string; eventType?: string; actor?: string } = {}): number {
+  const { role, eventType, actor } = opts;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  if (role)      { conditions.push("role = ?");       params.push(role); }
+  if (eventType) { conditions.push("event_type = ?"); params.push(eventType); }
+  if (actor)     { conditions.push("actor = ?");      params.push(actor); }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const row = database()
+    .prepare(`SELECT COUNT(*) as n FROM activity_log ${where}`)
+    .get(...params) as { n: number };
+  return row.n;
+}

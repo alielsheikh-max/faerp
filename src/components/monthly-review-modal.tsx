@@ -32,6 +32,8 @@ type ExistingSell = {
   strategy: string;
   created_by: string;
   created_at: string;
+  tier_pricing_enabled?: number;
+  other_expenses?: number;
 } | null;
 
 type ReviewItem = {
@@ -46,6 +48,17 @@ type ReviewItem = {
   avgPrice: number;
   existingSell: ExistingSell;
   history: HistoryEntry[];
+  transportation_per_unit: number;
+  moq: number;
+  is_tiered: number;
+  tier1_max: number;
+  tier1_discount: number;
+  tier2_max: number;
+  tier2_discount: number;
+  tier3_max: number;
+  tier3_discount: number;
+  tier4_max: number;
+  tier4_discount: number;
 };
 
 type ReviewCategory = {
@@ -74,18 +87,37 @@ function ItemRow({
   username: string;
   supplierColorMap: Map<string, string>;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [historyWindow, setHistoryWindow] = useState<3 | 6 | 9>(3);
+  const isTiered = item.is_tiered === 1;
+
+  // For tiered items: base price is stored as both min and max
+  const [basePrice, setBasePrice] = useState<string>(
+    item.existingSell ? String(item.existingSell.sell_min.toFixed(2)) : ""
+  );
   const [sellMin, setSellMin] = useState<string>(
     item.existingSell ? String(item.existingSell.sell_min.toFixed(2)) : ""
   );
   const [sellMax, setSellMax] = useState<string>(
     item.existingSell ? String(item.existingSell.sell_max.toFixed(2)) : ""
   );
+  const [otherExpenses, setOtherExpenses] = useState<string>(
+    item.existingSell?.other_expenses ? String(item.existingSell.other_expenses) : "0"
+  );
   const [saving, startSave] = useTransition();
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [changeReason, setChangeReason] = useState("");
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setChangeReason("");
+      setConfirmUpdate(false);
+    }
+  }, [open]);
 
   const isPublished = !!item.existingSell;
   const spread = item.minPrice > 0
@@ -93,34 +125,55 @@ function ItemRow({
     : "0.0";
 
   const handleSave = () => {
-    const min = parseFloat(sellMin);
-    const max = parseFloat(sellMax);
-    if (isNaN(min) || isNaN(max) || min <= 0 || max <= 0) {
-      setSaveError("Enter valid min and max prices");
-      return;
+    const expenses = parseFloat(otherExpenses) || 0;
+
+    let finalMin: number;
+    let finalMax: number;
+
+    if (isTiered) {
+      const base = parseFloat(basePrice);
+      if (isNaN(base) || base <= 0) {
+        setSaveError("Enter a valid base selling price");
+        return;
+      }
+      finalMin = base;
+      finalMax = base;
+    } else {
+      const min = parseFloat(sellMin);
+      const max = parseFloat(sellMax);
+      if (isNaN(min) || isNaN(max) || min <= 0 || max <= 0) {
+        setSaveError("Enter valid min and max prices");
+        return;
+      }
+      if (max < min) {
+        setSaveError("Max must be ≥ min");
+        return;
+      }
+      finalMin = min;
+      finalMax = max;
     }
-    if (max < min) {
-      setSaveError("Max must be ≥ min");
-      return;
-    }
+
     setSaveError(null);
     startSave(async () => {
       const res = await saveSellingPriceInline({
         itemId: item.itemId,
         month,
-        sellMin: min,
-        sellMax: max,
+        sellMin: finalMin,
+        sellMax: finalMax,
         createdBy: username,
+        otherExpenses: expenses,
+        tierPricingEnabled: isTiered ? 1 : 0,
+        changeReason: isPublished ? changeReason : undefined,
       });
-      if (res.ok) {
+      if (res?.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
-      } else if (res.floorViolation) {
+      } else if (res?.floorViolation) {
         setSaveError(
           `Margin floor violation: min markup is below the configured floor of ${res.floorPct}%. Raise the selling price.`
         );
       } else {
-        setSaveError(res.error ?? "Save failed");
+        setSaveError(res?.error ?? "Save failed");
       }
     });
   };
@@ -175,7 +228,12 @@ function ItemRow({
               whiteSpace: "nowrap",
             }}
           >
-            {item.itemName}
+            <span
+              onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: item.itemId } })); }}
+              className="clickable-detail-trigger"
+            >
+              {item.itemName}
+            </span>
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>
             {item.unit} · {item.suppliers.length} supplier{item.suppliers.length !== 1 ? "s" : ""}
@@ -188,12 +246,14 @@ function ItemRow({
             <span
               key={q.supplierId}
               title={q.supplierName}
+              onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } })); }}
               style={{
                 width: "7px",
                 height: "7px",
                 borderRadius: "50%",
                 background: supplierColorMap.get(q.supplierName) ?? "#94a3b8",
                 flexShrink: 0,
+                cursor: "pointer",
               }}
             />
           ))}
@@ -254,8 +314,8 @@ function ItemRow({
                   style={{
                     padding: "10px 12px",
                     borderRadius: "var(--radius)",
-                    border: `1.5px solid ${isBest ? "var(--success)" : color + "44"}`,
-                    background: isBest ? "var(--success-light)" : color + "0a",
+                    border: `1.5px solid ${isBest ? "var(--info)" : color + "44"}`,
+                    background: isBest ? "var(--info-light)" : color + "0a",
                     position: "relative",
                   }}
                 >
@@ -267,7 +327,7 @@ function ItemRow({
                         right: "6px",
                         fontSize: "8px",
                         fontWeight: 800,
-                        background: "var(--success)",
+                        background: "var(--info)",
                         color: "#fff",
                         padding: "1px 5px",
                         borderRadius: "4px",
@@ -294,10 +354,10 @@ function ItemRow({
                       }}
                     />
                     <span
+                      onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } }))}
+                      className="clickable-detail-trigger"
                       style={{
                         fontSize: "10px",
-                        fontWeight: 700,
-                        color: "var(--text-secondary)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -310,7 +370,7 @@ function ItemRow({
                     style={{
                       fontSize: "17px",
                       fontWeight: 800,
-                      color: isBest ? "var(--success)" : "var(--text-primary)",
+                      color: isBest ? "var(--info)" : "var(--text-primary)",
                     }}
                   >
                     {formatCurrency(q.price)}
@@ -600,12 +660,12 @@ function ItemRow({
                                     textAlign: "center",
                                     fontWeight: isBestInMonth ? 800 : 500,
                                     color: isBestInMonth
-                                      ? "var(--success)"
+                                      ? "var(--info)"
                                       : price !== undefined
                                       ? "var(--text-primary)"
                                       : "var(--text-dim)",
                                     background: isBestInMonth
-                                      ? "rgba(16,185,129,0.07)"
+                                      ? "rgba(2,132,199,0.08)"
                                       : "transparent",
                                     whiteSpace: "nowrap",
                                   }}
@@ -716,55 +776,237 @@ function ItemRow({
             </div>
           )}
 
-          {/* Quick sell price input */}
+          {/* MOQ and Transportation info */}
+          <div style={{ display: "flex", gap: "12px", borderTop: "1px dashed var(--border-light)", paddingTop: "10px", marginTop: "10px", fontSize: "11.5px" }}>
+            <div style={{ flex: 1, color: "var(--text-secondary)" }}>
+              <span>{locale === "ar" ? "تكلفة النقل الثابتة: " : "Fixed Transportation: "}</span>
+              <strong>{formatCurrency(item.transportation_per_unit)}</strong>
+            </div>
+            {item.moq > 0 && (
+              <div style={{ flex: 1, color: "var(--text-secondary)" }}>
+                <span>{locale === "ar" ? "الحد الأدنى للطلب (MOQ): " : "MOQ: "}</span>
+                <strong>{item.moq} {locale === "ar" ? "وحدة" : "units"}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* Price Update Confirmation Required */}
+          {isPublished && (
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              padding: "12px",
+              background: "rgba(245, 158, 11, 0.05)",
+              border: "1px solid rgba(245, 158, 11, 0.25)",
+              borderRadius: "10px",
+              marginTop: "10px"
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#d97706", display: "flex", alignItems: "center", gap: "6px" }}>
+                ⚠️ {locale === "ar" ? "تأكيد تحديث السعر مطلوب" : "Price Update Confirmation Required"}
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "10px", alignItems: "center" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px", margin: 0 }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span>{locale === "ar" ? "سبب التحديث" : "Change Reason"}</span>
+                    <span style={{ color: "var(--danger)" }}>*</span>
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={changeReason}
+                    onChange={(e) => setChangeReason(e.target.value)}
+                    placeholder={locale === "ar" ? "مطلوب - سبب التحديث..." : "Required — e.g. Cost change..."}
+                    style={{
+                      padding: "6.5px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: "var(--bg-surface)",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      outline: "none"
+                    }}
+                  />
+                </label>
+
+                <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", cursor: "pointer", marginTop: "15px" }}>
+                  <input
+                    type="checkbox"
+                    required
+                    checked={confirmUpdate}
+                    onChange={(e) => setConfirmUpdate(e.target.checked)}
+                    style={{ width: "15px", height: "15px", cursor: "pointer", marginTop: "1px" }}
+                  />
+                  <span style={{ fontSize: "11px", color: "var(--text-primary)", lineHeight: "1.3", userSelect: "none" }}>
+                    {locale === "ar" ? "أؤكد تعديل السعر المنشور" : "I confirm this price update"}
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Quick sell price & expenses inputs */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr auto",
+              gridTemplateColumns: isTiered ? "1fr 1fr auto" : "1fr 1fr 1fr auto",
               gap: "10px",
               alignItems: "flex-end",
+              marginTop: "8px"
             }}
           >
-            <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-              <span>{t("review.minSell")}</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={sellMin}
-                onChange={(e) => setSellMin(e.target.value)}
-                placeholder={formatCurrency(item.minPrice * 1.08).replace("EGP", "").trim()}
-                style={{
-                  padding: "8px 11px",
-                  borderRadius: "var(--radius)",
-                  border: "1.5px solid var(--success)",
-                  background: "var(--bg-surface)",
-                  color: "var(--success)",
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  outline: "none",
-                  width: "100%",
-                }}
-              />
-            </label>
+            {isTiered ? (
+              /* ── Tiered item: single Base Selling Price + T13 preview ── */
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    {locale === "ar" ? "سعر البيع الأساسي" : "Base Selling Price"}
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 800,
+                        background: "var(--primary)",
+                        color: "#fff",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      TIER BASE
+                    </span>
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    placeholder={formatCurrency(item.minPrice * 1.1).replace("EGP", "").trim()}
+                    style={{
+                      padding: "8px 11px",
+                      borderRadius: "var(--radius)",
+                      border: "1.5px solid var(--primary)",
+                      background: "var(--bg-surface)",
+                      color: "var(--primary)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      outline: "none",
+                      width: "100%",
+                    }}
+                  />
+                </label>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-              <span>{t("review.maxSell")}</span>
+                {/* T13: live tier price preview */}
+                {(() => {
+                  const base = parseFloat(basePrice);
+                  if (!base || base <= 0) return null;
+                  const tiers = [
+                    { label: "T1", max: item.tier1_max, disc: item.tier1_discount },
+                    { label: "T2", max: item.tier2_max, disc: item.tier2_discount },
+                    { label: "T3", max: item.tier3_max, disc: item.tier3_discount },
+                    { label: "T4", max: item.tier4_max, disc: item.tier4_discount },
+                  ].filter(t => t.disc > 0);
+                  if (tiers.length === 0) return null;
+                  const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#06b6d4"];
+                  return (
+                    <div style={{
+                      display: "flex", gap: "6px", flexWrap: "wrap",
+                      padding: "8px 10px",
+                      background: "var(--bg-subtle)",
+                      borderRadius: "var(--radius)",
+                      border: "1px dashed var(--border-medium)",
+                      gridColumn: "1 / -1",
+                    }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", alignSelf: "center" }}>
+                        Tier Prices:
+                      </span>
+                      {tiers.map((tier, i) => {
+                        const divisor = 1 - tier.disc / 100;
+                        const raw = divisor > 0 ? base / divisor : base;
+                        const rounded = Math.ceil(raw / 5) * 5;
+                        return (
+                          <span key={tier.label} style={{
+                            fontSize: "11px", fontWeight: 800,
+                            color: colors[i],
+                            background: colors[i] + "18",
+                            border: `1px solid ${colors[i]}44`,
+                            borderRadius: "6px",
+                            padding: "2px 8px",
+                          }}>
+                            {tier.label} ({tier.max > 0 ? `≤${tier.max}` : "∞"}): {formatCurrency(rounded)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              /* ── Non-tiered item: Min + Max ── */
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+                  <span>{t("review.minSell")}</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={sellMin}
+                    onChange={(e) => setSellMin(e.target.value)}
+                    placeholder={formatCurrency(item.minPrice * 1.08).replace("EGP", "").trim()}
+                    style={{
+                      padding: "8px 11px",
+                      borderRadius: "var(--radius)",
+                      border: "1.5px solid var(--success)",
+                      background: "var(--bg-surface)",
+                      color: "var(--success)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      outline: "none",
+                      width: "100%",
+                    }}
+                  />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+                  <span>{t("review.maxSell")}</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={sellMax}
+                    onChange={(e) => setSellMax(e.target.value)}
+                    placeholder={formatCurrency(item.maxPrice * 1.15).replace("EGP", "").trim()}
+                    style={{
+                      padding: "8px 11px",
+                      borderRadius: "var(--radius)",
+                      border: "1.5px solid var(--primary)",
+                      background: "var(--bg-surface)",
+                      color: "var(--primary)",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      outline: "none",
+                      width: "100%",
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+              <span>{locale === "ar" ? "مصاريف أخرى (ج.م)" : "Other Expenses (EGP)"}</span>
               <input
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
-                value={sellMax}
-                onChange={(e) => setSellMax(e.target.value)}
-                placeholder={formatCurrency(item.maxPrice * 1.15).replace("EGP", "").trim()}
+                value={otherExpenses}
+                onChange={(e) => setOtherExpenses(e.target.value)}
                 style={{
                   padding: "8px 11px",
                   borderRadius: "var(--radius)",
-                  border: "1.5px solid var(--primary)",
+                  border: "1.5px solid var(--border)",
                   background: "var(--bg-surface)",
-                  color: "var(--primary)",
+                  color: "var(--text-primary)",
                   fontSize: "14px",
-                  fontWeight: 700,
                   outline: "none",
                   width: "100%",
                 }}
@@ -774,20 +1016,74 @@ function ItemRow({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || (isPublished && (!confirmUpdate || !changeReason.trim()))}
               className="button button-primary"
               style={{
-                padding: "8px 16px",
+                padding: "10px 16px",
                 fontSize: "12px",
                 whiteSpace: "nowrap",
-                opacity: saving ? 0.7 : 1,
+                opacity: (saving || (isPublished && (!confirmUpdate || !changeReason.trim()))) ? 0.7 : 1,
                 background: saved ? "var(--success)" : undefined,
                 borderColor: saved ? "var(--success)" : undefined,
+                cursor: (saving || (isPublished && (!confirmUpdate || !changeReason.trim()))) ? "not-allowed" : "pointer"
               }}
             >
               {saving ? t("review.savingBtn") : saved ? t("review.savedBtn") : isPublished ? t("review.updateBtn") : t("review.publishBtn")}
             </button>
           </div>
+
+          {/* Volume Tier Preview — always visible for tiered items */}
+          {isTiered && (
+            <div style={{
+              marginTop: "10px",
+              padding: "10px 12px",
+              background: "linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(59,130,246,0.06) 100%)",
+              border: "1px dashed rgba(16,185,129,0.3)",
+              borderRadius: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+              fontSize: "11.5px"
+            }}>
+              <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {locale === "ar" ? "⚡ معاينة شرائح الحجم" : "⚡ Volume Tier Preview"}
+              </div>
+              {(() => {
+                const base   = parseFloat(basePrice) || 0;
+                const t1Max  = item.tier1_max;
+                const t2Max  = item.tier2_max;
+                const t2Disc = item.tier2_discount;
+                const t3Max  = item.tier3_max ?? 300;
+                const t3Disc = item.tier3_discount;
+                const t4Max  = item.tier4_max ?? 0;
+                const t4Disc = item.tier4_discount ?? 0;
+                const has4   = t4Disc > 0;
+
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{locale === "ar" ? `شريحة ١ (٠ - ${t1Max} وحدة):` : `Base Tier (0 – ${t1Max} units):`}</span>
+                      <strong style={{ color: "var(--success)" }}>{base > 0 ? formatCurrency(base) : "—"}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{locale === "ar" ? `شريحة ٢ (${t1Max + 1} - ${t2Max} وحدة) — خصم ${t2Disc}%:` : `Tier 2 (${t1Max + 1} – ${t2Max} units) — ${t2Disc}% off:`}</span>
+                      <strong style={{ color: "var(--primary)" }}>{base > 0 ? formatCurrency(base * (1 - t2Disc / 100)) : "—"}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{locale === "ar" ? `شريحة ٣ (${t2Max + 1} - ${t3Max} وحدة) — خصم ${t3Disc}%:` : `Tier 3 (${t2Max + 1} – ${t3Max} units) — ${t3Disc}% off:`}</span>
+                      <strong style={{ color: "var(--warning)" }}>{base > 0 ? formatCurrency(base * (1 - t3Disc / 100)) : "—"}</strong>
+                    </div>
+                    {has4 && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{locale === "ar" ? `شريحة ٤ (${t3Max + 1}${t4Max ? ` - ${t4Max}` : "+"} وحدة) — خصم ${t4Disc}%:` : `Tier 4 (${t3Max + 1}${t4Max ? ` – ${t4Max}` : "+"} units) — ${t4Disc}% off:`}</span>
+                        <strong style={{ color: "var(--danger)" }}>{base > 0 ? formatCurrency(base * (1 - t4Disc / 100)) : "—"}</strong>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {saveError && (
             <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--danger)", fontWeight: 600 }}>
@@ -824,12 +1120,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
     }
   }
 
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
+  // Close on Escape — intentionally removed: modal must stay open until user clicks Close
 
   // Filter data by search
   const filtered = data
@@ -1053,9 +1344,6 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
       {open && (
         <div
           ref={overlayRef}
-          onClick={(e) => {
-            if (e.target === overlayRef.current) setOpen(false);
-          }}
           style={{
             position: "fixed",
             inset: 0,

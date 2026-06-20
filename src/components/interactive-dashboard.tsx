@@ -4,13 +4,14 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import PricingCalculator from "@/components/pricing-calculator";
+import CategoryMarkupPanel from "@/components/category-markup-panel";
 import { useI18n } from "@/lib/i18n-context";
-import type { SellingPriceHistoryRow } from "@/lib/db";
+import type { SellingPriceHistoryRow, ItemPublishedPrice } from "@/lib/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Category  = { id: number; name: string; description: string | null };
-type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number };
-type Supplier  = { id: number; name: string; contact_person: string | null; phone: string | null };
+type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number; transportation_per_unit?: number; moq?: number; is_tiered?: number; tier1_max?: number; tier1_discount?: number; tier2_max?: number; tier2_discount?: number; tier3_max?: number; tier3_discount?: number; tier4_max?: number; tier4_discount?: number };
+type Supplier  = { id: number; name: string; fame_name?: string | null; contact_person: string | null; phone: string | null };
 type PriceEntry = {
   id: number; item_id: number; supplier_id: number; month: string; price: number;
   recorded_at: string; item_name: string; unit: string; supplier_name: string;
@@ -33,6 +34,12 @@ type Props = {
   floorPct?: number | null;
   /** Audit history for the currently selected item+month */
   priceHistory?: SellingPriceHistoryRow[];
+  /** T26: admin has allowed SC to override transport fee this month */
+  scTransportOverrideEnabled?: boolean;
+  /** Admin has enabled tier pricing for this month — SC can switch strategy per item */
+  tierEnabled?: boolean;
+  /** Last N months of published selling prices for the selected item */
+  itemSellHistory?: ItemPublishedPrice[];
 };
 
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
@@ -45,10 +52,13 @@ function color(supplierId: number, suppliers: Supplier[]) {
 
 export default function InteractiveDashboard({
   categories, items, suppliers, priceEntries,
-  role, month, salesCatalog, username,
+  role, month, salesCatalog = [], username,
   initialCategoryId, initialItemId, saved, error,
   floorPct = null,
   priceHistory = [],
+  scTransportOverrideEnabled = false,
+  tierEnabled = false,
+  itemSellHistory = [],
 }: Props) {
   const { t } = useI18n();
   const router = useRouter();
@@ -59,7 +69,6 @@ export default function InteractiveDashboard({
   );
   const [itemId, setItemId] = useState<number>(initialItemId ?? 0);
   const [window, setWindow] = useState<3|6|12>(6);
-  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [hoveredDot, setHoveredDot] = useState<{x:number;y:number;price:number;month:string;supplier:string}|null>(null);
 
   const filteredItems = useMemo(
@@ -74,7 +83,7 @@ export default function InteractiveDashboard({
     if (!valid || itemId === 0) setItemId(filteredItems[0].id);
   }, [catId, filteredItems]);
 
-  useEffect(() => { if (error === "pricing") setIsPricingOpen(true); }, [error]);
+
 
   const selectedItem = items.find(i => i.id === itemId);
 
@@ -121,13 +130,28 @@ export default function InteractiveDashboard({
   }, [latestBySupplierMonth, suppliers, month, latestMonth]);
 
   const existingSell = useMemo(() => {
-    if (!salesCatalog) return null;
-    const rec = salesCatalog.find(r => r.item_id === itemId);
-    if (!rec || rec.sell_min === null) return null;
-    return { strategy: rec.strategy || "avg", markup_type: rec.markup_type || "percent",
-      markup_min: rec.markup_min || 0, markup_max: rec.markup_max || 0,
-      sell_min: rec.sell_min, sell_max: rec.sell_max, created_at: rec.created_at || "" };
-  }, [salesCatalog, itemId]);
+    // First try salesCatalog (used when component is embedded in overview dashboard)
+    if (salesCatalog && salesCatalog.length > 0) {
+      const rec = salesCatalog.find(r => r.item_id === itemId);
+      if (rec && rec.sell_min !== null) {
+        return { strategy: rec.strategy || "avg", markup_type: rec.markup_type || "percent",
+          markup_min: rec.markup_min || 0, markup_max: rec.markup_max || 0,
+          sell_min: rec.sell_min, sell_max: rec.sell_max, created_at: rec.created_at || "",
+          transportation: rec.transportation || 0, other_expenses: rec.other_expenses || 0 };
+      }
+    }
+    // Fallback: use itemSellHistory for the current month (pricing page path)
+    const currentM = month ?? latestMonth;
+    const hist = itemSellHistory.find(h => h.month === currentM);
+    if (hist) {
+      return { strategy: hist.strategy, markup_type: hist.markup_type,
+        markup_min: hist.markup_min, markup_max: hist.markup_max,
+        sell_min: hist.sell_min, sell_max: hist.sell_max, created_at: hist.created_at,
+        transportation: hist.transport_override_enabled ? hist.transport_override_amount : 0,
+        other_expenses: 0 };
+    }
+    return null;
+  }, [salesCatalog, itemSellHistory, itemId, month, latestMonth]);
 
   // ── Supplier stats for current latest month ──────────────────────
   const latestSupplierPrices = useMemo(() => {
@@ -173,8 +197,8 @@ export default function InteractiveDashboard({
     return { sup, c, pts, pathD };
   }).filter(l => l.pts.length > 0), [suppliers, visibleMonths, latestBySupplierMonth]);
 
-  const redirectTo = `/dashboard?categoryId=${catId}&itemId=${itemId}&saved=1`;
-  const errorRedirect = `/dashboard?categoryId=${catId}&itemId=${itemId}&error=pricing`;
+  const redirectTo    = `/dashboard/pricing?categoryId=${catId}&itemId=${itemId}&saved=1`;
+  const errorRedirect = `/dashboard/pricing?categoryId=${catId}&itemId=${itemId}&error=pricing`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -228,219 +252,422 @@ export default function InteractiveDashboard({
             ))}
           </div>
         </div>
-
-        {/* SC: Pricing Engine */}
-        {role === "SC" && (
-          <button type="button" onClick={() => setIsPricingOpen(true)}
-            className="button button-primary"
-            style={{ padding: "9px 18px", fontSize: "13px", gap: "6px", marginLeft: "auto", whiteSpace: "nowrap" }}>
-            ⚙️ {t("idash.setSellingPrices")}
-          </button>
-        )}
       </div>
 
-      {/* ═══ SECTION 2: CURRENT MONTH SNAPSHOT ═══════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-
-        {/* Left: supplier price cards for current month */}
+      {/* ═══ SECTION 2: SC TWO-COLUMN WORKSTATION / NON-SC GRID ══════ */}
+      {role === "SC" ? (
         <div style={{
-          background: "var(--bg-surface)", border: "1px solid var(--border)",
-          borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)",
+          display: "grid",
+          gridTemplateColumns: "minmax(280px, 1fr) minmax(380px, 1.5fr)",
+          gap: "16px",
+          alignItems: "start",
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-            <div>
-              <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "2px" }}>
-                {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
+
+          {/* ── LEFT: history → buy prices → trend chart ────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+
+            {/* ── Sell Price History (last 3 months) ─────────────────── */}
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "16px 18px", boxShadow: "var(--shadow-sm)" }}>
+              <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: "0 0 12px" }}>
+                📋 Sell Price History
               </p>
-              <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
-                {selectedItem?.name ?? "Select an item"}
-              </h2>
+              {itemSellHistory.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-muted)", fontSize: "12px", fontStyle: "italic" }}>
+                  No selling prices published yet for this item.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {itemSellHistory.map((h) => {
+                    const isCurrentMonth = h.month === (month ?? latestMonth);
+                    const strategyColor = h.strategy === "min" ? "var(--success)" : h.strategy === "max" ? "var(--danger)" : "var(--primary)";
+                    const fmtMu = (v: number) => parseFloat(v.toFixed(2));
+                    const markupLabel = h.markup_type === "divisor"
+                      ? (h.markup_min === h.markup_max ? `÷ ${fmtMu(h.markup_min)}` : `÷ ${fmtMu(h.markup_min)}–${fmtMu(h.markup_max)}`)
+                      : (h.markup_min === h.markup_max ? `+${fmtMu(h.markup_min)}%` : `+${fmtMu(h.markup_min)}–${fmtMu(h.markup_max)}%`);
+                    return (
+                      <div key={h.month} style={{
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr auto auto",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "9px 12px",
+                        borderRadius: "8px",
+                        background: isCurrentMonth ? "rgba(99,102,241,0.07)" : "var(--bg-elevated)",
+                        border: `1.5px solid ${isCurrentMonth ? "rgba(99,102,241,0.28)" : "var(--border-light)"}`,
+                      }}>
+                        {/* Month */}
+                        <div>
+                          <div style={{ fontSize: "10px", fontWeight: 800, color: isCurrentMonth ? "var(--primary)" : "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                            {formatMonthLabel(h.month)}
+                            {isCurrentMonth && <span style={{ marginLeft: "5px", fontSize: "8px", fontWeight: 900, background: "var(--primary)", color: "#fff", padding: "1px 5px", borderRadius: "4px", verticalAlign: "middle" }}>NOW</span>}
+                          </div>
+                        </div>
+                        {/* Markup */}
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                          {markupLabel}
+                        </div>
+                        {/* Strategy */}
+                        <div style={{
+                          fontSize: "10px", fontWeight: 900, padding: "2px 7px", borderRadius: "5px",
+                          background: `color-mix(in srgb, ${strategyColor} 12%, transparent)`,
+                          color: strategyColor,
+                          border: `1px solid color-mix(in srgb, ${strategyColor} 30%, transparent)`,
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {h.strategy}
+                        </div>
+                        {/* Sell range */}
+                        <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(h.sell_min)}</span>
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)", margin: "0 3px" }}>–</span>
+                          <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(h.sell_max)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            {cheapestPrice !== null && avgCurrentPrice !== null && (
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("idash.marketAvg")}</div>
-                <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(avgCurrentPrice)}</div>
+
+            {/* ── Current month supplier price cards ─────────────────── */}
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "2px" }}>
+                    {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
+                  </p>
+                  <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
+                    {selectedItem ? (
+                      <span
+                        onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: selectedItem.id } }))}
+                        className="clickable-detail-trigger"
+                      >
+                        {selectedItem.name}
+                      </span>
+                    ) : "Select an item"}
+                  </h2>
+                </div>
+                {cheapestPrice !== null && avgCurrentPrice !== null && (
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("idash.marketAvg")}</div>
+                    <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(avgCurrentPrice)}</div>
+                  </div>
+                )}
+              </div>
+
+              {latestSupplierPrices.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px" }}>
+                  No prices recorded for {formatMonthLabel(month ?? latestMonth)} yet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {[...latestSupplierPrices].sort((a, b) => a.price - b.price).map((row) => {
+                    const isBest = row.price === cheapestPrice;
+                    const diffPct = avgCurrentPrice ? ((row.price - avgCurrentPrice) / avgCurrentPrice * 100) : 0;
+                    return (
+                      <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}`, transition: "all 150ms" }}>
+                        <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
+                        <span
+                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier.id } }))}
+                          className="clickable-detail-trigger"
+                          style={{ flex: 1, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {row.supplier.fame_name || row.supplier.name}
+                        </span>
+                        {isBest && <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>}
+                        <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+                          {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
+                        </span>
+                        <strong style={{ fontSize: "15px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)", flexShrink: 0 }}>
+                          {formatCurrency(row.price)}
+                        </strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Published sell price status */}
+              <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-light)", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                {existingSell ? (
+                  <>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("idash.publishedSell")}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>–</span>
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
+                    <span className="badge badge-success" style={{ fontSize: "10px" }}>✓ Published</span>
+                    <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
+                  </>
+                ) : (
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                    {t("idash.noSellSet")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Price trend chart */}
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
+                    {t("idash.priceTrend")} · {window} {t("idash.months")}
+                  </p>
+                  {selectedItem && (
+                    <p style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
+                      {selectedItem.name}
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  {supplierLines.map(l => (
+                    <span key={l.sup.id} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "var(--text-secondary)", fontWeight: 600 }}>
+                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: l.c, display: "inline-block" }} />
+                      {l.sup.fame_name || l.sup.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {supplierLines.length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "180px", border: "1px dashed var(--border-light)", borderRadius: "var(--radius)", color: "var(--text-muted)", fontSize: "12px" }}>
+                  No data for this period
+                </div>
+              ) : (
+                <div style={{ position: "relative" }}>
+                  <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+                    {[0, 0.5, 1].map((r, i) => {
+                      const y = PT + plotH - r * plotH;
+                      return (
+                        <g key={i}>
+                          <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="var(--border-light)" strokeDasharray="4 3" strokeWidth={1} />
+                          <text x={PL-6} y={y+4} fill="var(--text-muted)" fontSize="9.5" textAnchor="end" fontWeight="600">
+                            {formatCurrency(yMin + r * yRange)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {visibleMonths.map((m, i) => (
+                      <text key={m} x={gX(i)} y={H-6} fill="var(--text-muted)" fontSize="9" textAnchor="middle" fontWeight="600">
+                        {m.slice(2).replace("-", "/")}
+                      </text>
+                    ))}
+                    {supplierLines.map(l => (
+                      <g key={l.sup.id}>
+                        {l.pathD && <path d={l.pathD} fill="none" stroke={l.c} strokeWidth={2} strokeLinejoin="round" opacity={0.85} />}
+                        {l.pts.map((pt, pi) => (
+                          <circle key={pi} cx={pt.x} cy={pt.y} r={4} fill={l.c} stroke="var(--bg-surface)" strokeWidth={1.5}
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={() => setHoveredDot({ x: pt.x, y: pt.y, price: pt.price, month: pt.month, supplier: l.sup.fame_name || l.sup.name })}
+                            onMouseLeave={() => setHoveredDot(null)}
+                          />
+                        ))}
+                      </g>
+                    ))}
+                  </svg>
+                  {hoveredDot && (
+                    <div style={{ position: "absolute", left: `${(hoveredDot.x / W) * 100}%`, top: `${(hoveredDot.y / H) * 100}%`, transform: "translate(-50%, -120%)", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", padding: "6px 10px", fontSize: "11px", fontWeight: 700, pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "var(--shadow-md)", zIndex: 10 }}>
+                      <div style={{ color: "var(--text-muted)", fontWeight: 500 }}>{hoveredDot.supplier} · {hoveredDot.month}</div>
+                      <div style={{ color: "var(--primary)", fontSize: "13px" }}>{formatCurrency(hoveredDot.price)}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── RIGHT: Pricing Engine ─────── */}
+          <div style={{
+            background: "var(--bg-surface)",
+            border: "1.5px solid rgba(99,102,241,0.3)",
+            borderRadius: "var(--radius-lg)",
+            padding: "20px",
+            boxShadow: "0 4px 24px rgba(99,102,241,0.10), var(--shadow-sm)",
+            position: "sticky" as const,
+            top: "16px",
+            maxHeight: "calc(100vh - 100px)",
+            overflowY: "auto" as const,
+          }}>
+            <div style={{ marginBottom: "16px", paddingBottom: "14px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+              <div style={{ minWidth: 0 }}>
+                <p className="eyebrow" style={{ margin: 0, fontSize: "9px" }}>⚙️ Pricing Engine</p>
+                <h3 style={{ margin: "4px 0 2px", fontSize: "15px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {selectedItem?.name ?? "Select an item"}
+                </h3>
+              </div>
+            </div>
+
+            {error === "pricing" && (
+              <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", marginBottom: "16px" }}>
+                <strong>Error:</strong> Max markup must be ≥ min markup.
+              </div>
+            )}
+
+            {currentMonthQuotes ? (
+              <PricingCalculator
+                month={month ?? ""}
+                itemId={itemId}
+                createdBy={username ?? "SC Manager"}
+                buyMin={currentMonthQuotes.buyMin}
+                buyMax={currentMonthQuotes.buyMax}
+                buyAvg={currentMonthQuotes.buyAvg}
+                floorPct={floorPct}
+                history={priceHistory}
+                existing={existingSell}
+                redirectTo={redirectTo}
+                errorRedirect={errorRedirect}
+                transportation={selectedItem?.transportation_per_unit ?? 0}
+                moq={selectedItem?.moq ?? 0}
+                isTiered={selectedItem?.is_tiered === 1}
+                tier1Max={selectedItem?.tier1_max}
+                tier1Discount={selectedItem?.tier1_discount}
+                tier2Max={selectedItem?.tier2_max}
+                tier2Discount={selectedItem?.tier2_discount}
+                tier3Discount={selectedItem?.tier3_discount}
+                tier3Max={selectedItem?.tier3_max}
+                tier4Discount={selectedItem?.tier4_discount}
+                scTransportOverrideEnabled={scTransportOverrideEnabled}
+                tierEnabled={tierEnabled}
+                onSuccess={() => router.refresh()}
+                priceEntries={priceEntries}
+                suppliers={suppliers}
+              />
+            ) : (
+              <div className="restriction-info-banner" style={{ background: "rgba(245,158,11,0.06)", borderColor: "rgba(245,158,11,0.35)", color: "#b45309" }}>
+                <strong>No supplier quotes yet.</strong> WH needs to record prices for <em>{selectedItem?.name}</em> in {formatMonthLabel(month ?? latestMonth)} before a selling price can be set.
+              </div>
+            )}
+          </div>
+        </div>
+
+      ) : (
+
+        /* ── Non-SC: original 2-column grid ──────── */
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <div>
+                <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "2px" }}>
+                  {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
+                </p>
+                <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
+                  {selectedItem?.name ?? "Select an item"}
+                </h2>
+              </div>
+              {cheapestPrice !== null && avgCurrentPrice !== null && (
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("idash.marketAvg")}</div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(avgCurrentPrice)}</div>
+                </div>
+              )}
+            </div>
+            {latestSupplierPrices.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px" }}>
+                No prices recorded for {formatMonthLabel(month ?? latestMonth)} yet.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {[...latestSupplierPrices].sort((a, b) => a.price - b.price).map((row) => {
+                  const isBest = row.price === cheapestPrice;
+                  const diffPct = avgCurrentPrice ? ((row.price - avgCurrentPrice) / avgCurrentPrice * 100) : 0;
+                  return (
+                    <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}` }}>
+                      <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.supplier.fame_name || row.supplier.name}</span>
+                      {isBest && <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px" }}>{t("idash.best")}</span>}
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)" }}>
+                        {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
+                      </span>
+                      <strong style={{ fontSize: "15px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(row.price)}</strong>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {latestSupplierPrices.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px" }}>
-              No prices recorded for {formatMonthLabel(month ?? latestMonth)} yet.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {[...latestSupplierPrices].sort((a, b) => a.price - b.price).map((row, i) => {
-                const isBest = row.price === cheapestPrice;
-                const diffPct = avgCurrentPrice ? ((row.price - avgCurrentPrice) / avgCurrentPrice * 100) : 0;
-                return (
-                  <div key={row.supplier.id} style={{
-                    display: "flex", alignItems: "center", gap: "12px",
-                    padding: "10px 14px", borderRadius: "var(--radius)",
-                    background: isBest ? "var(--success-light)" : "var(--bg-elevated)",
-                    border: `1.5px solid ${isBest ? "rgba(16,185,129,0.35)" : "var(--border-light)"}`,
-                    transition: "all 150ms",
-                  }}>
-                    <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {row.supplier.name}
-                    </span>
-                    {isBest && (
-                      <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--success)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>
-                    )}
-                    <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
-                      {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
-                    </span>
-                    <strong style={{ fontSize: "15px", fontWeight: 800, color: isBest ? "var(--success)" : "var(--text-primary)", flexShrink: 0 }}>
-                      {formatCurrency(row.price)}
-                    </strong>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* SC selling price status */}
-          {role === "SC" && (
-            <div style={{
-              marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-light)",
-              display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap",
-            }}>
-              {existingSell ? (
-                <>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("idash.publishedSell")}</span>
-                  <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>–</span>
-                  <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
-                  <span className="badge badge-success" style={{ fontSize: "10px" }}>✓ Published</span>
-                </>
-              ) : (
-                <>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("idash.noSellSet")}</span>
-                  <button type="button" onClick={() => setIsPricingOpen(true)}
-                    className="button button-primary"
-                    style={{ padding: "5px 12px", fontSize: "11px", marginLeft: "auto" }}>
-                    {t("idash.setNow")}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Right: price trend chart */}
-        <div style={{
-          background: "var(--bg-surface)", border: "1px solid var(--border)",
-          borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <div>
-              <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
-                {t("idash.priceTrend")} · {window} {t("idash.months")}
-              </p>
-              {selectedItem && (
-                <p style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
-                  {selectedItem.name}
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+              <div>
+                <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
+                  {t("idash.priceTrend")} · {window} {t("idash.months")}
                 </p>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              {supplierLines.map(l => (
-                <span key={l.sup.id} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "var(--text-secondary)", fontWeight: 600 }}>
-                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: l.c, display: "inline-block" }} />
-                  {l.sup.name}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {supplierLines.length === 0 ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "180px", border: "1px dashed var(--border-light)", borderRadius: "var(--radius)", color: "var(--text-muted)", fontSize: "12px" }}>
-              No data for this period
-            </div>
-          ) : (
-            <div style={{ position: "relative" }}>
-              <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
-                {/* Y grid */}
-                {[0, 0.5, 1].map((r, i) => {
-                  const y = PT + plotH - r * plotH;
-                  return (
-                    <g key={i}>
-                      <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="var(--border-light)" strokeDasharray="4 3" strokeWidth={1} />
-                      <text x={PL-6} y={y+4} fill="var(--text-muted)" fontSize="9.5" textAnchor="end" fontWeight="600">
-                        {formatCurrency(yMin + r * yRange)}
-                      </text>
-                    </g>
-                  );
-                })}
-                {/* X labels */}
-                {visibleMonths.map((m, i) => (
-                  <text key={i} x={gX(i)} y={H-6} fill="var(--text-secondary)" fontSize="10" textAnchor="middle" fontWeight="700">
-                    {m.slice(5)}
-                  </text>
-                ))}
-                {/* Lines */}
+                {selectedItem && (
+                  <p style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
+                    {selectedItem.name}
+                  </p>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                 {supplierLines.map(l => (
-                  <g key={l.sup.id}>
-                    {l.pts.length > 1 && <path d={l.pathD} fill="none" stroke={l.c} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
-                    {l.pts.map((pt, pi) => (
-                      <circle key={pi} cx={pt.x} cy={pt.y} r={4.5} fill={l.c} stroke="var(--bg-surface)" strokeWidth={2}
-                        style={{ cursor: "pointer" }}
-                        onMouseEnter={() => setHoveredDot({ x: pt.x, y: pt.y, price: pt.price, month: pt.month, supplier: l.sup.name })}
-                        onMouseLeave={() => setHoveredDot(null)}
-                      />
-                    ))}
-                  </g>
+                  <span key={l.sup.id} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: l.c, display: "inline-block" }} />
+                    {l.sup.fame_name || l.sup.name}
+                  </span>
                 ))}
-              </svg>
-              {hoveredDot && (
-                <div style={{
-                  position: "absolute",
-                  left: `calc(${(hoveredDot.x / W) * 100}% - 80px)`,
-                  top: `calc(${(hoveredDot.y / H) * 100}% - 80px)`,
-                  padding: "8px 12px", background: "var(--bg-surface)",
-                  border: "1px solid var(--border-medium)", borderRadius: "8px",
-                  boxShadow: "var(--shadow-md)", pointerEvents: "none", zIndex: 10,
-                  display: "flex", flexDirection: "column", gap: "2px",
-                }}>
-                  <strong style={{ fontSize: "14px", color: "var(--primary)" }}>{formatCurrency(hoveredDot.price)}</strong>
-                  <span style={{ fontSize: "11px", fontWeight: 700 }}>{hoveredDot.supplier}</span>
-                  <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{formatMonthLabel(hoveredDot.month)}</span>
-                </div>
-              )}
+              </div>
             </div>
-          )}
+            {supplierLines.length === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "180px", border: "1px dashed var(--border-light)", borderRadius: "var(--radius)", color: "var(--text-muted)", fontSize: "12px" }}>
+                No data for this period
+              </div>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+                  {[0, 0.5, 1].map((r, i) => {
+                    const y = PT + plotH - r * plotH;
+                    return (
+                      <g key={i}>
+                        <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="var(--border-light)" strokeDasharray="4 3" strokeWidth={1} />
+                        <text x={PL-6} y={y+4} fill="var(--text-muted)" fontSize="9.5" textAnchor="end" fontWeight="600">{formatCurrency(yMin + r * yRange)}</text>
+                      </g>
+                    );
+                  })}
+                  {visibleMonths.map((m, i) => (
+                    <text key={m} x={gX(i)} y={H-6} fill="var(--text-muted)" fontSize="9" textAnchor="middle" fontWeight="600">{m.slice(2).replace("-", "/")}</text>
+                  ))}
+                  {supplierLines.map(l => (
+                    <g key={l.sup.id}>
+                      {l.pathD && <path d={l.pathD} fill="none" stroke={l.c} strokeWidth={2} strokeLinejoin="round" opacity={0.85} />}
+                      {l.pts.map((pt, pi) => (
+                        <circle key={pi} cx={pt.x} cy={pt.y} r={4} fill={l.c} stroke="var(--bg-surface)" strokeWidth={1.5}
+                          style={{ cursor: "pointer" }}
+                          onMouseEnter={() => setHoveredDot({ x: pt.x, y: pt.y, price: pt.price, month: pt.month, supplier: l.sup.fame_name || l.sup.name })}
+                          onMouseLeave={() => setHoveredDot(null)}
+                        />
+                      ))}
+                    </g>
+                  ))}
+                </svg>
+                {hoveredDot && (
+                  <div style={{ position: "absolute", left: `${(hoveredDot.x / W) * 100}%`, top: `${(hoveredDot.y / H) * 100}%`, transform: "translate(-50%, -120%)", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", padding: "6px 10px", fontSize: "11px", fontWeight: 700, pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "var(--shadow-md)", zIndex: 10 }}>
+                    <div style={{ color: "var(--text-muted)", fontWeight: 500 }}>{hoveredDot.supplier} · {hoveredDot.month}</div>
+                    <div style={{ color: "var(--primary)", fontSize: "13px" }}>{formatCurrency(hoveredDot.price)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ═══ SECTION 3: COMPARISON MATRIX ════════════════════════════ */}
-      <div style={{
-        background: "var(--bg-surface)", border: "1px solid var(--border)",
-        borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", overflow: "hidden",
-      }}>
-        <div style={{ padding: "14px 20px 12px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "2px", flexWrap: "wrap" }}>
+      {/* ═══ SECTION 3: SUPPLIER × MONTH COMPARISON ══════════════════ */}
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <div>
               <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
                 {t("idash.comparison")}
               </p>
               {selectedItem && (
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: "5px",
-                  padding: "3px 10px", borderRadius: "20px",
-                  background: "var(--primary-light)",
-                  border: "1px solid var(--border-accent)",
-                  fontSize: "11px", fontWeight: 700, color: "var(--primary)",
-                  maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
-                }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", borderRadius: "20px", background: "var(--primary-light)", border: "1px solid var(--border-accent)", fontSize: "11px", fontWeight: 700, color: "var(--primary)", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", flexShrink: 0, display: "inline-block" }} />
                   {selectedItem.name}
                 </span>
               )}
             </div>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>
-              {t("idash.comparisonDesc")}
-            </p>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{t("idash.comparisonDesc")}</p>
           </div>
           <span className="badge badge-strong">{matrixMonths.length} months</span>
         </div>
@@ -449,55 +676,38 @@ export default function InteractiveDashboard({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--bg-elevated)" }}>
-                <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", position: "sticky", top: 0, left: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>
-                  Supplier
-                </th>
+                <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", position: "sticky", top: 0, left: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>Supplier</th>
                 {matrixMonths.map((m, i) => (
                   <th key={m} style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: i === 0 ? "var(--primary)" : "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
                     {formatMonthLabel(m)}
                     {i === 0 && <span style={{ display: "block", fontSize: "8px", color: "var(--primary)", fontWeight: 800 }}>LATEST</span>}
                   </th>
                 ))}
-                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
-                  Avg
-                </th>
-                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
-                  Trend
-                </th>
+                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Avg</th>
+                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Trend</th>
               </tr>
             </thead>
             <tbody>
               {suppliers.map((sup, si) => {
                 const supColor = COLORS[si % COLORS.length];
-                // Prices in chronological order for trend
-                const chronoPrices = visibleMonths
-                  .map(m => latestBySupplierMonth.get(`${sup.id}||${m}`)?.price)
-                  .filter((p): p is number => p !== undefined);
+                const chronoPrices = visibleMonths.map(m => latestBySupplierMonth.get(`${sup.id}||${m}`)?.price).filter((p): p is number => p !== undefined);
                 const avg = chronoPrices.length > 0 ? chronoPrices.reduce((a, b) => a + b, 0) / chronoPrices.length : null;
                 const first = chronoPrices[0], last = chronoPrices[chronoPrices.length - 1];
                 const trendPct = first && last && chronoPrices.length >= 2 ? ((last - first) / first) * 100 : null;
-
-                // Skip suppliers with no data for this item
                 if (chronoPrices.length === 0) return null;
-
                 return (
                   <tr key={sup.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
                     <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: supColor, flexShrink: 0 }} />
-                        <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.name}</span>
+                        <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.fame_name || sup.name}</span>
                       </div>
                     </td>
                     {matrixMonths.map((m, mi) => {
                       const entry = latestBySupplierMonth.get(`${sup.id}||${m}`);
                       const isBest = entry && entry.price === minByMonth.get(m);
                       return (
-                        <td key={m} style={{
-                          padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap",
-                          fontWeight: isBest ? 800 : 400,
-                          color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)",
-                          background: isBest ? "rgba(16,185,129,0.08)" : mi === 0 ? "rgba(99,102,241,0.03)" : "transparent",
-                        }}>
+                        <td key={m} style={{ padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(2,132,199,0.08)" : mi === 0 ? "rgba(99,102,241,0.03)" : "transparent" }}>
                           {entry ? formatCurrency(entry.price) : <span style={{ color: "var(--text-dim)" }}>—</span>}
                         </td>
                       );
@@ -505,8 +715,7 @@ export default function InteractiveDashboard({
                     <td style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap" }}>
                       {avg !== null ? formatCurrency(avg) : "—"}
                     </td>
-                    <td style={{ padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 700, fontSize: "12px",
-                      color: trendPct === null ? "var(--text-dim)" : trendPct > 1 ? "var(--danger)" : trendPct < -1 ? "var(--success)" : "var(--text-muted)" }}>
+                    <td style={{ padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 700, fontSize: "12px", color: trendPct === null ? "var(--text-dim)" : trendPct > 1 ? "var(--danger)" : trendPct < -1 ? "var(--success)" : "var(--text-muted)" }}>
                       {trendPct === null ? "—" : trendPct > 1 ? `↑ ${trendPct.toFixed(1)}%` : trendPct < -1 ? `↓ ${Math.abs(trendPct).toFixed(1)}%` : "≈ stable"}
                     </td>
                   </tr>
@@ -515,9 +724,7 @@ export default function InteractiveDashboard({
 
               {/* Market avg footer */}
               <tr style={{ background: "var(--bg-elevated)", borderTop: "2px solid var(--border)" }}>
-                <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-elevated)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", boxShadow: "1px 0 0 var(--border-light)" }}>
-                  Market Avg
-                </td>
+                <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-elevated)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", boxShadow: "1px 0 0 var(--border-light)" }}>Market Avg</td>
                 {matrixMonths.map((m) => {
                   const prices = suppliers.map(s => latestBySupplierMonth.get(`${s.id}||${m}`)?.price).filter((p): p is number => p !== undefined);
                   const avg = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
@@ -533,9 +740,7 @@ export default function InteractiveDashboard({
               {/* SC: selling price row */}
               {role === "SC" && salesCatalog && (
                 <tr style={{ background: "rgba(245,158,11,0.05)", borderTop: "1px solid var(--border-light)" }}>
-                  <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "rgba(245,158,11,0.05)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", boxShadow: "1px 0 0 var(--border-light)" }}>
-                    Sell Range
-                  </td>
+                  <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "rgba(245,158,11,0.05)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", boxShadow: "1px 0 0 var(--border-light)" }}>Sell Range</td>
                   {matrixMonths.map((m) => {
                     const sell = salesCatalog.find(r => r.item_id === itemId && r.month === m);
                     return (
@@ -558,59 +763,6 @@ export default function InteractiveDashboard({
         </div>
       </div>
 
-      {/* ═══ PRICING ENGINE MODAL (SC only) ══════════════════════════ */}
-      {role === "SC" && isPricingOpen && (
-        <div className="modal-overlay" onClick={() => setIsPricingOpen(false)}>
-          <div className="modal-container" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <p className="eyebrow" style={{ margin: 0, fontSize: "10px" }}>Pricing Engine</p>
-                <h3 style={{ margin: "2px 0 0" }}>Set Selling Prices — {selectedItem?.name}</h3>
-              </div>
-              <button className="modal-close-btn" onClick={() => setIsPricingOpen(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              {error === "pricing" && (
-                <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)", marginBottom: "16px" }}>
-                  <strong>Error:</strong> Max markup must be ≥ min markup.
-                </div>
-              )}
-              {currentMonthQuotes ? (
-                <PricingCalculator
-                  month={month ?? ""}
-                  itemId={itemId}
-                  createdBy={username ?? "SC Manager"}
-                  buyMin={currentMonthQuotes.buyMin}
-                  buyMax={currentMonthQuotes.buyMax}
-                  buyAvg={currentMonthQuotes.buyAvg}
-                  floorPct={floorPct}
-                  history={priceHistory}
-                  existing={existingSell}
-                  redirectTo={redirectTo}
-                  errorRedirect={errorRedirect}
-                  onSuccess={() => {
-                    setIsPricingOpen(false);
-                    router.refresh();
-                  }}
-                />
-              ) : (
-                <div className="restriction-info-banner" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)", color: "var(--danger)" }}>
-                  No supplier quotes exist for {selectedItem?.name} in {formatMonthLabel(month ?? latestMonth)}. Ask WH to record prices first.
-                </div>
-              )}
-              {existingSell && (
-                <div style={{ marginTop: "14px", padding: "10px 12px", background: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-light)", fontSize: "12px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Current:</span>
-                  <span style={{ fontWeight: 700, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
-                  <span style={{ color: "var(--text-muted)" }}>–</span>
-                  <span style={{ fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
-                  <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -5,7 +5,7 @@ import { getSearchIndex, countPendingRequests, countPendingRequestsByUser } from
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const session = requireRole();
-  const searchIndex = (session.role === "WH" || session.role === "SC")
+  const searchIndex = (session.role === "WH" || session.role === "SC" || session.role === "SA")
     ? getSearchIndex()
     : { items: [], suppliers: [] };
 

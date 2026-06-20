@@ -11,9 +11,10 @@ import {
   formatCurrency,
   formatMonthLabel
 } from "@/lib/format";
-import { SectionIntro, StatCard } from "@/components/app-shell";
+import { SectionIntro } from "@/components/app-shell";
 import AnalyticsChart from "@/components/analytics-chart";
 import AnalyticsFilters from "@/components/analytics-filters";
+import AnalyticsDashboard from "@/components/analytics-dashboard";
 import Link from "next/link";
 
 type SearchParams = {
@@ -140,7 +141,10 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
     const participationRate = monthsInRange.length > 0 ? (monthsQuoted / monthsInRange.length) * 100 : 0;
     return {
       id: sid,
-      name: suppliers.find((s) => s.id === sid)?.name || `Supplier ${sid}`,
+      name: (() => {
+        const s = suppliers.find((x) => x.id === sid);
+        return s?.fame_name || s?.name || `Supplier ${sid}`;
+      })(),
       avgPrice: sPrices.length > 0 ? calculateMean(sPrices) : 0,
       avgDeviation,
       participationRate,
@@ -242,7 +246,7 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
         actions={<span className="badge">{session.displayName}</span>}
       />
 
-      {/* ─── View Mode Toggle ─── */}
+      {/* View Mode Toggle */}
       <div style={{ display: "flex", gap: "6px", background: "var(--bg-subtle)", padding: "5px", borderRadius: "10px", border: "1px solid var(--border)", alignSelf: "flex-start" }}>
         <Link
           href={getFilterUrl({ viewMode: "single" })}
@@ -260,7 +264,7 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
         </Link>
       </div>
 
-      {/* ─── Compact Horizontal Filter Bar ─── */}
+      {/* Filter Bar */}
       <AnalyticsFilters
         categories={categories}
         allItems={allItems}
@@ -273,296 +277,43 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
         viewMode={viewMode}
       />
 
-      {/* ─── Stat Cards ─── */}
-      <section className="stat-grid">
-        <StatCard
-          label={viewMode === "single" ? "Avg Market Price" : "Category Avg Price"}
-          value={formatCurrency(avgPrice)}
-          note={`${totalQuotes} quotes captured`}
-          accent="indigo"
-        />
-        <StatCard
-          label="Price Spread"
-          value={minPrice > 0 ? `${formatCurrency(minPrice)} → ${formatCurrency(maxPrice)}` : "—"}
-          note="Lowest vs Highest quotes"
-          accent="cyan"
-        />
-        <StatCard
-          label="Market Volatility"
-          value={totalQuotes > 0 ? `${fluctuationPct.toFixed(1)}%` : "—"}
-          note={viewMode === "single" ? `${volatilityLevel} risk level` : `Most volatile: ${mostVolatileItem?.itemName || "—"}`}
-          accent={volatilityAccent as any}
-        />
-        <StatCard
-          label="Std Deviation"
-          value={totalQuotes > 0 ? `± ${formatCurrency(stdDev)}` : "—"}
-          note={viewMode === "single" ? "Statistical quote variation" : `Most stable: ${mostStableItem?.itemName || "—"}`}
-          accent="amber"
-        />
-      </section>
-
-      {/* ─── Chart ─── */}
-      {selectedItem && (
-        <AnalyticsChart
-          history={analyticsData}
-          months={monthsInRange}
-          groupMode={viewMode === "category" ? "item" : "supplier"}
-        />
-      )}
-
-      {/* ─── Three-column: Insights | MoM Bars | Strategy ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
-
-        {/* Insights Pills */}
-        <section className="panel">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
-            <div>
-              <p className="eyebrow">Auto-Generated</p>
-              <h2>Market Insights</h2>
-            </div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {insights.map((ins, idx) => (
-              <div key={idx} style={{
-                display: "flex", gap: "10px", alignItems: "flex-start",
-                padding: "12px 14px", borderRadius: "10px",
-                background: "var(--bg-subtle)", border: "1px solid var(--border-light)"
-              }}>
-                <span style={{ fontSize: "20px", lineHeight: 1, flexShrink: 0 }}>{ins.icon}</span>
-                <div>
-                  <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "3px" }}>{ins.label}</div>
-                  <div style={{ fontSize: "12.5px", lineHeight: "1.4", color: "var(--text-primary)" }}>{ins.text}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* MoM Mini Bar Chart */}
-        <section className="panel">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
-            <div>
-              <p className="eyebrow">Month-over-Month</p>
-              <h2>Price Breakdown</h2>
-            </div>
-            <span className="badge">{momWithData.length} months</span>
-          </div>
-          {momWithData.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: "13px", textAlign: "center", padding: "24px 0" }}>No data in range.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {momWithData.map((ms) => {
-                const avgBarW = ms.avg ? Math.max(4, ((ms.avg - momMin) / momRange) * 100) : 0;
-                const minBarW = ms.min ? Math.max(2, ((ms.min - momMin) / momRange) * 80) : 0;
-                const maxBarW = ms.max ? Math.max(4, ((ms.max - momMin) / momRange) * 100) : 0;
-                return (
-                  <div key={ms.month} style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--bg-subtle)", border: "1px solid var(--border-light)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "7px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 700 }}>{formatMonthLabel(ms.month)}</span>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{ms.count} quotes</span>
-                    </div>
-                    {/* Avg bar */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                      <span style={{ width: "24px", fontSize: "9.5px", color: "var(--text-muted)", flexShrink: 0 }}>Avg</span>
-                      <div style={{ flex: 1, height: "8px", borderRadius: "4px", background: "var(--bg-muted)", overflow: "hidden" }}>
-                        <div style={{ width: `${avgBarW}%`, height: "100%", borderRadius: "4px", background: "var(--primary)", transition: "width 400ms" }} />
-                      </div>
-                      <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--primary)", minWidth: "52px", textAlign: "right" }}>{formatCurrency(ms.avg)}</span>
-                    </div>
-                    {/* Range row */}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", paddingLeft: "32px" }}>
-                      <span style={{ color: "var(--success)" }}>↓ {formatCurrency(ms.min)}</span>
-                      <span style={{ color: "var(--danger)" }}>↑ {formatCurrency(ms.max)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Strategy Advisor */}
-        <section className="panel">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
-            <div>
-              <p className="eyebrow">Markup Advisor</p>
-              <h2>Pricing Strategy</h2>
-            </div>
-            <span className={`badge ${strategyBadgeClass}`}>{strategyMarkup}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {/* Volatility gauge */}
-            <div style={{ padding: "14px", borderRadius: "10px", background: "var(--bg-subtle)", border: "1px solid var(--border-light)" }}>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Volatility Gauge</div>
-              <div style={{ height: "10px", borderRadius: "5px", background: "var(--bg-muted)", overflow: "hidden", marginBottom: "6px" }}>
-                <div style={{
-                  width: `${Math.min(100, activeVolatility * 4)}%`,
-                  height: "100%", borderRadius: "5px",
-                  background: activeVolatility > 15 ? "var(--danger)" : activeVolatility > 5 ? "var(--warning)" : "var(--success)",
-                  transition: "width 600ms"
-                }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-muted)" }}>
-                <span>Stable</span>
-                <span style={{ fontWeight: 700, color: activeVolatility > 15 ? "var(--danger)" : activeVolatility > 5 ? "var(--warning)" : "var(--success)" }}>
-                  {activeVolatility.toFixed(1)}% — {volatilityLevel}
-                </span>
-                <span>Volatile</span>
-              </div>
-            </div>
-
-            <div style={{ padding: "14px", borderRadius: "10px", background: "var(--bg-subtle)", border: "1px solid var(--border-light)" }}>
-              <div style={{ fontWeight: 800, fontSize: "13.5px", marginBottom: "6px" }}>{strategyTitle}</div>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "10px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Suggested markup:</span>
-                <span className={`badge ${strategyBadgeClass}`} style={{ fontSize: "11px" }}>{strategyMarkup}</span>
-              </div>
-              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
-                {activeVolatility > 15
-                  ? "High volatility detected. Use a wide buffer to protect against supplier price spikes."
-                  : activeVolatility > 5
-                  ? "Moderate variation. A standard margin ensures healthy profits while staying competitive."
-                  : "Stable market. Keep margins lean and competitive to secure high-volume agreements."}
-              </p>
-            </div>
-
-            <a
-              href="/dashboard"
-              className="button button-primary"
-              style={{ textAlign: "center", fontSize: "12px", padding: "10px 16px" }}
-            >
-              Price an Item in Overview →
-            </a>
-          </div>
-        </section>
-
-      </div>
-
-      {/* ─── Supplier Scorecard — Visual Cards ─── */}
-      <section className="panel">
-        <div className="panel-header" style={{ marginBottom: "16px" }}>
-          <div>
-            <p className="eyebrow">Competitiveness Ranking</p>
-            <h2>Supplier Scorecard</h2>
-          </div>
-          <span className="badge">{supplierAverages.length} vendors</span>
-        </div>
-
-        {supplierAverages.length === 0 ? (
-          <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: "13px" }}>No supplier data for current filters.</p>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
-            {supplierAverages.map((sup, idx) => {
-              const color = SUPPLIER_COLORS[suppliers.findIndex(s => s.id === sup.id) % SUPPLIER_COLORS.length] || "#3b82f6";
-              const isLeader = idx === 0;
-              const devPct = Math.min(100, (Math.abs(sup.avgDeviation) / maxAbsDev) * 100);
-              const devColor = sup.avgDeviation < 0 ? "var(--success)" : "var(--danger)";
-              return (
-                <div key={sup.id} style={{
-                  padding: "16px", borderRadius: "12px", border: `2px solid ${isLeader ? color : "var(--border-light)"}`,
-                  background: isLeader ? `${color}0d` : "var(--bg-subtle)",
-                  position: "relative", display: "flex", flexDirection: "column", gap: "10px"
-                }}>
-                  {isLeader && (
-                    <span style={{ position: "absolute", top: "10px", right: "10px", fontSize: "9px", fontWeight: 800, background: color, color: "#fff", padding: "2px 7px", borderRadius: "10px", textTransform: "uppercase" }}>
-                      Cost Leader
-                    </span>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: "13px" }}>#{idx + 1} {sup.name}</span>
-                  </div>
-
-                  {/* Deviation bar */}
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-muted)", marginBottom: "5px" }}>
-                      <span>vs. Market Avg</span>
-                      <span style={{ fontWeight: 800, color: devColor }}>{sup.avgDeviation < 0 ? "" : "+"}{sup.avgDeviation.toFixed(1)}%</span>
-                    </div>
-                    <div style={{ height: "7px", borderRadius: "4px", background: "var(--bg-muted)", overflow: "hidden" }}>
-                      <div style={{ width: `${devPct}%`, height: "100%", borderRadius: "4px", background: devColor }} />
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    <div style={{ background: "var(--bg-elevated)", borderRadius: "8px", padding: "8px 10px" }}>
-                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "3px" }}>Avg Price</div>
-                      <div style={{ fontWeight: 800, fontSize: "13px", color: "var(--text-primary)" }}>{formatCurrency(sup.avgPrice)}</div>
-                    </div>
-                    <div style={{ background: "var(--bg-elevated)", borderRadius: "8px", padding: "8px 10px" }}>
-                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "3px" }}>Coverage</div>
-                      <div style={{ fontWeight: 800, fontSize: "13px", color: sup.participationRate < 100 ? "var(--warning)" : "var(--success)" }}>
-                        {sup.participationRate.toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center" }}>{sup.quotesCount} quotes logged</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ─── Category Matrix Table (Category mode only) ─── */}
-      {viewMode === "category" && itemsStats.length > 0 && (
-        <section className="panel">
-          <div className="panel-header" style={{ marginBottom: "16px" }}>
-            <div>
-              <p className="eyebrow">Category Matrix</p>
-              <h2>Products Volatility & Pricing Spread</h2>
-            </div>
-            <span className="badge">{itemsStats.length} items</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {itemsStats.map((row) => {
-              const isMostVolatile = mostVolatileItem && row.itemId === mostVolatileItem.itemId;
-              const isMostStable = mostStableItem && row.itemId === mostStableItem.itemId;
-              const riskColor = row.spreadPct > 15 ? "var(--danger)" : row.spreadPct > 5 ? "var(--warning)" : "var(--success)";
-              const barW = Math.max(2, Math.min(100, row.spreadPct * 3));
-              return (
-                <div key={row.itemId} style={{
-                  display: "grid", gridTemplateColumns: "1fr auto auto auto auto",
-                  gap: "12px", alignItems: "center",
-                  padding: "12px 16px", borderRadius: "10px",
-                  background: "var(--bg-subtle)", border: "1px solid var(--border-light)"
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "13px" }}>{row.itemName}</div>
-                    <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>
-                      <div style={{ height: "5px", borderRadius: "3px", background: "var(--bg-muted)", overflow: "hidden", width: "80px", display: "inline-block" }}>
-                        <div style={{ width: `${barW}%`, height: "100%", borderRadius: "3px", background: riskColor }} />
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", fontSize: "11px", color: "var(--text-muted)" }}>{row.unit}</div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase" }}>Min → Max</div>
-                    <div style={{ fontSize: "12px", fontWeight: 700 }}>
-                      <span style={{ color: "var(--success)" }}>{formatCurrency(row.min)}</span>
-                      <span style={{ color: "var(--text-muted)", margin: "0 4px" }}>→</span>
-                      <span style={{ color: "var(--danger)" }}>{formatCurrency(row.max)}</span>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase" }}>Spread</div>
-                    <div style={{ fontWeight: 800, fontSize: "13px", color: riskColor }}>{row.spreadPct.toFixed(1)}%</div>
-                  </div>
-                  <div>
-                    {isMostVolatile ? (
-                      <span className="badge badge-danger" style={{ fontSize: "9px" }}>Most Volatile</span>
-                    ) : isMostStable ? (
-                      <span className="badge badge-success" style={{ fontSize: "9px" }}>Most Stable</span>
-                    ) : (
-                      <span className="badge" style={{ fontSize: "9px" }}>{row.volatility}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {/* Premium Analytics Dashboard (client component) */}
+      <AnalyticsDashboard
+        viewMode={viewMode}
+        selectedItemName={selectedItem?.name}
+        avgPrice={avgPrice}
+        minPrice={minPrice}
+        maxPrice={maxPrice}
+        stdDev={stdDev}
+        fluctuationPct={fluctuationPct}
+        totalQuotes={totalQuotes}
+        volatilityLevel={volatilityLevel}
+        volatilityAccent={volatilityAccent}
+        activeVolatility={activeVolatility}
+        strategyTitle={strategyTitle}
+        strategyMarkup={strategyMarkup}
+        strategyBadgeClass={strategyBadgeClass}
+        insights={insights}
+        momWithData={momWithData}
+        momMax={momMax}
+        momMin={momMin}
+        momRange={momRange}
+        supplierAverages={supplierAverages}
+        maxAbsDev={maxAbsDev}
+        itemsStats={viewMode === "category" ? itemsStats : []}
+        mostVolatileItemId={mostVolatileItem?.itemId}
+        mostStableItemId={mostStableItem?.itemId}
+        dashboardHref="/dashboard"
+        chart={
+          selectedItem && (
+            <AnalyticsChart
+              history={analyticsData}
+              months={monthsInRange}
+              groupMode={viewMode === "category" ? "item" : "supplier"}
+            />
+          )
+        }
+      />
 
     </div>
   );

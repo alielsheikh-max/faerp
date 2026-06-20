@@ -16,9 +16,10 @@ const ROLE_COLORS: Record<RoleCode, { badge: string; dot: string }> = {
   SC: { badge: "#818cf8", dot: "#6366f1" },
   WH: { badge: "#34d399", dot: "#10b981" },
   SA: { badge: "#fbbf24", dot: "#f59e0b" },
+  AD: { badge: "#ec4899", dot: "#db2777" },
 };
 
-export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number }) {
+export function AppShell({ role, children, searchIndex, pendingRequests = 0, ackCount = 0 }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number; ackCount?: number }) {
   const { t, toggleLocale, isRTL, locale } = useI18n();
   const pathname = usePathname();
   const colors = ROLE_COLORS[role];
@@ -39,22 +40,64 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
   };
 
   // Nav items defined here so they pick up translations
-  const NAV_BY_ROLE: Record<RoleCode, Array<{ href: string; labelKey: "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"; icon: string; exact?: boolean; pendingKey?: "scApprovals" | "whApprovals" }>> = {
+  type NavLabelKey = "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"|"nav.suppliers"|"nav.items"|"nav.notifications"|"nav.pricing"|"nav.categoryPricing"|"nav.itemPricing"|"nav.referenceData"|"nav.about"|"nav.activityLog";
+  type NavItem = {
+    href: string; labelKey: NavLabelKey; icon: string;
+    exact?: boolean;
+    iconOnly?: boolean;     // renders as compact icon button in top tray
+    activePrefix?: string;  // overrides href for group-expansion check
+    pendingKey?: "scApprovals" | "whApprovals" | "ackCount";
+    children?: Array<{ href: string; labelKey: NavLabelKey; icon: string; exact?: boolean }>;
+  };
+
+  const NAV_BY_ROLE: Record<RoleCode, NavItem[]> = {
     WH: [
       { href: "/dashboard",                        labelKey: "nav.overview",        icon: "⊞",  exact: true },
       { href: "/dashboard/purchasing",             labelKey: "nav.priceCollection", icon: "📋", exact: true },
       { href: "/dashboard/purchasing/approvals",   labelKey: "nav.approvals",       icon: "🔔", pendingKey: "whApprovals" },
+      { href: "/dashboard/admin/suppliers",        labelKey: "nav.suppliers",       icon: "🏭" },
+      { href: "/dashboard/admin/items",            labelKey: "nav.items",           icon: "📦" },
     ],
     SC: [
-      { href: "/dashboard",                   labelKey: "nav.overview",    icon: "⊞",  exact: true },
-      { href: "/dashboard/manager/analytics", labelKey: "nav.analytics",   icon: "📈" },
-      { href: "/dashboard/sales",             labelKey: "nav.salesView",   icon: "💰" },
-      { href: "/dashboard/reports",           labelKey: "nav.reports",     icon: "📄" },
-      { href: "/dashboard/approvals",         labelKey: "nav.approvals",   icon: "🔔", pendingKey: "scApprovals" },
-      { href: "/dashboard/admin",             labelKey: "nav.admin",       icon: "⚙️" },
+      // ── Icon-only quick-access tray (top of sidebar) ─────────────────
+      { href: "/dashboard/approvals",     labelKey: "nav.approvals",     icon: "🔔", pendingKey: "scApprovals", iconOnly: true },
+      { href: "/dashboard/notifications", labelKey: "nav.notifications", icon: "📨", pendingKey: "ackCount",    iconOnly: true },
+      // ── Regular navigation ────────────────────────────────────────────
+      { href: "/dashboard",                      labelKey: "nav.overview",  icon: "⊞", exact: true },
+      { href: "/dashboard/manager/analytics",    labelKey: "nav.analytics", icon: "📈" },
+      {
+        href: "/dashboard/pricing",
+        labelKey: "nav.pricing",
+        icon: "🧮",
+        children: [
+          { href: "/dashboard/pricing",          labelKey: "nav.itemPricing",     icon: "📐", exact: true },
+          { href: "/dashboard/pricing/category", labelKey: "nav.categoryPricing", icon: "📊" },
+        ],
+      },
+      { href: "/dashboard/sales",   labelKey: "nav.salesView", icon: "💰" },
+      { href: "/dashboard/reports", labelKey: "nav.reports",   icon: "📄" },
+      // ── Reference data (grouped) ──────────────────────────────────────
+      {
+        href: "/dashboard/admin/suppliers",  // safe for SC (no AD-only page)
+        activePrefix: "/dashboard/admin",    // expand when on any /admin/* page
+        labelKey: "nav.referenceData",
+        icon: "🗂️",
+        children: [
+          { href: "/dashboard/admin/suppliers", labelKey: "nav.suppliers", icon: "🏭" },
+          { href: "/dashboard/admin/items",     labelKey: "nav.items",     icon: "📦" },
+        ],
+      },
     ],
     SA: [
-      { href: "/dashboard", labelKey: "nav.approvedPriceList", icon: "💰", exact: true },
+      { href: "/dashboard",               labelKey: "nav.approvedPriceList", icon: "💰", exact: true },
+      { href: "/dashboard/notifications", labelKey: "nav.notifications",     icon: "📨", pendingKey: "ackCount" },
+    ],
+    AD: [
+      { href: "/dashboard/admin",           labelKey: "nav.admin",       icon: "⚙️", exact: true },
+      { href: "/dashboard/admin/suppliers", labelKey: "nav.suppliers",   icon: "🏭", exact: true },
+      { href: "/dashboard/admin/items",     labelKey: "nav.items",       icon: "📦", exact: true },
+      { href: "/dashboard/admin/activity",  labelKey: "nav.activityLog", icon: "📜", exact: true },
+      { href: "/dashboard/admin/about",     labelKey: "nav.about",       icon: "ℹ️", exact: true },
     ],
   };
 
@@ -64,16 +107,64 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
 
   return (
     <div className="app-shell">
+
+      {/* ── Floating alert pills — fixed top-right (RTL: top-left), always visible when pending ── */}
+      {(pendingRequests > 0 || ackCount > 0) && (
+        <div className="no-print" style={{
+          position: "fixed", top: "14px", insetInlineEnd: "20px",
+          display: "flex", gap: "8px", zIndex: 600,
+          pointerEvents: "auto",
+        }}>
+          {pendingRequests > 0 && (role === "SC" || role === "WH") && (
+            <Link
+              href={role === "WH" ? "/dashboard/purchasing/approvals" : "/dashboard/approvals"}
+              style={{
+                display: "flex", alignItems: "center", gap: "7px",
+                padding: "8px 16px", borderRadius: "99px",
+                background: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
+                color: "#fff", fontWeight: 800, fontSize: "12px",
+                textDecoration: "none", boxShadow: "0 4px 18px rgba(245,158,11,0.55)",
+                animation: "pulse-ring 2s ease-out infinite",
+                border: "1.5px solid rgba(255,255,255,0.25)",
+                backdropFilter: "blur(4px)",
+                transition: "transform 150ms, box-shadow 150ms",
+                direction: "ltr",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(245,158,11,0.7)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(245,158,11,0.55)"; }}
+            >
+              <span style={{ fontSize: "14px" }}>🔔</span>
+              <span>{pendingRequests} {t("shell.approvalsPending")}</span>
+            </Link>
+          )}
+          {ackCount > 0 && (
+            <Link
+              href="/dashboard/notifications"
+              style={{
+                display: "flex", alignItems: "center", gap: "7px",
+                padding: "8px 16px", borderRadius: "99px",
+                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                color: "#fff", fontWeight: 800, fontSize: "12px",
+                textDecoration: "none", boxShadow: "0 4px 18px rgba(99,102,241,0.5)",
+                border: "1.5px solid rgba(255,255,255,0.25)",
+                transition: "transform 150ms, box-shadow 150ms",
+                direction: "ltr",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(99,102,241,0.7)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(99,102,241,0.5)"; }}
+            >
+              <span style={{ fontSize: "14px" }}>📨</span>
+              <span>{ackCount} {t("shell.newNotifications")}</span>
+            </Link>
+          )}
+        </div>
+      )}
+
       <aside className="sidebar">
         {/* Brand */}
         <div className="brand-block">
           <div className="brand-mark">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <rect x="2" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.9)"/>
-              <rect x="12" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.55)"/>
-              <rect x="7" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.75)"/>
-              <rect x="4" y="17" width="14" height="2.5" rx="1.25" fill="rgba(255,255,255,0.4)"/>
-            </svg>
+            <img src="/faerp logo.svg" style={{ width: "28px", height: "28px", objectFit: "contain" }} alt="Logo" />
           </div>
           <div>
             <p className="eyebrow">{t("app.tagline")}</p>
@@ -81,32 +172,137 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
           </div>
         </div>
 
-        {/* Role identity */}
+        {/* Role identity — compact, no description */}
         <div style={{
-          padding: "14px 16px", margin: "16px 12px 12px",
+          padding: "10px 14px", margin: "12px 12px 8px",
           background: "rgba(255,255,255,0.10)",
           border: "1px solid rgba(255,255,255,0.18)",
-          borderRadius: "14px", display: "flex", flexDirection: "column" as const, gap: "6px",
+          borderRadius: "12px", display: "flex", alignItems: "center", gap: "8px",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: "#a7f3d0", boxShadow: "0 0 8px rgba(167,243,208,0.9)", animation: "pulse-ring 2.5s ease-out infinite" }} />
-            <span style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.14em", color: "rgba(255,255,255,0.8)" }}>
-              {role} · {t("role.activeSession")}
-            </span>
+          <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: "#a7f3d0", boxShadow: "0 0 8px rgba(167,243,208,0.9)", animation: "pulse-ring 2.5s ease-out infinite", flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.12em", color: "rgba(255,255,255,0.65)" }}>{role} · {t("role.activeSession")}</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{roleTitle}</div>
           </div>
-          <div style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>{roleTitle}</div>
-          <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.7)", lineHeight: 1.4 }}>{roleDesc}</div>
         </div>
 
         {/* Navigation */}
         <div className="nav-section-label">{t("nav.navigation")}</div>
+
+        {/* ── Icon-only tray (Approvals + Notifications for SC) ── */}
+        {navItems.some(i => i.iconOnly) && (
+          <div style={{ display: "flex", gap: "8px", padding: "0 12px", marginBottom: "10px" }}>
+            {navItems.filter(i => i.iconOnly).map(item => {
+              const count =
+                item.pendingKey === "scApprovals" ? pendingRequests :
+                item.pendingKey === "ackCount"    ? ackCount : 0;
+              const isActive = pathname.startsWith(item.href);
+              const badgeBg  = item.pendingKey === "scApprovals" ? "#ef4444" : "#6366f1";
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={t(item.labelKey)}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    height: "42px", borderRadius: "12px", position: "relative",
+                    textDecoration: "none",
+                    background: isActive
+                      ? "rgba(255,255,255,0.22)"
+                      : count > 0
+                        ? "rgba(255,255,255,0.14)"
+                        : "rgba(255,255,255,0.08)",
+                    border: isActive
+                      ? "1.5px solid rgba(255,255,255,0.4)"
+                      : "1px solid rgba(255,255,255,0.15)",
+                    boxShadow: count > 0 && !isActive ? `0 0 12px ${badgeBg}50` : "none",
+                    transition: "background 150ms, border 150ms, box-shadow 150ms",
+                  }}
+                >
+                  <span style={{ fontSize: "18px", lineHeight: 1 }}>{item.icon}</span>
+                  {count > 0 && (
+                    <span style={{
+                      position: "absolute", top: "-5px", insetInlineEnd: "-5px",
+                      minWidth: "18px", height: "18px", padding: "0 4px",
+                      borderRadius: "99px", background: badgeBg,
+                      color: "#fff", fontSize: "9px", fontWeight: 900,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      border: "2px solid var(--sidebar-bg, #1e1b4b)",
+                      animation: "pulse-ring 2s ease-out infinite",
+                    }}>
+                      {count > 9 ? "9+" : count}
+                    </span>
+                  )}
+                  {isActive && (
+                    <span style={{
+                      position: "absolute", bottom: "5px",
+                      width: "4px", height: "4px", borderRadius: "50%",
+                      background: "var(--primary)", boxShadow: "0 0 6px rgba(99,102,241,0.9)",
+                    }} />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
         <nav className="nav-stack">
-          {navItems.map((item) => {
+          {navItems.filter(i => !i.iconOnly).map((item) => {
+            // ── Grouped item (has sub-tabs) ────────────────────────────────
+            if (item.children) {
+              const isGroupActive = pathname.startsWith(item.activePrefix ?? item.href);
+              return (
+                <div key={item.href}>
+                  {/* Parent link */}
+                  <Link href={item.href} className={`nav-link ${isGroupActive ? "active" : ""}`}
+                    style={{ justifyContent: "space-between" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "15px", width: "20px", textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
+                      <span>{t(item.labelKey)}</span>
+                    </span>
+                    <span style={{ fontSize: "10px", opacity: 0.7, marginInlineEnd: isGroupActive ? "6px" : "2px" }}>
+                      {isGroupActive ? "▾" : "▸"}
+                    </span>
+                  </Link>
+                  {/* Sub-items — visible when group is active */}
+                  {isGroupActive && (
+                    <div style={{
+                      marginInlineStart: "18px",
+                      marginTop: "2px",
+                      marginBottom: "4px",
+                      borderInlineStart: "2px solid rgba(255,255,255,0.18)",
+                      paddingInlineStart: "8px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}>
+                      {item.children.map(child => {
+                        const isChildActive = child.exact ? pathname === child.href : pathname.startsWith(child.href);
+                        return (
+                          <Link key={child.href} href={child.href}
+                            className={`nav-link ${isChildActive ? "active" : ""}`}
+                            style={{ fontSize: "12px", padding: "6px 10px", minHeight: "32px" }}>
+                            <span style={{ fontSize: "13px", width: "18px", textAlign: "center", flexShrink: 0 }}>{child.icon}</span>
+                            <span>{t(child.labelKey)}</span>
+                            {isChildActive && (
+                              <span style={{ marginInlineStart: "auto", width: "5px", height: "5px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 6px rgba(99,102,241,0.8)", flexShrink: 0 }} />
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // ── Standard flat nav item ─────────────────────────────────────
             const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             const badgeCount =
               item.pendingKey === "scApprovals" && role === "SC" ? pendingRequests :
               item.pendingKey === "whApprovals" && role === "WH" ? pendingRequests :
-              item.labelKey === "nav.admin" && role === "SC" ? 0 : 0;
+              item.pendingKey === "ackCount" ? ackCount :
+              0;
             const showBadge = badgeCount > 0;
             return (
               <Link key={item.href} href={item.href} className={`nav-link ${isActive ? "active" : ""}`}>
@@ -123,8 +319,8 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
                     {badgeCount}
                   </span>
                 )}
-                {isActive && (
-                  <span className="nav-active-dot" style={{ marginLeft: "auto", width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 8px rgba(99,102,241,0.8)", flexShrink: 0 }} />
+                {isActive && !showBadge && (
+                  <span className="nav-active-dot" style={{ marginInlineStart: "auto", width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 8px rgba(99,102,241,0.8)", flexShrink: 0 }} />
                 )}
               </Link>
             );
@@ -135,51 +331,52 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0 }: {
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px", padding: "12px", flexShrink: 0 }}>
 
           {/* Universal Search */}
-          {(role === "WH" || role === "SC") && searchIndex && (
+          {(role === "WH" || role === "SC" || role === "SA") && searchIndex && (
             <UniversalSearch index={searchIndex} role={role} />
           )}
 
           {/* System status */}
-          <div style={{ padding: "10px 14px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ padding: "8px 12px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
             <span className="pulse-dot" />
             <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.8)" }}>{t("sidebar.systemOnline")}</span>
           </div>
 
-          {/* Language toggle */}
-          <button
-            type="button"
-            onClick={toggleLocale}
-            className="button button-secondary button-block"
-            style={{ fontSize: "13px", padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", cursor: "pointer", fontWeight: 700, background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.22)", color: "#ffffff" }}
-          >
-            <span>🌐</span>
-            {t("sidebar.langToggle")}
-          </button>
-
-          {/* Theme toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="button button-secondary button-block"
-            style={{ fontSize: "13px", padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", cursor: "pointer", background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.22)", color: "#ffffff" }}
-          >
-            {theme === "dark" ? `☀️ ${t("sidebar.lightMode")}` : `🌙 ${t("sidebar.darkMode")}`}
-          </button>
-
-          {/* Sign out */}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await fetch("/api/auth/logout", { method: "POST" });
-              } catch (e) {}
-              window.location.href = "/";
-            }}
-            className="button button-secondary button-block"
-            style={{ fontSize: "13px", padding: "10px", background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.22)", color: "#ffffff", cursor: "pointer" }}
-          >
-            {t("sidebar.signOut")}
-          </button>
+          {/* Icon button row: lang · theme · sign out */}
+          <div style={{ display: "flex", gap: "6px", justifyContent: "space-between" }}>
+            <button
+              type="button"
+              onClick={toggleLocale}
+              className="sidebar-icon-btn"
+              style={{ flex: 1 }}
+              data-tooltip={t("sidebar.langToggle")}
+              aria-label={t("sidebar.langToggle")}
+            >
+              🌐
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="sidebar-icon-btn"
+              style={{ flex: 1 }}
+              data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+              aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try { await fetch("/api/auth/logout", { method: "POST" }); } catch (e) {}
+                window.location.href = "/";
+              }}
+              className="sidebar-icon-btn"
+              style={{ flex: 1 }}
+              data-tooltip={t("sidebar.signOut")}
+              aria-label={t("sidebar.signOut")}
+            >
+              🚪
+            </button>
+          </div>
         </div>
       </aside>
 
