@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { useI18n } from "@/lib/i18n-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,31 +44,50 @@ const CAT_BARS = ["#6366f1","#10b981","#f59e0b","#ef4444","#06b6d4","#ec4899","#
 // ── KPI Strip ──────────────────────────────────────────────────────────────
 
 export function ScKpiStrip({ pricedCount, totalActiveItems, pendingCount, quotesThisMonth, suppliersThisMonth, categoriesComplete, totalCategories }: KpiStripProps) {
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
+
   const coveragePct = totalActiveItems > 0 ? Math.round(pricedCount / totalActiveItems * 100) : 0;
   const catPct = totalCategories > 0 ? Math.round(categoriesComplete / totalCategories * 100) : 0;
 
   const chips = [
     {
-      icon: "📦", label: "Items Priced", value: `${pricedCount}/${totalActiveItems}`,
-      sub: `${coveragePct}% coverage`, progress: coveragePct,
+      icon: "📦",
+      label: isAr ? "الأصناف المسعرة" : "Items Priced",
+      value: `${pricedCount}/${totalActiveItems}`,
+      sub: isAr ? `تغطية بنسبة ${coveragePct}%` : `${coveragePct}% coverage`, progress: coveragePct,
       color: "#6366f1", bg: "rgba(99,102,241,0.07)", border: "rgba(99,102,241,0.2)",
     },
     {
-      icon: "📂", label: "Categories", value: `${categoriesComplete}/${totalCategories}`,
-      sub: categoriesComplete === totalCategories ? "All priced ✅" : `${catPct}% complete`,
+      icon: "📂",
+      label: isAr ? "الفئات" : "Categories",
+      value: `${categoriesComplete}/${totalCategories}`,
+      sub: categoriesComplete === totalCategories
+        ? (isAr ? "تم تسعير الكل ✅" : "All priced ✅")
+        : (isAr ? `اكتمل بنسبة ${catPct}%` : `${catPct}% complete`),
       progress: catPct,
       color: "#10b981", bg: "rgba(16,185,129,0.07)", border: "rgba(16,185,129,0.2)",
     },
     {
-      icon: "🗣️", label: "Supplier Quotes", value: String(quotesThisMonth),
-      sub: `${suppliersThisMonth} supplier${suppliersThisMonth !== 1 ? "s" : ""} active`,
+      icon: "🗣️",
+      label: isAr ? "عروض الموردين" : "Supplier Quotes",
+      value: String(quotesThisMonth),
+      sub: isAr
+        ? `${suppliersThisMonth} مورد(ين) نشطين`
+        : `${suppliersThisMonth} supplier${suppliersThisMonth !== 1 ? "s" : ""} active`,
       color: "#8b5cf6", bg: "rgba(139,92,246,0.07)", border: "rgba(139,92,246,0.2)",
     },
     pendingCount > 0
-      ? { icon: "🔔", label: "Pending Approval", value: String(pendingCount), sub: "click to review",
+      ? { icon: "🔔",
+          label: isAr ? "في انتظار الموافقة" : "Pending Approval",
+          value: String(pendingCount),
+          sub: isAr ? "انقر للمراجعة" : "click to review",
           color: "#f59e0b", bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.35)",
           href: "/dashboard/approvals" }
-      : { icon: "✅", label: "Approvals", value: "Clear", sub: "no pending requests",
+      : { icon: "✅",
+          label: isAr ? "الموافقات" : "Approvals",
+          value: isAr ? "مكتمل" : "Clear",
+          sub: isAr ? "لا توجد طلبات معلقة" : "no pending requests",
           color: "#10b981", bg: "rgba(16,185,129,0.07)", border: "rgba(16,185,129,0.2)" },
   ];
 
@@ -108,6 +128,8 @@ export function ScKpiStrip({ pricedCount, totalActiveItems, pendingCount, quotes
 // ── Insights Sidebar ───────────────────────────────────────────────────────
 
 export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentChanges }: SidebarProps) {
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   const maxQuotes = supplierStats[0]?.quotesThisMonth ?? 1;
 
   return (
@@ -123,10 +145,12 @@ export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentC
         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
           <span style={{ fontSize: "14px" }}>📂</span>
           <span style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-            Category Coverage
+            {isAr ? "تغطية الفئات" : "Category Coverage"}
           </span>
           <span style={{ marginInlineStart: "auto", fontSize: "9.5px", color: "var(--text-muted)" }}>
-            {categoryStats.filter(c => c.pct === 100).length}/{categoryStats.length} done
+            {isAr 
+              ? `تم إنجاز ${categoryStats.filter(c => c.pct === 100).length}/${categoryStats.length}`
+              : `${categoryStats.filter(c => c.pct === 100).length}/${categoryStats.length} done`}
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -174,7 +198,7 @@ export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentC
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
             <span style={{ fontSize: "14px" }}>🔄</span>
             <span style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-              Recent Price Changes
+              {isAr ? "تعديلات الأسعار الأخيرة" : "Recent Price Changes"}
             </span>
             <span style={{
               marginInlineStart: "auto", fontSize: "9px", fontWeight: 700,
@@ -219,7 +243,7 @@ export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentC
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
             <span style={{ fontSize: "14px" }}>🚛</span>
             <span style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-              Supplier Quotes
+              {isAr ? "عروض أسعار الموردين" : "Supplier Quotes"}
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
@@ -267,8 +291,8 @@ export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentC
         >
           <span style={{ fontSize: "20px" }}>📊</span>
           <div>
-            <div style={{ fontSize: "12px", fontWeight: 800, color: "#0891b2" }}>Category Pricing</div>
-            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Bulk markup by category →</div>
+            <div style={{ fontSize: "12px", fontWeight: 800, color: "#0891b2" }}>{isAr ? "تسعير الفئات" : "Category Pricing"}</div>
+            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{isAr ? "تحديد هامش الفئات جماعياً ←" : "Bulk markup by category →"}</div>
           </div>
         </div>
       </Link>

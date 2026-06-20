@@ -7,8 +7,8 @@ export type Locale = "en" | "ar";
 
 export const translations = {
   // ── App / Brand ───────────────────────────────────────────────────────────
-  "app.name":               { en: "FAERP",              ar: "فيرب" },
-  "app.tagline":            { en: "Enterprise ERP",     ar: "نظام تخطيط موارد المؤسسات" },
+  "app.name":               { en: "FAERP",              ar: "FAERP" },
+  "app.tagline":            { en: "Products Pricing System", ar: "نظام تسعير منتجات" },
 
   // ── Nav labels ────────────────────────────────────────────────────────────
   "nav.overview":           { en: "Overview",           ar: "نظرة عامة" },
@@ -30,16 +30,16 @@ export const translations = {
   "nav.activityLog":        { en: "Activity Log",          ar: "سجل النشاط" },
   "nav.about":              { en: "About App",          ar: "حول التطبيق" },
   "about.eyebrow":          { en: "System Info",        ar: "معلومات النظام" },
-  "about.title":            { en: "About FAERP",        ar: "حول فيرب" },
+  "about.title":            { en: "About FAERP",        ar: "حول FAERP" },
   "about.desc":             { en: "Overview of platform design, specifications, and architecture.", ar: "نبذة عن تصميم المنصة ومواصفاتها وبنيتها الهيكلية." },
   "about.functionalityTitle": { en: "Platform Capabilities", ar: "قدرات المنصة" },
-  "about.functionalityText": { en: "FAERP is a modern, high-performance enterprise resource planning utility designed for localized supply chain orchestration. It features multi-role dashboard panels, a real-time price collection workspace with inline notes recording, automated volume-tiered margin computations, dynamic currency-converted export listings (USD/EGP), and standardized document exports via XLSX and PDF formats.", ar: "فيرب هو نظام حديث وعالي الأداء لتخطيط موارد المؤسسات، مصمم خصيصاً لتنسيق سلاسل الإمداد المحلية. يتميز بلوحات معلومات متعددة المهام، مساحة عمل لجمع الأسعار في الوقت الفعلي مع تسجيل الملاحظات المضمنة، حسابات هوامش تلقائية مبنية على شرائح الحجم، قوائم أسعار مصدّرة بالعملات الأجنبية والمحلية (دولار/جنيه)، بالإضافة إلى تصدير مستندات قياسية بصيغتي Excel وPDF." },
+  "about.functionalityText": { en: "FAERP is a modern, high-performance enterprise resource planning utility designed for localized supply chain orchestration. It features multi-role dashboard panels, a real-time price collection workspace with inline notes recording, automated volume-tiered margin computations, dynamic currency-converted export listings (USD/EGP), and standardized document exports via XLSX and PDF formats.", ar: "FAERP هو نظام حديث وعالي الأداء لتخطيط موارد المؤسسات، مصمم خصيصاً لتنسيق سلاسل الإمداد المحلية. يتميز بلوحات معلومات متعددة المهام، مساحة عمل لجمع الأسعار في الوقت الفعلي مع تسجيل الملاحظات المضمنة، حسابات هوامش تلقائية مبنية على شرائح الحجم، قوائم أسعار مصدّرة بالعملات الأجنبية والمحلية (دولار/جنيه)، بالإضافة إلى تصدير مستندات قياسية بصيغتي Excel وPDF." },
   "about.architectureTitle": { en: "Technical Architecture", ar: "البنية البرمجية" },
   "about.architectureText": { en: "Built using Next.js with React Server Components, TypeScript, and local SQLite data store layer. Documents are compiled on-demand using modern font-embeddings for multilingual layout consistency, and spreadsheets are optimized via unified style-fitting patterns.", ar: "تم بناء النظام باستخدام إطار عمل Next.js مع مكونات خادم React، ولغة TypeScript، وطبقة تخزين بيانات SQLite محلية. يتم إنشاء التقارير وتجميعها عند الطلب باستخدام خطوط مدمجة لضمان اتساق التخطيط ثنائي اللغة، كما تم تحسين جداول البيانات عبر أنماط توحيد التنسيقات." },
   "about.engineeringTitle": { en: "Development & Engineering", ar: "التطوير والهندسة" },
   "about.engineeringText": { en: "Developed & Engineered by Ali Elsheikh", ar: "تم التطوير والهندسة بواسطة علي الشيخ" },
   "about.copyrightTitle":   { en: "Copyright & Licensing", ar: "حقوق الطبع والنشر والتراخيص" },
-  "about.copyrightText":    { en: "Copyright © 2026 FAERP. All rights reserved. On-Premises Edition.", ar: "حقوق الطبع والنشر © 2026 فيرب. جميع الحقوق محفوظة. نسخة التشغيل المحلي." },
+  "about.copyrightText":    { en: "Copyright © 2026 FAERP. All rights reserved. On-Premises Edition.", ar: "حقوق الطبع والنشر © 2026 FAERP. جميع الحقوق محفوظة. نسخة التشغيل المحلي." },
 
 
   // ── Role labels ───────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export const translations = {
   "login.feature2":         { en: "Local SQLite relational integrity",         ar: "قاعدة بيانات SQLite محلية بنزاهة علائقية" },
   "login.feature3":         { en: "Automatic price collection spreadsheets",   ar: "جداول تجميع الأسعار التلقائية" },
   "login.feature4":         { en: "Flexible percentage and fixed markups",     ar: "هوامش ربح مرنة بالنسبة المئوية والمبلغ الثابت" },
-  "login.copyright":        { en: "© 2026 FAERP. All rights reserved. On-Premises Deployment.", ar: "© 2026 فيرب. جميع الحقوق محفوظة. نشر محلي." },
+  "login.copyright":        { en: "© 2026 FAERP. All rights reserved. On-Premises Deployment.", ar: "© 2026 FAERP. جميع الحقوق محفوظة. نشر محلي." },
   "login.securePortal":     { en: "Secure Portal",     ar: "بوابة آمنة" },
   "login.signIn":           { en: "Sign In",           ar: "تسجيل الدخول" },
   "login.online":           { en: "Online",            ar: "متصل" },
