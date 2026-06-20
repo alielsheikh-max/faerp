@@ -1136,7 +1136,12 @@ export default function PricingCalculator({
                       {supplierHistoryData.map((row) => (
                         <tr key={row.supplierId} style={{ borderBottom: "1px solid var(--border-light)" }}>
                           <td style={{ padding: "8px 4px", fontWeight: 600, color: "var(--text-primary)", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.supplierName}>
-                            {row.supplierName}
+                            <span
+                              onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplierId } }))}
+                              className="clickable-detail-trigger"
+                            >
+                              {row.supplierName}
+                            </span>
                           </td>
                           {row.quotes.map((price, idx) => (
                             <td key={idx} style={{ padding: "8px 4px", textAlign: "right" }}>

@@ -241,6 +241,8 @@ function initializeSchema(db: Db) {
     // T27: Support transport revision in price change requests
     "ALTER TABLE price_change_requests ADD COLUMN old_transport REAL",
     "ALTER TABLE price_change_requests ADD COLUMN new_transport REAL",
+    "ALTER TABLE price_entries ADD COLUMN negotiated_price REAL",
+    "ALTER TABLE price_entries ADD COLUMN negotiated_notes TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -356,6 +358,17 @@ function initializeSchema(db: Db) {
       acknowledged_at TEXT   NOT NULL DEFAULT (datetime('now')),
       UNIQUE(history_id),
       FOREIGN KEY (history_id) REFERENCES selling_price_history(id)
+    );
+
+    -- Activity / Audit Log — captures main business events
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor        TEXT NOT NULL,    -- username of the person
+      role         TEXT NOT NULL,    -- WH | SC | SA | AD | system
+      event_type   TEXT NOT NULL,    -- snake_case event key
+      summary      TEXT NOT NULL,    -- human-readable one-liner
+      detail       TEXT,             -- JSON blob (item name, price, month, etc.)
+      performed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 }
@@ -738,6 +751,30 @@ export function getUserByCredentials(username: string, password: string) {
         username: string;
         role: string;
         display_name: string;
+      }
+    | undefined;
+}
+
+/** Like getUserByCredentials but ignores the active flag — used to detect disabled-account logins. */
+export function getUserByUsernameAndPassword(username: string, password: string) {
+  return database()
+    .prepare(`
+      SELECT
+        id,
+        username,
+        role,
+        display_name,
+        active
+      FROM users
+      WHERE username = ? AND password = ?
+    `)
+    .get(username, password) as
+    | {
+        id: number;
+        username: string;
+        role: string;
+        display_name: string;
+        active: number;
       }
     | undefined;
 }
@@ -1179,6 +1216,9 @@ export function getRecentPriceEntries(limit = 10) {
         pe.collected_by,
         pe.notes,
         pe.recorded_at,
+        pe.negotiated_price,
+        pe.negotiated_notes,
+        pe.actual_transport,
         i.name as item_name,
         i.id as item_id,
         c.name as category_name,
@@ -1199,6 +1239,9 @@ export function getRecentPriceEntries(limit = 10) {
       collected_by: string;
       notes: string;
       recorded_at: string;
+      negotiated_price: number | null;
+      negotiated_notes: string | null;
+      actual_transport: number | null;
       item_name: string;
       item_id: number;
       category_name: string;
@@ -1446,6 +1489,8 @@ function getVolatilityRows(filters: FilterInput) {
 
   return db.prepare(`
     SELECT
+      pe.item_id as item_id,
+      pe.supplier_id as supplier_id,
       i.name as item_name,
       s.name as supplier_name,
       COUNT(*) as updates,
@@ -1460,6 +1505,8 @@ function getVolatilityRows(filters: FilterInput) {
     HAVING COUNT(*) > 1
     ORDER BY updates DESC, (MAX(pe.price) - MIN(pe.price)) DESC, item_name, supplier_name
   `).all(params) as Array<{
+    item_id: number;
+    supplier_id: number;
     item_name: string;
     supplier_name: string;
     updates: number;
@@ -2033,6 +2080,7 @@ export function getWHCollectionOverview(month: string): {
   }>;
   missing: Array<{
     category_name: string;
+    category_id: number;
     item_name: string;
     unit: string;
     supplier_name: string;
@@ -2079,8 +2127,9 @@ export function getWHCollectionOverview(month: string): {
   const missing = db.prepare(`
     SELECT
       c.name AS category_name,
+      c.id AS category_id,
       i.name AS item_name, i.unit,
-      s.name AS supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
       s.id AS supplier_id, i.id AS item_id,
       prev.price AS prev_price
     FROM items i
@@ -2093,7 +2142,7 @@ export function getWHCollectionOverview(month: string): {
     ORDER BY c.name, i.name, s.name
     LIMIT 80
   `).all(month, prevMonth) as Array<{
-    category_name: string; item_name: string; unit: string;
+    category_name: string; category_id: number; item_name: string; unit: string;
     supplier_name: string; supplier_id: number; item_id: number; prev_price: number | null;
   }>;
 
@@ -2252,6 +2301,8 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
       pe.collected_role,
       pe.notes,
       pe.actual_transport,
+      pe.negotiated_price,
+      pe.negotiated_notes,
       COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  as supplier_name,
       i.name  as item_name,
       i.unit  as item_unit,
@@ -2272,6 +2323,8 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
     collected_role: string;
     notes: string | null;
     actual_transport: number | null;
+    negotiated_price: number | null;
+    negotiated_notes: string | null;
     supplier_name: string;
     item_name: string;
     item_unit: string;
@@ -3412,5 +3465,127 @@ export function saveExchangeRate(currency: string, rate: number, source: string)
     .run(currency, rate, source);
 }
 
+export function saveNegotiatedPrice(itemId: number, supplierId: number, month: string, negotiatedPrice: number, notes: string | null): void {
+  const db = database();
+  const latestEntry = db.prepare(`
+    SELECT id FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND month = ? AND collected_role = 'WH'
+    ORDER BY recorded_at DESC, id DESC
+    LIMIT 1
+  `).get(itemId, supplierId, month) as { id: number } | undefined;
 
+  if (!latestEntry) {
+    throw new Error("No existing submitted price entry found to negotiate on.");
+  }
 
+  db.prepare(`
+    UPDATE price_entries
+    SET negotiated_price = ?, negotiated_notes = ?
+    WHERE id = ?
+  `).run(negotiatedPrice, notes, latestEntry.id);
+}
+
+export function getNegotiatedPriceEntries(month: string): any[] {
+  return database()
+    .prepare(`
+      SELECT
+        pe.id,
+        pe.item_id,
+        pe.supplier_id,
+        pe.month,
+        pe.price as original_price,
+        pe.negotiated_price,
+        pe.negotiated_notes,
+        pe.recorded_at,
+        pe.collected_by,
+        i.name as item_name,
+        c.name as category_name,
+        COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
+      FROM price_entries pe
+      JOIN items i ON i.id = pe.item_id
+      JOIN categories c ON c.id = i.category_id
+      JOIN suppliers s ON s.id = pe.supplier_id
+      WHERE pe.month = ? AND pe.negotiated_price IS NOT NULL
+      ORDER BY pe.recorded_at DESC
+    `)
+    .all(month) as any[];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ACTIVITY / AUDIT LOG
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface ActivityLogEntry {
+  id: number;
+  actor: string;
+  role: string;
+  event_type: string;
+  summary: string;
+  detail: string | null;
+  performed_at: string;
+}
+
+/** Fire-and-forget INSERT — never crashes the calling business action. */
+export function logActivity(entry: {
+  actor: string;
+  role: string;
+  eventType: string;
+  summary: string;
+  detail?: Record<string, unknown>;
+}) {
+  try {
+    database()
+      .prepare(
+        `INSERT INTO activity_log (actor, role, event_type, summary, detail)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        entry.actor,
+        entry.role,
+        entry.eventType,
+        entry.summary,
+        entry.detail ? JSON.stringify(entry.detail) : null
+      );
+  } catch {
+    // intentionally swallowed — logging must never block business logic
+  }
+}
+
+/** Paginated read with optional role / event_type / actor filters, newest-first. */
+export function getActivityLog(opts: {
+  limit?: number;
+  offset?: number;
+  role?: string;
+  eventType?: string;
+  actor?: string;
+} = {}): ActivityLogEntry[] {
+  const { limit = 100, offset = 0, role, eventType, actor } = opts;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  if (role)      { conditions.push("role = ?");       params.push(role); }
+  if (eventType) { conditions.push("event_type = ?"); params.push(eventType); }
+  if (actor)     { conditions.push("actor = ?");      params.push(actor); }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  return database()
+    .prepare(
+      `SELECT id, actor, role, event_type, summary, detail, performed_at
+       FROM activity_log ${where}
+       ORDER BY performed_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset) as ActivityLogEntry[];
+}
+
+export function countActivityLog(opts: { role?: string; eventType?: string; actor?: string } = {}): number {
+  const { role, eventType, actor } = opts;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  if (role)      { conditions.push("role = ?");       params.push(role); }
+  if (eventType) { conditions.push("event_type = ?"); params.push(eventType); }
+  if (actor)     { conditions.push("actor = ?");      params.push(actor); }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const row = database()
+    .prepare(`SELECT COUNT(*) as n FROM activity_log ${where}`)
+    .get(...params) as { n: number };
+  return row.n;
+}

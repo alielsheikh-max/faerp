@@ -110,27 +110,27 @@ function printWindow(html: string, title: string) {
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Inter',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:ltr}
-      body.rtl{direction:rtl;font-family:'Cairo',sans-serif;text-align:right}
-      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:24px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:ltr}
+      body.rtl{direction:rtl;font-family:'Readex Pro',sans-serif;text-align:right}
+      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
-      .brand-mark{width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px}
+      .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
       .report-meta{text-align:right}
       .report-meta .title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .report-meta .subtitle{font-size:11px;color:#6b7280}
-      .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
+      .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe}
       .badge-success{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
       .badge-info{background:#f0f9ff;color:#0369a1;border-color:#bae6fd}
       .badge-warning{background:#fffbeb;color:#92400e;border-color:#fcd34d}
       .badge-danger{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
-      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#6366f1;margin:20px 0 10px}
+      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#1e3a8a;margin:20px 0 10px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}
-      th{background:#f9fafb;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;padding:8px 10px;border-bottom:2px solid #e5e7eb;text-align:left}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
       .best{color:#0284c7;font-weight:800}
@@ -141,11 +141,11 @@ function printWindow(html: string, title: string) {
       .stat-box{padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}
       .stat-box .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:4px}
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
-      .cat-header{background:#f5f3ff;padding:8px 12px;font-weight:800;font-size:12px;color:#4338ca;border-left:3px solid #6366f1;margin:12px 0 6px}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:12px 0 6px}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
       .highlight-row td{background:#f0f9ff}
       .pending-row td{background:#fffbeb}
-      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4}}
+      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
     </style>
   </head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
   win.document.close();
@@ -157,7 +157,7 @@ function header(title: string, subtitle: string, month: string, stats?: Record<s
   const statsHtml = stats ? `<div class="stat-row">${Object.entries(stats).map(([lbl, val]) => `<div class="stat-box"><div class="lbl">${lbl}</div><div class="val">${val}</div></div>`).join("")}</div>` : "";
   return `<div class="report-header">
     <div class="brand">
-      <div class="brand-mark">F</div>
+      <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
       <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
     </div>
     <div class="report-meta">
@@ -722,25 +722,25 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
       worksheet["!rows"] = [
         { hpt: 35 }, // Title row
         { hpt: 10 }, // Spacer row
-        { hpt: 26 }, // Headers row
+        { hpt: 28 }, // Headers row
         ...Array(rows.length).fill({ hpt: 22 }) // Data rows
       ];
 
-      // Styles definitions
+      // Styles definitions — matching FAERP Brand Theme
       const titleStyle = {
-        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "065F46" } }, // Emerald-800
+        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } },
         alignment: { horizontal: isAr ? "right" : "left", vertical: "center" }
       };
 
       const headerStyle = {
-        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "059669" } }, // Emerald-600
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
+        fill: { fgColor: { rgb: "F1F5F9" } },
         alignment: { horizontal: "center", vertical: "center", wrapText: true },
         border: {
-          top: { style: "thin", color: { rgb: "047857" } },
-          bottom: { style: "medium", color: { rgb: "047857" } },
-          left: { style: "thin", color: { rgb: "047857" } },
-          right: { style: "thin", color: { rgb: "047857" } }
+          top: { style: "thin", color: { rgb: "CBD5E1" } },
+          bottom: { style: "medium", color: { rgb: "94A3B8" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
         }
       };
 
@@ -771,6 +771,9 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           align = "right";
         }
 
+        const priceKeywords = ["price", "sell", "avg", "low", "high", "سعر", "متوسط", "أدنى", "أقصى"];
+        const isPriceCol = priceKeywords.some(k => hClean.includes(k));
+
         return {
           font: { name: "Segoe UI", sz: 10, color: { rgb: "334155" } },
           fill: { fgColor: { rgb: bgRgb } },
@@ -780,7 +783,8 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
             bottom: { style: "thin", color: { rgb: "E2E8F0" } },
             left: { style: "thin", color: { rgb: "E2E8F0" } },
             right: { style: "thin", color: { rgb: "E2E8F0" } }
-          }
+          },
+          ...(isPriceCol && typeof cellValue === "number" ? { numFmt: '"EGP" #,##0.00' } : {})
         };
       };
 

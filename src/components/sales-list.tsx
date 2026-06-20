@@ -552,7 +552,12 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                     } : {}}>
                       <td><span className="badge">{row.category_name}</span></td>
                       <td>
-                        <strong>{row.item_name}</strong>
+                        <span
+                          onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                          className="clickable-detail-trigger"
+                        >
+                          {row.item_name}
+                        </span>
                         {hasChange && (
                           <span style={{
                             display: "inline-block", marginLeft: "8px",

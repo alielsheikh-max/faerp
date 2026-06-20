@@ -156,19 +156,19 @@ export default function RequestPricesBanner({
     };
 
     const headerStyleAD = {
-      font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
-      fill: { fgColor: { rgb: "F1F5F9" } }, // Slate-100
+      font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
       alignment: { horizontal: "center", vertical: "center", wrapText: true },
       border: {
-        top: { style: "thin", color: { rgb: "CBD5E1" } },
-        bottom: { style: "medium", color: { rgb: "94A3B8" } },
-        left: { style: "thin", color: { rgb: "CBD5E1" } },
-        right: { style: "thin", color: { rgb: "CBD5E1" } }
+        top: { style: "thin", color: { rgb: "1B357F" } },
+        bottom: { style: "medium", color: { rgb: "1B357F" } },
+        left: { style: "thin", color: { rgb: "1B357F" } },
+        right: { style: "thin", color: { rgb: "1B357F" } }
       }
     };
 
     const headerStyleE = {
-      font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
+      font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
       fill: { fgColor: { rgb: "F59E0B" } }, // Amber-500 (Gold)
       alignment: { horizontal: "center", vertical: "center", wrapText: true },
       border: {

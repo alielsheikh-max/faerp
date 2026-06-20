@@ -338,7 +338,14 @@ export default function InteractiveDashboard({
                     {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
                   </p>
                   <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
-                    {selectedItem?.name ?? "Select an item"}
+                    {selectedItem ? (
+                      <span
+                        onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: selectedItem.id } }))}
+                        className="clickable-detail-trigger"
+                      >
+                        {selectedItem.name}
+                      </span>
+                    ) : "Select an item"}
                   </h2>
                 </div>
                 {cheapestPrice !== null && avgCurrentPrice !== null && (
@@ -361,7 +368,11 @@ export default function InteractiveDashboard({
                     return (
                       <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}`, transition: "all 150ms" }}>
                         <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
-                        <span style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span
+                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier.id } }))}
+                          className="clickable-detail-trigger"
+                          style={{ flex: 1, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
                           {row.supplier.fame_name || row.supplier.name}
                         </span>
                         {isBest && <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>}

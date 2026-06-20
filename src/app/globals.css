@@ -960,10 +960,10 @@ select option { background: #fff; color: #111827; }
    LOGIN PAGE
 ═══════════════════════════════════════════════════════════════ */
 .login-page {
-  display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; padding: 24px;
+  display: flex; align-items: flex-start; justify-content: center;
+  min-height: 100vh; padding: 32px 24px;
   background: radial-gradient(circle at 10% 20%, var(--bg-base) 0%, rgba(30,58,138,0.04) 90%), var(--bg-base);
-  position: relative; overflow: hidden;
+  position: relative; overflow-y: auto;
 }
 .login-page::before {
   content: ''; position: absolute;
@@ -980,7 +980,9 @@ select option { background: #fff; color: #111827; }
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow-xl);
-  overflow: hidden; display: grid; grid-template-columns: 1.15fr 1fr;
+  overflow: visible; display: grid; grid-template-columns: 1.15fr 1fr;
+  margin: auto 0;
+  align-self: center;
 }
 /* Hero Branding Side */
 .hero-copy {
@@ -998,20 +1000,55 @@ select option { background: #fff; color: #111827; }
 .hero-brand {
   display: flex; align-items: center; gap: 12px;
 }
-.hero-brand-logo {
-  width: 40px; height: 40px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: #ffffff; font-weight: 800; font-size: 18px;
-  box-shadow: 0 4px 12px rgba(30,58,138,0.3);
+/* ── Large Brand Identity Block ─────────────────────────────── */
+.hero-brand-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  margin-bottom: 28px;
+}
+.hero-logo-tile {
+  width: 80px;
+  height: 80px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.12);
   animation: floatIcon 3.5s ease-in-out infinite;
+  flex-shrink: 0;
+  backdrop-filter: blur(8px);
+}
+.hero-logo-img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+}
+.hero-wordmark {
+  font-size: 42px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-family: 'Readex Pro Variable', -apple-system, sans-serif;
+}
+.hero-wordmark-tag {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .hero-brand-name {
   color: #ffffff; font-size: 16px; font-weight: 800;
   letter-spacing: 0.05em;
 }.hero-main-content {
-  margin: 48px 0;
+  margin: 0;
 }
 .hero-main-content h1 {
   font-size: 28px; font-weight: 800; line-height: 1.35;
@@ -1039,8 +1076,9 @@ select option { background: #fff; color: #111827; }
 
 /* Login Form Side */
 .glass-panel {
-  padding: 48px;
-  display: flex; flex-direction: column; justify-content: center; gap: 24px;
+  padding: 36px 44px;
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 20px;
+  overflow-y: auto;
 }
 .glass-panel .panel-header h2 {
   font-size: 22px; font-weight: 800; color: var(--text-primary); margin-top: 4px;
@@ -1621,9 +1659,8 @@ select option { background: #fff; color: #111827; }
 
 /* ═══════════════════════════════════════════════════════════════
    SIGN-IN TRANSITION OVERLAY
-   Full-screen animated overlay that plays when the user submits
-   a login form — covers the page with a branded fade+scale before
-   Next.js navigates to the dashboard.
+   Full-screen branded overlay shown while the login action runs.
+   Calm design: logo + app name + indigo progress bar shimmer.
 ═══════════════════════════════════════════════════════════════ */
 .signin-overlay {
   position: fixed;
@@ -1632,8 +1669,10 @@ select option { background: #fff; color: #111827; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a2035 0%, #111827 60%, #0c1120 100%);
-  animation: signinOverlayIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  background: radial-gradient(ellipse 80% 60% at 20% 10%, rgba(30,58,138,0.35), transparent 55%),
+              radial-gradient(ellipse 60% 60% at 80% 90%, rgba(99,102,241,0.18), transparent 55%),
+              #07091a;
+  animation: signinOverlayIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes signinOverlayIn {
@@ -1645,62 +1684,77 @@ select option { background: #fff; color: #111827; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  animation: signinContentRise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+  gap: 0;
+  animation: signinContentRise 0.42s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
 }
 
 @keyframes signinContentRise {
-  from { opacity: 0; transform: translateY(20px) scale(0.95); }
-  to   { opacity: 1; transform: translateY(0)   scale(1);     }
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Pulsing logo ring behind spinner */
-.signin-spinner {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: 3px solid rgba(99, 102, 241, 0.2);
-  border-top-color: #6366f1;
-  border-right-color: #818cf8;
-  animation: signinSpin 0.75s linear infinite;
-  position: relative;
+/* Logo image container */
+.signin-logo-wrap {
+  width: 80px;
+  height: 80px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(30, 58, 138, 0.4), 0 0 0 1px rgba(255,255,255,0.06);
 }
 
-.signin-spinner::before {
-  content: '';
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #4f63e7, #3b4bdb);
-  opacity: 0.9;
+.signin-logo-img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(99,102,241,0.3));
 }
 
-/* Brand icon inside spinner */
-.signin-spinner::after {
-  content: '';
-  position: absolute;
-  inset: 14px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.85);
-  animation: signinIconPulse 0.75s ease-in-out infinite alternate;
+/* App name */
+.signin-overlay-appname {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  margin-bottom: 6px;
+  font-family: 'Readex Pro Variable', -apple-system, sans-serif;
 }
 
-@keyframes signinSpin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes signinIconPulse {
-  from { opacity: 0.6; transform: scale(0.85); }
-  to   { opacity: 1;   transform: scale(1);    }
-}
-
+/* Role/status label */
 .signin-overlay-text {
-  animation: signinTextFade 0.4s ease-out 0.25s both;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.04em;
+  margin-bottom: 28px;
 }
 
-@keyframes signinTextFade {
-  from { opacity: 0; letter-spacing: 0.15em; }
-  to   { opacity: 1; letter-spacing: 0.05em; }
+/* Progress track */
+.signin-progress-track {
+  width: 180px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+/* Smooth looping shimmer bar */
+.signin-progress-bar {
+  height: 100%;
+  width: 45%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, rgba(99,102,241,0.4) 0%, #818cf8 50%, rgba(99,102,241,0.4) 100%);
+  animation: signinBarSlide 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes signinBarSlide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
 }
 
 /* Button spinner for the sign-in button itself */
@@ -1715,29 +1769,11 @@ select option { background: #fff; color: #111827; }
   flex-shrink: 0;
 }
 
-/* Shimmer progress bar at top of overlay */
-.signin-overlay::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 3px;
-  width: 100%;
-  background: linear-gradient(90deg,
-    transparent 0%,
-    #6366f1     30%,
-    #818cf8     50%,
-    #6366f1     70%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: signinProgress 1.2s ease-in-out infinite;
+@keyframes signinSpin {
+  to { transform: rotate(360deg); }
 }
 
-@keyframes signinProgress {
-  from { background-position: 200% 0; }
-  to   { background-position: -200% 0; }
-}
+
 
 /* ═══════════════════════════════════════════════════════════════
    PRINT PREVIEW PAGE OVERRIDES
@@ -1759,10 +1795,34 @@ body:has(.print-page-wrapper) .content-area {
   margin: 0 !important;
 }
 
+.print-only {
+  display: none !important;
+}
+
 @media print {
-  body:has(.print-page-wrapper) button,
-  body:has(.print-page-wrapper) .no-print {
+  .print-only {
+    display: block !important;
+  }
+
+  .sidebar,
+  .no-print,
+  button,
+  .button,
+  [data-tooltip] {
     display: none !important;
+  }
+
+  .app-shell {
+    display: block !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .content-area {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
 
@@ -1776,4 +1836,21 @@ h1, h2, h3, h4, h5, h6,
 .section-intro h1,
 .stat-card strong {
   font-family: 'Readex Pro Variable', -apple-system, sans-serif;
+}
+
+/* Clickable Detail Links */
+.clickable-detail-trigger {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border-bottom: 1.5px dashed transparent;
+  transition: color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  display: inline-block;
+}
+
+.clickable-detail-trigger:hover {
+  color: var(--primary-dark);
+  border-bottom-color: var(--primary);
+  transform: translateY(-0.5px);
 }

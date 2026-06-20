@@ -24,13 +24,13 @@ function printWindow(html: string, title: string) {
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Inter',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
-      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:24px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
+      .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
-      .brand-mark{width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px}
+      .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
       .report-meta{text-align:right}
@@ -41,20 +41,20 @@ function printWindow(html: string, title: string) {
       .stat-box .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:4px}
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
       .stat-box .sub{font-size:9px;color:#9ca3af;margin-top:2px}
-      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#6366f1;margin:20px 0 10px}
-      .cat-header{background:#f5f3ff;padding:8px 12px;font-weight:800;font-size:12px;color:#4338ca;border-left:3px solid #6366f1;margin:12px 0 6px}
+      .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#1e3a8a;margin:20px 0 10px}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:12px 0 6px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}
-      th{background:#f9fafb;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;padding:8px 10px;border-bottom:2px solid #e5e7eb;text-align:left}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
       th.num{text-align:right}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
       .num{text-align:right;font-variant-numeric:tabular-nums}
       .usd-min{color:#0284c7;font-weight:800}
-      .usd-max{color:#6366f1;font-weight:800}
+      .usd-max{color:#1e3a8a;font-weight:800}
       .muted{color:#9ca3af}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
       .highlight-row td{background:#f0f9ff}
-      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4}}
+      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
     </style>
   </head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
   win.document.close();
@@ -114,7 +114,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
 
     const headerHtml = `<div class="report-header">
       <div class="brand">
-        <div class="brand-mark">F</div>
+        <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
         <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
       </div>
       <div class="report-meta">
@@ -212,24 +212,25 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       worksheet["!rows"] = [
         { hpt: 35 },
         { hpt: 10 },
-        { hpt: 26 },
+        { hpt: 28 },
         ...Array(dataRows.length).fill({ hpt: 22 }),
       ];
 
-      /* Style definitions — identical to report-generator.tsx */
+      /* Style definitions — matching FAERP Brand Theme */
       const titleStyle = {
-        font: { name: "Segoe UI", sz: 14, bold: true, color: { rgb: "065F46" } },
+        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } },
         alignment: { horizontal: isAr ? "right" : "left", vertical: "center" },
       };
+      
       const headerStyle = {
-        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "059669" } },
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
+        fill: { fgColor: { rgb: "F1F5F9" } },
         alignment: { horizontal: "center", vertical: "center", wrapText: true },
         border: {
-          top:    { style: "thin",   color: { rgb: "047857" } },
-          bottom: { style: "medium", color: { rgb: "047857" } },
-          left:   { style: "thin",   color: { rgb: "047857" } },
-          right:  { style: "thin",   color: { rgb: "047857" } },
+          top:    { style: "thin",   color: { rgb: "CBD5E1" } },
+          bottom: { style: "medium", color: { rgb: "94A3B8" } },
+          left:   { style: "thin",   color: { rgb: "CBD5E1" } },
+          right:  { style: "thin",   color: { rgb: "CBD5E1" } },
         },
       };
 
@@ -250,7 +251,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
             left:   { style: "thin", color: { rgb: "E2E8F0" } },
             right:  { style: "thin", color: { rgb: "E2E8F0" } },
           },
-          // Highlight USD price cells in blue/green tones
+          // Highlight USD price cells in blue/purple tones
           ...(colIdx === 4 ? { font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "0369A1" } }, fill: { fgColor: { rgb: isEven ? "F0F9FF" : "E0F2FE" } } } : {}),
           ...(colIdx === 5 ? { font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "4338CA" } }, fill: { fgColor: { rgb: isEven ? "F5F3FF" : "EDE9FE" } } } : {}),
         };
@@ -270,7 +271,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       for (let row = 3; row < 3 + dataRows.length; row++) {
         for (const col of [4, 5]) {
           const cellKey = XLSX.utils.encode_cell({ r: row, c: col });
-          if (worksheet[cellKey]) worksheet[cellKey].z = "#,##0.00";
+          if (worksheet[cellKey]) worksheet[cellKey].z = "$#,##0.00";
         }
       }
 
@@ -460,10 +461,10 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       {/* ══ Fallback print doc (if window.print is triggered) ══════════ */}
       {rate && (
         <div id="usd-print-doc" style={{ display: "none" }}>
-          <div style={{ fontFamily: "Inter, sans-serif", padding: "32px 40px", color: "#111827" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #6366f1", paddingBottom: "16px", marginBottom: "24px" }}>
+          <div style={{ fontFamily: "Readex Pro, sans-serif", padding: "32px 40px", color: "#111827" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #1e3a8a", paddingBottom: "16px", marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "36px", height: "36px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "14px" }}>F</div>
+                <div style={{ width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center" }}><img src="/faerp logo.svg" style={{ width: "36px", height: "36px", objectFit: "contain" }} alt="Logo" /></div>
                 <div><div style={{ fontSize: "18px", fontWeight: 800 }}>FAERP</div><div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em" }}>Enterprise ERP · On-Premises</div></div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -473,11 +474,11 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
             </div>
             {Object.entries(grouped).map(([cat, rows]) => (
               <div key={cat}>
-                <div style={{ background: "#f5f3ff", padding: "8px 12px", fontWeight: 800, fontSize: "12px", color: "#4338ca", borderLeft: "3px solid #6366f1", margin: "12px 0 6px" }}>{cat}</div>
+                <div style={{ background: "#eff6ff", padding: "8px 12px", fontWeight: 800, fontSize: "12px", color: "#1e3a8a", borderLeft: "3px solid #1e3a8a", margin: "12px 0 6px" }}>{cat}</div>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>
                     {["Product", "Unit", "MOQ", "Min (USD $)", "Max (USD $)"].map((h, i) => (
-                      <th key={h} style={{ background: "#f9fafb", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#6b7280", padding: "8px 10px", borderBottom: "2px solid #e5e7eb", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
+                      <th key={h} style={{ background: "#1e3a8a", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#ffffff", padding: "8px 10px", borderBottom: "2px solid #1b357f", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
@@ -487,7 +488,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
                         <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", color: "#9ca3af" }}>{r.unit}</td>
                         <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "center", color: "#9ca3af" }}>{r.moq ?? "—"}</td>
                         <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "right", color: "#0284c7", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_min))}</td>
-                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "right", color: "#6366f1", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_max))}</td>
+                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "right", color: "#1e3a8a", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_max))}</td>
                       </tr>
                     ))}
                   </tbody>

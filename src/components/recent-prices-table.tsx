@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
-import { updatePriceEntryAction, addPriceEntrySilent } from "@/app/actions/pricing";
+import { addPriceEntrySilent } from "@/app/actions/pricing";
+import { ChangeRequestModal } from "./purchasing-form";
+import type { Item, Supplier } from "./purchasing-form";
 
 type Entry = {
   id: number;
@@ -19,9 +21,10 @@ type Entry = {
   category_name: string;
   supplier_name: string;
   supplier_display_name: string;
+  actual_transport?: number | null;
+  negotiated_price?: number | null;
+  negotiated_notes?: string | null;
 };
-
-type Supplier = { id: number; name: string; fame_name?: string | null };
 
 type Group = {
   key: string;
@@ -52,6 +55,8 @@ type Props = {
   suppliers: Supplier[];
   username: string;
   month: string; // current month
+  items: Item[];
+  role: string;
 };
 
 const BTN = {
@@ -63,17 +68,26 @@ const BTN = {
   } as React.CSSProperties,
 };
 
-export default function RecentPricesTable({ entries, suppliers, username, month: currentMonth }: Props) {
+export default function RecentPricesTable({ entries, suppliers, username, month: currentMonth, items, role }: Props) {
   const { locale } = useI18n();
   const isAr = locale === "ar";
   const router = useRouter();
   const groups = buildGroups(entries);
 
   const [expanded, setExpanded]     = useState<Set<string>>(new Set());
-  // Edit state
-  const [editId, setEditId]         = useState<number | null>(null);
-  const [editPrice, setEditPrice]   = useState("");
-  const [editNotes, setEditNotes]   = useState("");
+
+  // Change request modal state
+  const [changeRequestModal, setChangeRequestModal] = useState<{
+    supplier: Supplier;
+    item: Item;
+    currentPrice: number;
+    newPrice: number;
+    oldTransport?: number | null;
+    newTransport?: number | null;
+    isNegotiation?: boolean;
+    isFirstEntry?: boolean;
+  } | null>(null);
+
   // Add state
   const [addingKey, setAddingKey]   = useState<string | null>(null);
   const [addSup, setAddSup]         = useState("");
@@ -89,25 +103,6 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
-  }
-
-  function startEdit(e: Entry) {
-    setEditId(e.id);
-    setEditPrice(String(e.price));
-    setEditNotes(e.notes || "");
-    setErrMsg(null);
-  }
-
-  function cancelEdit() { setEditId(null); setErrMsg(null); }
-
-  async function saveEdit(e: Entry) {
-    const p = parseFloat(editPrice);
-    if (!p || p <= 0) { setErrMsg("Price must be a positive number."); return; }
-    setSaving(true); setErrMsg(null);
-    const res = await updatePriceEntryAction({ id: e.id, price: p, notes: editNotes.trim() });
-    setSaving(false);
-    if (res.ok) { setEditId(null); router.refresh(); }
-    else setErrMsg(res.error || "Save failed.");
   }
 
   function startAdd(group: Group) {
@@ -196,7 +191,15 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
               </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {group.item_name}
+                  <span
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: group.item_id } }));
+                    }}
+                    className="clickable-detail-trigger"
+                  >
+                    {group.item_name}
+                  </span>
                 </div>
                 <div style={{ fontSize: "10.5px", color: "var(--text-muted)", marginTop: "1px" }}>
                   <span className="badge badge-strong" style={{ fontSize: "9px", padding: "1px 6px" }}>{group.category_name}</span>
@@ -226,7 +229,14 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                   {(() => {
                     const best = group.entries.reduce((a, b) => a.price < b.price ? a : b);
                     return (
-                      <span style={{ fontSize: "10px", color: "var(--primary)", fontWeight: 600 }}>
+                      <span
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: best.supplier_id } }));
+                        }}
+                        className="clickable-detail-trigger"
+                        style={{ fontSize: "10px" }}
+                      >
                         🏆 {best.supplier_display_name}
                       </span>
                     );
@@ -271,7 +281,6 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                     {[...group.entries].sort((a, b) => a.price - b.price).map((e, idx) => {
                       const isBest    = e.price === minP;
                       const isWorst   = e.price === maxP && count > 1;
-                      const isEditing = editId === e.id;
 
                       return (
                         <tr key={e.id} style={{
@@ -281,7 +290,12 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                           {/* Supplier */}
                           <td style={{ padding: "8px 12px", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : "var(--text-primary)", minWidth: "130px" }}>
                             {isBest && <span style={{ marginInlineEnd: "4px" }}>🏆</span>}
-                            {e.supplier_display_name}
+                            <span
+                              onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: e.supplier_id } }))}
+                              className="clickable-detail-trigger"
+                            >
+                              {e.supplier_display_name}
+                            </span>
                             {e.supplier_display_name !== e.supplier_name && (
                               <div style={{ fontSize: "9.5px", color: "var(--text-muted)", marginTop: "1px" }}>{e.supplier_name}</div>
                             )}
@@ -289,36 +303,16 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
 
                           {/* Price */}
                           <td style={{ padding: "8px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                            {isEditing ? (
-                              <input
-                                type="number" step="any" min="0"
-                                value={editPrice}
-                                onChange={ev => setEditPrice(ev.target.value)}
-                                style={{ width: "90px", padding: "4px 8px", borderRadius: "6px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "12px", textAlign: "right" }}
-                                autoFocus
-                              />
-                            ) : (
-                              <strong style={{ color: isBest ? "var(--success)" : isWorst ? "var(--danger)" : "var(--text-primary)", fontSize: "13px" }}>
-                                {formatCurrency(e.price)}
-                              </strong>
-                            )}
+                            <strong style={{ color: isBest ? "var(--success)" : isWorst ? "var(--danger)" : "var(--text-primary)", fontSize: "13px" }}>
+                              {formatCurrency(e.price)}
+                            </strong>
                           </td>
 
                           {/* Notes */}
                           <td style={{ padding: "8px 12px", color: "var(--text-muted)", fontSize: "11.5px", maxWidth: "160px" }}>
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={editNotes}
-                                onChange={ev => setEditNotes(ev.target.value)}
-                                placeholder="Notes…"
-                                style={{ width: "100%", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "11.5px" }}
-                              />
-                            ) : (
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-                                {e.notes || "—"}
-                              </span>
-                            )}
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                              {e.notes || "—"}
+                            </span>
                           </td>
 
                           {/* By */}
@@ -333,39 +327,66 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
 
                           {/* Actions */}
                           <td style={{ padding: "6px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
-                            {isEditing ? (
-                              <span style={{ display: "inline-flex", gap: "4px" }}>
+                            {isCurrentMonth ? (
+                              <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                                 <button
-                                  onClick={() => saveEdit(e)}
-                                  disabled={saving}
-                                  style={{ ...BTN.base, background: "rgba(16,185,129,0.12)", color: "var(--success)", opacity: saving ? 0.5 : 1 }}
+                                  type="button"
+                                  onClick={() => {
+                                    const item = items.find(i => i.id === e.item_id);
+                                    const supplier = suppliers.find(s => s.id === e.supplier_id);
+                                    if (item && supplier) {
+                                      setChangeRequestModal({
+                                        supplier,
+                                        item,
+                                        currentPrice: e.price,
+                                        newPrice: e.price,
+                                        oldTransport: e.actual_transport,
+                                        newTransport: e.actual_transport,
+                                        isNegotiation: false,
+                                        isFirstEntry: false,
+                                      });
+                                    }
+                                  }}
+                                  title="Edit price/transport"
+                                  className="button button-warning"
+                                  style={{ padding: "3px 6px", fontSize: "11px", height: "auto" }}
                                 >
-                                  {saving ? "…" : "✓"}
+                                  ✏️ {isAr ? "تعديل" : "Edit"}
                                 </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  disabled={saving}
-                                  style={{ ...BTN.base, background: "rgba(239,68,68,0.1)", color: "var(--danger)" }}
-                                >
-                                  ✕
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => startEdit(e)}
-                                title="Edit price"
-                                style={{
-                                  ...BTN.base,
-                                  background: "var(--bg-subtle)",
-                                  color: "var(--text-muted)",
-                                  padding: "3px 7px",
-                                  fontSize: "12px",
-                                  border: "1px solid var(--border-light)",
-                                }}
-                              >
-                                ✏️
-                              </button>
-                            )}
+                                {role === "WH" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const item = items.find(i => i.id === e.item_id);
+                                      const supplier = suppliers.find(s => s.id === e.supplier_id);
+                                      if (item && supplier) {
+                                        setChangeRequestModal({
+                                          supplier,
+                                          item,
+                                          currentPrice: e.price,
+                                          newPrice: e.price,
+                                          oldTransport: e.actual_transport,
+                                          newTransport: e.actual_transport,
+                                          isNegotiation: true,
+                                          isFirstEntry: false,
+                                        });
+                                      }
+                                    }}
+                                    title="Negotiate price"
+                                    className="button"
+                                    style={{
+                                      padding: "3px 6px", fontSize: "11px", height: "auto",
+                                      background: "rgba(139,92,246,0.12)",
+                                      color: "#8b5cf6",
+                                      border: "1px solid rgba(139,92,246,0.35)",
+                                      borderRadius: "var(--radius-sm)"
+                                    }}
+                                  >
+                                    🤝 {isAr ? "تفاوض" : "Negotiate"}
+                                  </button>
+                                )}
+                              </div>
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -441,6 +462,25 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
           </div>
         );
       })}
+
+      {changeRequestModal && (
+        <ChangeRequestModal
+          supplier={changeRequestModal.supplier}
+          item={changeRequestModal.item}
+          month={currentMonth}
+          currentPrice={changeRequestModal.currentPrice}
+          newPrice={changeRequestModal.newPrice}
+          oldTransport={changeRequestModal.oldTransport}
+          newTransport={changeRequestModal.newTransport}
+          requestedBy={username}
+          isNegotiation={changeRequestModal.isNegotiation}
+          isFirstEntry={changeRequestModal.isFirstEntry}
+          onClose={() => {
+            setChangeRequestModal(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

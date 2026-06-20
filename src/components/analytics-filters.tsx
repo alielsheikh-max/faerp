@@ -17,6 +17,7 @@ type Item = {
 type Supplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
 };
 
 type AnalyticsFiltersProps = {

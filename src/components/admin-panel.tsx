@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   createCategoryAction,
   createItemAction,
@@ -66,6 +67,98 @@ type AdminPanelProps = {
   showOnly?: string;
   role?: string;
 };
+
+/* ── Floating Toast ─────────────────────────────────────────────────────
+   Reads ?success / ?error from the URL (placed there by done() / fail()
+   in admin server actions), shows a floating toast for 3.5 s, then clears
+   the URL param so refreshing doesn't re-show the message.
+──────────────────────────────────────────────────────────────────────── */
+function AdminToast() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const success = searchParams.get("success");
+    const error = searchParams.get("error");
+    if (!success && !error) return;
+
+    const message = success || error || "";
+    const type: "success" | "error" = success ? "success" : "error";
+
+    setToast({ message, type });
+    setVisible(true);
+
+    // Clear the URL param so a refresh doesn't re-show it
+    const url = new URL(window.location.href);
+    url.searchParams.delete("success");
+    url.searchParams.delete("error");
+    router.replace(url.pathname + (url.search || ""), { scroll: false });
+
+    // Auto-dismiss
+    const timer = setTimeout(() => {
+      setVisible(false);
+      setTimeout(() => setToast(null), 400);
+    }, 3500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  if (!toast) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: "24px",
+        right: "24px",
+        zIndex: 9000,
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        padding: "13px 18px",
+        borderRadius: "12px",
+        background: toast.type === "success"
+          ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
+          : "linear-gradient(135deg, #991b1b 0%, #b91c1c 100%)",
+        border: `1px solid ${toast.type === "success" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)"}`,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.06)",
+        color: "#fff",
+        fontSize: "13px",
+        fontWeight: 600,
+        minWidth: "220px",
+        maxWidth: "340px",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0) scale(1)" : "translateY(12px) scale(0.96)",
+        transition: "opacity 0.35s ease, transform 0.35s cubic-bezier(0.16,1,0.3,1)",
+        pointerEvents: visible ? "auto" : "none",
+      }}
+    >
+      <span style={{ fontSize: "18px", flexShrink: 0 }}>
+        {toast.type === "success" ? "✓" : "✕"}
+      </span>
+      <span>{toast.message}</span>
+      <button
+        onClick={() => { setVisible(false); setTimeout(() => setToast(null), 400); }}
+        style={{
+          marginLeft: "auto",
+          background: "rgba(255,255,255,0.15)",
+          border: "none",
+          borderRadius: "6px",
+          color: "rgba(255,255,255,0.8)",
+          cursor: "pointer",
+          padding: "2px 7px",
+          fontSize: "13px",
+          lineHeight: 1.5,
+          flexShrink: 0,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 export default function AdminPanel({ users, categories, suppliers, items, showOnly, role }: AdminPanelProps) {
   const [userQuery, setUserQuery] = useState("");
@@ -162,9 +255,10 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
       <head>
         <title>${title}</title>
         <meta charset="utf-8" />
+        <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
         <style>
           body {
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: 'Readex Pro', system-ui, -apple-system, sans-serif;
             color: #111827;
             margin: 20px;
             line-height: 1.4;
@@ -174,9 +268,32 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             color: #1e3a8a;
           }
           .header {
-            border-bottom: 2px solid #1e3a8a;
-            padding-bottom: 8px;
-            margin-bottom: 20px;
+            border-bottom: 3px solid #1e3a8a;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+          .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .brand-mark {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .brand-name {
+            font-size: 18px;
+            font-weight: 800;
+            color: #111827;
+          }
+          .brand-sub {
+            font-size: 10px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: .08em;
           }
           .section {
             margin-bottom: 25px;
@@ -196,12 +313,12 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             margin-top: 8px;
           }
           th {
-            background-color: #f3f4f6;
-            color: #374151;
+            background-color: #1e3a8a;
+            color: #ffffff;
             font-weight: bold;
             text-align: left;
             padding: 6px 8px;
-            border-bottom: 2px solid #d1d5db;
+            border-bottom: 2px solid #1b357f;
           }
           td {
             padding: 6px 8px;
@@ -214,15 +331,22 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
         </style>
       </head>
       <body>
-        <div class="header" style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <h1>ERP Item & Category Catalog</h1>
-            <div style="font-size: 11px; color: #4b5563; margin-top: 2px;">
+        <div class="header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div class="brand">
+            <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
+            <div>
+              <div class="brand-name">FAERP</div>
+              <div class="brand-sub">Enterprise ERP · On-Premises</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <h1 style="font-size: 16px; font-weight: 800; color: #111827; margin-bottom: 4px;">ERP Item & Category Catalog</h1>
+            <div style="font-size: 11px; color: #6b7280;">
               Printed on ${new Date().toLocaleString()}
             </div>
           </div>
-          <div class="no-print">
-            <button onclick="window.print();" style="padding: 6px 12px; font-weight: bold; background-color: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          <div class="no-print" style="margin-left: 20px;">
+            <button onclick="window.print();" style="padding: 6px 12px; font-weight: bold; background-color: #1e3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
               Print Catalog
             </button>
           </div>
@@ -281,6 +405,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   if (showOnly === "items") {
     return (
       <div className="page-stack">
+      <Suspense fallback={null}><AdminToast /></Suspense>
         {/* T2: Floating Bulk-Action Bar for Items */}
         {bulkItemMode && selectedItemIds.size > 0 && (
           <div style={{
@@ -603,7 +728,11 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                           <span className="badge badge-warning" style={{ fontSize: "9px", padding: "1px 6px" }}>⏳ {item.pending_request_count} Pending</span>
                         )}
                       </div>
-                      <div style={{ fontWeight: "800", fontSize: "14px", color: "var(--text-primary)", marginTop: "4px" }}>
+                      <div
+                        onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: item.id } }))}
+                        className="clickable-detail-trigger"
+                        style={{ fontSize: "14px", marginTop: "4px" }}
+                      >
                         {item.name}
                       </div>
                       <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -716,6 +845,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   if (showOnly === "users") {
     return (
       <div className="page-stack">
+      <Suspense fallback={null}><AdminToast /></Suspense>
         <section className="admin-section-grid" style={{ gridTemplateColumns: "1fr" }}>
           <article className="panel">
             <div className="panel-header">
@@ -845,7 +975,9 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
 
   return (
     <div className="page-stack">
+      <Suspense fallback={null}><AdminToast /></Suspense>
       {/* SECTION 1: Users & Categories */}
+
       <section className="admin-section-grid">
         <article className="panel">
           <div className="panel-header">

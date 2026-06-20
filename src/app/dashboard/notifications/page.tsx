@@ -4,6 +4,7 @@ import {
   getRecentPriceUpdates,
   getPriceAcknowledgments,
   getPendingPriceChangeRequests,
+  getNegotiatedPriceEntries,
 } from "@/lib/db";
 import { formatDateTime, formatCurrency, currentMonth } from "@/lib/format";
 import PriceChangeRequests from "@/components/price-change-requests";
@@ -17,9 +18,10 @@ export default function NotificationsPage() {
   const recentUpdates = getRecentPriceUpdates(month, 20);
   const acknowledgments = isManager ? getPriceAcknowledgments(30) : [];
   const pendingChangeRequests = isManager ? getPendingPriceChangeRequests() : [];
+  const negotiatedEntries = isManager ? getNegotiatedPriceEntries(month) : [];
 
   const unreadCount = recentUpdates.filter((u: any) => !u.ack_by).length;
-  const totalActivity = pendingChangeRequests.length + acknowledgments.length + recentUpdates.length;
+  const totalActivity = pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length;
 
   return (
     <div className="page-stack">
@@ -215,6 +217,81 @@ export default function NotificationsPage() {
             </span>
           </div>
           <PriceChangeRequests requests={pendingChangeRequests} username={session.displayName} />
+        </section>
+      )}
+
+      {/* ── SC/AD: Negotiated Prices Log ─────────────────────────────────── */}
+      {isManager && (
+        <section className="panel animate-fade-in">
+          <div className="panel-header" style={{ marginBottom: "14px" }}>
+            <div>
+              <p className="eyebrow" style={{ color: "#8b5cf6" }}>Negotiation Feed</p>
+              <h2>Negotiated Prices Log</h2>
+              <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
+                Prices negotiated directly by WH (not overriding original price, for information only)
+              </p>
+            </div>
+            <span className="badge" style={{ background: "rgba(139,92,246,0.12)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.35)", fontWeight: 700 }}>
+              {negotiatedEntries.length} Negotiated
+            </span>
+          </div>
+          {negotiatedEntries.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: "36px", marginBottom: "10px" }}>🤝</div>
+              <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>No negotiated prices logged</div>
+              <div style={{ fontSize: "12px" }}>Negotiations logged by WH this month will appear here</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {negotiatedEntries.map((a: any) => {
+                const diff = a.negotiated_price - a.original_price;
+                const diffPct = a.original_price > 0 ? (diff / a.original_price) * 100 : 0;
+                const isSaving = diff < 0;
+
+                return (
+                  <div key={a.id} style={{
+                    display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                    gap: "16px", alignItems: "center",
+                    padding: "12px 16px", borderRadius: "10px",
+                    background: "var(--bg-surface)", border: "1px solid var(--border-light)",
+                    borderLeft: "4px solid #8b5cf6",
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{a.supplier_name}</div>
+                      {a.negotiated_notes && (
+                        <div style={{ fontSize: "11px", color: "#8b5cf6", fontStyle: "italic", marginTop: "3px" }}>
+                          Notes: {a.negotiated_notes}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Original</div>
+                      <div style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>
+                        {formatCurrency(a.original_price)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Negotiated</div>
+                      <div style={{ fontWeight: 800, color: "var(--success)", fontSize: "13px" }}>
+                        {formatCurrency(a.negotiated_price)}
+                      </div>
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: isSaving ? "var(--success)" : "var(--danger)" }}>
+                        {isSaving ? "▼" : "▲"} {Math.abs(diffPct).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{
+                        fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                        background: "rgba(139,92,246,0.12)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.25)",
+                      }}>Logged by {a.collected_by}</span>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.recorded_at)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 

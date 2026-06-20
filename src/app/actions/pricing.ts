@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database } from "@/lib/db";
+import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database, saveNegotiatedPrice } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
+import { log } from "@/lib/activity";
 
 export async function createBatchPriceEntries(formData: FormData) {
   const itemId = asNumber(formData.get("itemId"));
@@ -83,12 +84,17 @@ export async function addPriceEntrySilent(input: {
   price: number;
   notes: string;
   collectedBy: string;
+  actualTransport?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     addPriceEntry({ ...input, collectedRole: "WH" });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/purchasing");
     revalidatePath("/dashboard/manager");
+    log.priceQuoteSubmitted(
+      { username: input.collectedBy, role: "WH" },
+      { itemName: `Item #${input.itemId}`, supplierName: `Supplier #${input.supplierId}`, price: input.price, month: input.month }
+    );
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
@@ -136,6 +142,11 @@ export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/purchasing");
     revalidatePath("/dashboard/manager");
+
+    log.bulkQuotesSubmitted(
+      { username: collectedBy, role: collectedRole },
+      { month, count: entries.length }
+    );
 
     return { ok: true };
   } catch (e) {
@@ -419,10 +430,18 @@ export async function submitPriceChangeRequestAction(formData: FormData): Promis
       revalidatePath("/dashboard/purchasing");
       revalidatePath("/dashboard");
       revalidatePath("/dashboard/manager");
+      log.priceQuoteSubmitted(
+        { username: requestedBy, role: "WH" },
+        { itemName: `Item #${itemId}`, supplierName: `Supplier #${supplierId}`, price: newPrice, month }
+      );
       return { ok: true, directSaved: true };
     }
 
     submitPriceChangeRequest({ itemId, supplierId, month, oldPrice, newPrice, oldTransport, newTransport, reason, requestedBy });
+    log.priceChangeRequested(
+      { username: requestedBy, role: "WH" },
+      { itemName: `Item #${itemId}`, supplierName: `Supplier #${supplierId}`, oldPrice: oldPrice!, newPrice: newPrice!, month }
+    );
 
     revalidatePath("/dashboard/purchasing");
     revalidatePath("/dashboard");
@@ -440,6 +459,10 @@ export async function approvePriceChangeRequestAction(formData: FormData): Promi
 
   if (requestId === null) return;
   approvePriceChangeRequest({ requestId, reviewedBy, reviewNote });
+  log.priceChangeApproved(
+    { username: reviewedBy, role: "SC" },
+    { requestId: requestId!, itemName: `Request #${requestId}`, month: "" }
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/purchasing");
@@ -454,6 +477,10 @@ export async function rejectPriceChangeRequestAction(formData: FormData): Promis
 
   if (requestId === null) return;
   rejectPriceChangeRequest({ requestId, reviewedBy, reviewNote });
+  log.priceChangeRejected(
+    { username: reviewedBy, role: "SC" },
+    { requestId: requestId!, itemName: `Request #${requestId}`, month: "" }
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/purchasing");
@@ -528,6 +555,11 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/manager");
     revalidatePath("/dashboard/sales");
+
+    log.sellingPricePublished(
+      { username: createdBy, role: "SC" },
+      { itemName: `Item #${itemId}`, month, sellMin: 0, sellMax: 0 }
+    );
 
     return { ok: true };
   } catch (err) {
@@ -604,4 +636,28 @@ export async function deleteItemTierConfigAction(formData: FormData): Promise<vo
   }
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/admin");
+}
+
+export async function saveNegotiatedPriceAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const itemId = asNumber(formData.get("itemId"));
+    const supplierId = asNumber(formData.get("supplierId"));
+    const month = asString(formData.get("month"));
+    const negotiatedPrice = asNumber(formData.get("negotiatedPrice"));
+    const notes = asString(formData.get("notes"));
+
+    if (itemId === null || supplierId === null || !month || negotiatedPrice === null || negotiatedPrice <= 0) {
+      return { ok: false, error: "Missing or invalid parameters." };
+    }
+
+    saveNegotiatedPrice(itemId, supplierId, month, negotiatedPrice, notes);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save negotiated price." };
+  }
 }

@@ -1,0 +1,230 @@
+import { requireRole } from "@/lib/auth";
+import { getActivityLog, countActivityLog } from "@/lib/db";
+
+/* ── Event type display config ────────────────────────────────────────── */
+const EVENT_META: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+  sign_in:                  { label: "Sign In",             icon: "🔓", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  sign_out:                 { label: "Sign Out",            icon: "🔒", color: "#6b7280", bg: "rgba(107,114,128,0.12)" },
+  price_quote_submitted:    { label: "Quote Submitted",     icon: "💰", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+  price_quote_updated:      { label: "Quote Updated",       icon: "✏️", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+  bulk_quotes_submitted:    { label: "Bulk Quotes",         icon: "📋", color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
+  price_change_requested:   { label: "Change Requested",    icon: "🔄", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  price_change_approved:    { label: "Change Approved",     icon: "✅", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  price_change_rejected:    { label: "Change Rejected",     icon: "❌", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  selling_price_published:  { label: "Price Published",     icon: "📢", color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
+  user_created:             { label: "User Created",        icon: "👤", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+  user_updated:             { label: "User Updated",        icon: "🔧", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  user_deleted:             { label: "User Deleted",        icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  item_created:             { label: "Item Created",        icon: "📦", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  item_updated:             { label: "Item Updated",        icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  item_deleted:             { label: "Item Deleted",        icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  category_created:         { label: "Category Created",    icon: "🗂️", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  category_updated:         { label: "Category Updated",    icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  category_deleted:         { label: "Category Deleted",    icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  supplier_created:         { label: "Supplier Created",    icon: "🏭", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  supplier_updated:         { label: "Supplier Updated",    icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  supplier_deleted:         { label: "Supplier Deleted",    icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+};
+
+const ROLE_META: Record<string, { label: string; color: string; bg: string }> = {
+  AD: { label: "Admin",     color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
+  SC: { label: "Manager",   color: "#7c3aed", bg: "rgba(124,58,237,0.12)" },
+  WH: { label: "Warehouse", color: "#0891b2", bg: "rgba(8,145,178,0.12)"  },
+  SA: { label: "Sales",     color: "#059669", bg: "rgba(5,150,105,0.12)"  },
+};
+
+function formatTime(iso: string) {
+  try {
+    const d = new Date(iso.replace(" ", "T") + (iso.includes("T") ? "" : "Z"));
+    return d.toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
+
+const PAGE_SIZE = 60;
+
+export default async function ActivityLogPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; role?: string; event?: string };
+}) {
+  requireRole(["AD"]);
+
+  const page   = Math.max(1, parseInt(searchParams.page ?? "1") || 1);
+  const role   = searchParams.role || undefined;
+  const event  = searchParams.event || undefined;
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const entries = getActivityLog({ limit: PAGE_SIZE, offset, role, eventType: event });
+  const total   = countActivityLog({ role, eventType: event });
+  const pages   = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  /* unique event types for filter dropdown */
+  const allEvents = Object.keys(EVENT_META);
+  const allRoles  = Object.keys(ROLE_META);
+
+  return (
+    <div className="page-stack">
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <div className="panel-header" style={{ marginBottom: 0 }}>
+        <div>
+          <p className="eyebrow">System Administration</p>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span>📜</span> Activity Log
+          </h2>
+        </div>
+        <span className="badge badge-strong">{total.toLocaleString()} events</span>
+      </div>
+
+      {/* ── Filters ─────────────────────────────────────────────────── */}
+      <form
+        method="GET"
+        style={{
+          display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
+          padding: "14px 0", borderBottom: "1px solid var(--border-light)",
+        }}
+      >
+        <label className="field" style={{ minWidth: 160, margin: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+            Role
+          </span>
+          <select name="role" defaultValue={role ?? ""} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13 }}>
+            <option value="">All roles</option>
+            {allRoles.map(r => (
+              <option key={r} value={r}>{ROLE_META[r]?.label ?? r}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field" style={{ minWidth: 200, margin: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+            Event Type
+          </span>
+          <select name="event" defaultValue={event ?? ""} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13 }}>
+            <option value="">All events</option>
+            {allEvents.map(e => (
+              <option key={e} value={e}>{EVENT_META[e]?.label ?? e}</option>
+            ))}
+          </select>
+        </label>
+
+        <div style={{ display: "flex", gap: 8, alignSelf: "flex-end" }}>
+          <button type="submit" className="btn btn-primary" style={{ padding: "8px 18px", fontSize: 13 }}>
+            Filter
+          </button>
+          <a href="/dashboard/admin/activity" className="btn btn-ghost" style={{ padding: "8px 14px", fontSize: 13 }}>
+            Clear
+          </a>
+        </div>
+      </form>
+
+      {/* ── Table ───────────────────────────────────────────────────── */}
+      {entries.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>No activity recorded yet</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>Events will appear here as users sign in and perform actions.</div>
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                {["Time", "Actor", "Role", "Event", "Summary"].map(h => (
+                  <th key={h} style={{
+                    textAlign: "left", padding: "10px 12px", fontSize: 11,
+                    fontWeight: 700, color: "var(--text-muted)",
+                    textTransform: "uppercase", letterSpacing: "0.05em",
+                    whiteSpace: "nowrap",
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry, i) => {
+                const meta = EVENT_META[entry.event_type];
+                const roleMeta = ROLE_META[entry.role];
+                return (
+                  <tr
+                    key={entry.id}
+                    style={{
+                      borderBottom: "1px solid var(--border-light)",
+                      background: i % 2 === 0 ? "transparent" : "var(--bg-elevated)",
+                      transition: "background 120ms",
+                    }}
+                    onMouseEnter={undefined}
+                  >
+                    {/* Time */}
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "monospace", fontSize: 12 }}>
+                      {formatTime(entry.performed_at)}
+                    </td>
+
+                    {/* Actor */}
+                    <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+                      {entry.actor}
+                    </td>
+
+                    {/* Role badge */}
+                    <td style={{ padding: "10px 12px" }}>
+                      <span style={{
+                        display: "inline-block", padding: "2px 9px", borderRadius: 20,
+                        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                        color: roleMeta?.color ?? "var(--text-muted)",
+                        background: roleMeta?.bg ?? "var(--bg-elevated)",
+                        border: `1px solid ${roleMeta?.color ?? "var(--border)"}22`,
+                      }}>
+                        {roleMeta?.label ?? entry.role}
+                      </span>
+                    </td>
+
+                    {/* Event type badge */}
+                    <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                        color: meta?.color ?? "var(--text-secondary)",
+                        background: meta?.bg ?? "var(--bg-elevated)",
+                        border: `1px solid ${meta?.color ?? "var(--border)"}22`,
+                      }}>
+                        <span>{meta?.icon}</span>
+                        <span>{meta?.label ?? entry.event_type}</span>
+                      </span>
+                    </td>
+
+                    {/* Summary */}
+                    <td style={{ padding: "10px 12px", color: "var(--text-secondary)", maxWidth: 480 }}>
+                      {entry.summary}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Pagination ──────────────────────────────────────────────── */}
+      {pages > 1 && (
+        <div style={{ display: "flex", gap: 6, justifyContent: "center", paddingTop: 16, flexWrap: "wrap" }}>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <a
+              key={p}
+              href={`?page=${p}${role ? `&role=${role}` : ""}${event ? `&event=${event}` : ""}`}
+              style={{
+                padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: p === page ? 700 : 500,
+                background: p === page ? "var(--primary)" : "var(--bg-elevated)",
+                color: p === page ? "#fff" : "var(--text-secondary)",
+                border: "1px solid var(--border)",
+                textDecoration: "none",
+              }}
+            >
+              {p}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

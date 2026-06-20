@@ -228,7 +228,12 @@ function ItemRow({
               whiteSpace: "nowrap",
             }}
           >
-            {item.itemName}
+            <span
+              onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: item.itemId } })); }}
+              className="clickable-detail-trigger"
+            >
+              {item.itemName}
+            </span>
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>
             {item.unit} · {item.suppliers.length} supplier{item.suppliers.length !== 1 ? "s" : ""}
@@ -241,12 +246,14 @@ function ItemRow({
             <span
               key={q.supplierId}
               title={q.supplierName}
+              onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } })); }}
               style={{
                 width: "7px",
                 height: "7px",
                 borderRadius: "50%",
                 background: supplierColorMap.get(q.supplierName) ?? "#94a3b8",
                 flexShrink: 0,
+                cursor: "pointer",
               }}
             />
           ))}
@@ -347,10 +354,10 @@ function ItemRow({
                       }}
                     />
                     <span
+                      onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } }))}
+                      className="clickable-detail-trigger"
                       style={{
                         fontSize: "10px",
-                        fontWeight: 700,
-                        color: "var(--text-secondary)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",

@@ -86,6 +86,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
   const [showMOQDialog, setShowMOQDialog] = useState<boolean>(false);
   const [sessionQuotes, setSessionQuotes] = useState<Array<{
     id: number;
+    itemId?: number;
     itemName: string;
     unit: string;
     qty: number;
@@ -224,6 +225,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
 
     const newQuote = {
       id: Date.now(),
+      itemId: selectedItem.item_id,
       itemName: selectedItem.item_name,
       unit: selectedItem.unit,
       qty,
@@ -777,7 +779,15 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                       {sessionQuotes.some(q => q.clientName) && (
                         <td>{quote.clientName || <span className="muted">—</span>}</td>
                       )}
-                      <td><strong>{quote.itemName}</strong> <span className="muted">({quote.unit})</span></td>
+                      <td>
+                        <span
+                          onClick={() => quote.itemId && window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: quote.itemId } }))}
+                          className="clickable-detail-trigger"
+                        >
+                          {quote.itemName}
+                        </span>{" "}
+                        <span className="muted">({quote.unit})</span>
+                      </td>
                       <td>{quote.qty}</td>
                       <td>{formatCurrency(quote.price)}</td>
                       <td>

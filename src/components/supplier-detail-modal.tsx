@@ -425,16 +425,39 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
             margin-top: 10px;
           }
           th {
-            background-color: #f3f4f6;
-            color: #374151;
+            background-color: #1e3a8a;
+            color: #ffffff;
             font-weight: bold;
             text-align: ${locale === "ar" ? "right" : "left"};
             padding: 6px 8px;
-            border-bottom: 2px solid #d1d5db;
+            border-bottom: 2px solid #1b357f;
           }
           td {
             padding: 6px 8px;
             border-bottom: 1px solid #e5e7eb;
+          }
+          .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .brand-mark {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .brand-name {
+            font-size: 18px;
+            font-weight: 800;
+            color: #111827;
+          }
+          .brand-sub {
+            font-size: 10px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: .08em;
           }
           @media print {
             body { margin: 0; padding: 10px; }
@@ -443,16 +466,23 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
         </style>
       </head>
       <body>
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px;">
-          <div>
-            <h1>${supplier.name}</h1>
-            <div style="font-size: 12px; color: #4b5563; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 24px;">
+          <div class="brand">
+            <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
+            <div>
+              <div class="brand-name">FAERP</div>
+              <div class="brand-sub">Enterprise ERP · On-Premises</div>
+            </div>
+          </div>
+          <div style="text-align: ${locale === "ar" ? "left" : "right"};">
+            <h1 style="font-size: 18px; font-weight: 800; color: #111827; margin-bottom: 4px;">${supplier.name}</h1>
+            <div style="font-size: 11px; color: #6b7280;">
               ${supplier.code ? `<span><strong>${locale === "ar" ? "كود المورد:" : "Supplier Code:"}</strong> ${supplier.code}</span> · ` : ""}
               ${supplier.region ? `<span><strong>${locale === "ar" ? "المنطقة:" : "Region:"}</strong> ${supplier.region}</span>` : ""}
             </div>
           </div>
-          <div class="no-print">
-            <button onclick="window.print();" style="padding: 6px 12px; font-weight: bold; background-color: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          <div class="no-print" style="${locale === "ar" ? "margin-right: 20px;" : "margin-left: 20px;"}">
+            <button onclick="window.print();" style="padding: 6px 12px; font-weight: bold; background-color: #1e3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
               ${locale === "ar" ? "طباعة التقرير" : "Print Report"}
             </button>
           </div>

@@ -6,7 +6,7 @@ import { getCategories, getItems, getRecentPriceEntries, getSuppliers, getPurcha
 import { currentMonth, formatMonthLabel } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
 
-export default function PurchasingPage({ searchParams }: { searchParams?: { month?: string; saved?: string; error?: string } }) {
+export default function PurchasingPage({ searchParams }: { searchParams?: { month?: string; saved?: string; error?: string; categoryId?: string; itemId?: string } }) {
   const session = requireRole(["WH", "SC"]);
   const t = getServerT();
   const role = session.role;
@@ -52,6 +52,8 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
         displayName={session.displayName}
         purchasingHistory={purchasingHistory}
         wasSaved={!!searchParams?.saved}
+        initialCategoryId={searchParams?.categoryId}
+        initialItemId={searchParams?.itemId}
       />
 
       <section className="panel">
@@ -64,7 +66,14 @@ export default function PurchasingPage({ searchParams }: { searchParams?: { mont
         </div>
 
         <div style={{ padding: "0 0 4px" }}>
-          <RecentPricesTable entries={recentEntries} suppliers={suppliers} username={session.displayName} month={month} />
+          <RecentPricesTable
+            entries={recentEntries}
+            suppliers={suppliers}
+            username={session.displayName}
+            month={month}
+            items={items}
+            role={role}
+          />
         </div>
       </section>
     </div>

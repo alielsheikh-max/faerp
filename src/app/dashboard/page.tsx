@@ -18,6 +18,7 @@ import PriceUpdateAlerts from "@/components/price-update-alerts";
 import UsdPricePanel from "@/components/usd-price-panel";
 import MonthlyReviewModal from "@/components/monthly-review-modal";
 import ScOverviewPanel from "@/components/sc-overview-panel";
+import WhMissingQuotes from "@/components/wh-missing-quotes";
 
 type SearchParams = { month?: string; categoryId?: string; itemId?: string; saved?: string; error?: string; simulate?: string };
 
@@ -118,7 +119,12 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                           borderLeft: "3px solid #f59e0b",
                         } : {}}>
                           <td style={{ fontWeight: 700, maxWidth: "340px" }}>
-                            {row.item_name}
+                            <span
+                              onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                              className="clickable-detail-trigger"
+                            >
+                              {row.item_name}
+                            </span>
                             {isRevised && (
                               <span style={{
                                 display: "inline-block", marginLeft: "8px",
@@ -379,42 +385,12 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
 
               {/* Missing quotes table */}
               {whOverview.missing.length > 0 && (
-                <section className="panel animate-fade-in">
-                  <div className="panel-header">
-                    <div>
-                      <p className="eyebrow">Action Required</p>
-                      <h2>Missing Quotes ({whOverview.missing.length})</h2>
-                    </div>
-                    <a href="/dashboard/purchasing" className="button button-primary" style={{ fontSize: "12px", padding: "7px 14px" }}>
-                      Go to Price Collection →
-                    </a>
-                  </div>
-                  <div className="table-wrap">
-                    <table className="data-table" style={{ fontSize: "12.5px" }}>
-                      <thead>
-                        <tr>
-                          <th>Category</th><th>Item</th><th>Unit</th><th>Supplier</th>
-                          <th style={{ textAlign: "right" }}>Last Month Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {whOverview.missing.map((m, i) => (
-                          <tr key={i}>
-                            <td><span className="badge" style={{ fontSize: "10px" }}>{m.category_name}</span></td>
-                            <td><strong>{m.item_name}</strong></td>
-                            <td>{m.unit}</td>
-                            <td>{m.supplier_name}</td>
-                            <td style={{ textAlign: "right" }}>
-                              {m.prev_price != null
-                                ? <span style={{ color: "var(--text-muted)" }}>{formatCurrency(m.prev_price)}</span>
-                                : <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No history</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+                <WhMissingQuotes
+                  missing={whOverview.missing}
+                  suppliers={suppliers}
+                  displayName={session.displayName}
+                  month={month}
+                />
               )}
             </>
           )}

@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 type Supplier = {
   id: number;
   name: string;
+  fame_name?: string | null;
 };
 
 type SupplierDropdownProps = {
@@ -43,21 +44,24 @@ export default function SupplierDropdown({
     prevOpen.current = open;
   }, [open, checked, selectedIds, onChange]);
 
-  // Close on outside click
+  // Close on outside click (only allow closing if at least one supplier is selected)
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
+        if (checked.size === 0) {
+          return;
+        }
         setOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  }, [checked]);
 
   const toggleAll = () => {
     if (checked.size === suppliers.length) {
-      // deselect all — keep at least one
-      setChecked(new Set([suppliers[0].id]));
+      // deselect all
+      setChecked(new Set());
     } else {
       setChecked(new Set(suppliers.map((s) => s.id)));
     }
@@ -66,8 +70,7 @@ export default function SupplierDropdown({
   const toggle = (id: number) => {
     const next = new Set(checked);
     if (next.has(id)) {
-      // don't allow deselecting the last one
-      if (next.size > 1) next.delete(id);
+      next.delete(id);
     } else {
       next.add(id);
     }
@@ -82,8 +85,10 @@ export default function SupplierDropdown({
   const triggerLabel =
     allSelected
       ? "All Suppliers"
+      : checked.size === 0
+      ? "Select Suppliers..."
       : selectedSuppliers.length === 1
-      ? selectedSuppliers[0].name
+      ? (selectedSuppliers[0].fame_name || selectedSuppliers[0].name)
       : `${selectedSuppliers.length} of ${suppliers.length} suppliers`;
 
   return (
@@ -116,7 +121,10 @@ export default function SupplierDropdown({
       {/* Trigger button — matches other filter selects */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (open && checked.size === 0) return;
+          setOpen((v) => !v);
+        }}
         style={{
           width: "100%",
           display: "flex",
@@ -125,13 +133,23 @@ export default function SupplierDropdown({
           gap: "8px",
           padding: "8px 10px",
           borderRadius: "8px",
-          border: `1px solid ${open ? "var(--primary)" : "var(--border)"}`,
+          border: `1px solid ${
+            checked.size === 0
+              ? "var(--danger)"
+              : open
+              ? "var(--primary)"
+              : "var(--border)"
+          }`,
           background: "var(--bg-elevated)",
-          color: "var(--text-primary)",
+          color: checked.size === 0 ? "var(--danger)" : "var(--text-primary)",
           fontSize: "13px",
           cursor: "pointer",
           outline: "none",
-          boxShadow: open ? "var(--glow-primary)" : "none",
+          boxShadow: checked.size === 0
+            ? "0 0 0 3px rgba(239, 68, 68, 0.15)"
+            : open
+            ? "var(--glow-primary)"
+            : "none",
           transition: "all 150ms ease",
           textAlign: "left",
         }}
@@ -342,7 +360,7 @@ export default function SupplierDropdown({
                       transition: "all 150ms",
                     }}
                   >
-                    {sup.name}
+                    {sup.fame_name || sup.name}
                   </span>
 
                   {/* Active indicator */}
@@ -361,6 +379,27 @@ export default function SupplierDropdown({
               );
             })}
           </div>
+
+          {/* Warning banner when no suppliers are selected */}
+          {checked.size === 0 && (
+            <div
+              style={{
+                padding: "10px 14px",
+                background: "var(--danger-light, #fef2f2)",
+                borderTop: "1px solid var(--danger-border, #fee2e2)",
+                color: "var(--danger, #ef4444)",
+                fontSize: "12.5px",
+                fontWeight: 700,
+                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+            >
+              ⚠️ Please select at least one supplier.
+            </div>
+          )}
         </div>
       )}
     </div>

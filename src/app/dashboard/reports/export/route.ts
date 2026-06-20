@@ -22,29 +22,40 @@ function computeTierPrice(
 }
 
 const HEADER_STYLE = {
-  font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
-  fill: { fgColor: { rgb: "059669" } },
+  font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1F2937" } },
+  fill: { fgColor: { rgb: "F1F5F9" } },
   alignment: { horizontal: "center", vertical: "center", wrapText: true },
   border: {
-    top: { style: "thin", color: { rgb: "047857" } },
-    bottom: { style: "medium", color: { rgb: "047857" } },
-    left: { style: "thin", color: { rgb: "047857" } },
-    right: { style: "thin", color: { rgb: "047857" } },
+    top: { style: "thin", color: { rgb: "CBD5E1" } },
+    bottom: { style: "medium", color: { rgb: "94A3B8" } },
+    left: { style: "thin", color: { rgb: "CBD5E1" } },
+    right: { style: "thin", color: { rgb: "CBD5E1" } },
   },
 };
 
-function cellStyle(rowIdx: number, isNumeric: boolean) {
+function cellStyle(rowIdx: number, headerName: string, cellValue: any) {
   const bg = rowIdx % 2 === 0 ? "FFFFFF" : "F9FAFB";
+  const hClean = headerName.toLowerCase();
+  
+  const centerKeywords = ["unit", "moq", "date", "change", "at", "published"];
+  const isCenter = centerKeywords.some(k => hClean.includes(k));
+  const isNumeric = typeof cellValue === "number";
+  
+  const align = isCenter ? "center" : (isNumeric ? "right" : "left");
+  const priceKeywords = ["price", "sell", "avg", "low", "high", "spread", "val", "t1", "t2", "t3", "t4"];
+  const isPriceCol = priceKeywords.some(k => hClean.includes(k)) && !hClean.includes("%");
+
   return {
     font: { name: "Segoe UI", sz: 10, color: { rgb: "334155" } },
     fill: { fgColor: { rgb: bg } },
-    alignment: { horizontal: isNumeric ? "right" : "left", vertical: "center" },
+    alignment: { horizontal: align, vertical: "center" },
     border: {
       top: { style: "thin", color: { rgb: "E2E8F0" } },
       bottom: { style: "thin", color: { rgb: "E2E8F0" } },
       left: { style: "thin", color: { rgb: "E2E8F0" } },
       right: { style: "thin", color: { rgb: "E2E8F0" } },
     },
+    ...(isPriceCol && isNumeric ? { numFmt: '"EGP" #,##0.00' } : {})
   };
 }
 
@@ -62,17 +73,18 @@ function buildSheet(
     rows.forEach((r) => { const v = r[ci]; if (v != null) max = Math.max(max, String(v).length); });
     return { wch: Math.max(max + 4, 12) };
   });
-  ws["!rows"] = [{ hpt: 32 }, { hpt: 8 }, { hpt: 24 }, ...Array(rows.length).fill({ hpt: 20 })];
+  ws["!rows"] = [{ hpt: 35 }, { hpt: 10 }, { hpt: 28 }, ...Array(rows.length).fill({ hpt: 22 })];
   for (const addr in ws) {
     if (addr.startsWith("!")) continue;
     const cell = ws[addr];
     const { r, c } = XLSX.utils.decode_cell(addr);
     if (r === 0) {
-      cell.s = { font: { name: "Segoe UI", sz: 14, bold: true, color: { rgb: "065F46" } }, alignment: { horizontal: "left", vertical: "center" } };
+      cell.s = { font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } }, alignment: { horizontal: "left", vertical: "center" } };
     } else if (r === 2) {
       cell.s = HEADER_STYLE;
     } else if (r >= 3) {
-      cell.s = cellStyle(r - 3, typeof cell.v === "number");
+      const hName = headers[c] || "";
+      cell.s = cellStyle(r - 3, hName, cell.v);
     }
   }
   return ws;

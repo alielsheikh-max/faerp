@@ -18,6 +18,7 @@ type SalesRow = {
   tier2_max: number; tier2_discount: number;
   tier3_max: number; tier3_discount: number;
   tier4_max: number; tier4_discount: number;
+  buy_avg: number | null;
 };
 
 type Props = { rows: SalesRow[]; month: string; username: string };
@@ -27,39 +28,82 @@ function fmtEGP(n: number | null) {
   return `EGP ${n.toLocaleString("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function getTierInfo(r: SalesRow) {
+  const isTiered = r.is_tiered === 1 && r.buy_avg != null;
+  if (!isTiered) {
+    return {
+      min: r.sell_min,
+      max: r.sell_max,
+      notes: ""
+    };
+  }
+
+  const base = r.buy_avg ?? 0;
+  const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+  const tierPrices = [
+    { label: "B",  range: `1–${r.tier1_max}`,  price: r.tier1_discount > 0 ? roundUp5(base / r.tier1_discount) : null },
+    { label: "T2", range: `${r.tier1_max + 1}–${r.tier2_max}`, price: r.tier2_discount > 0 ? roundUp5(base / r.tier2_discount) : null },
+    { label: "T3", range: `${r.tier2_max + 1}–${r.tier3_max}`, price: r.tier3_discount > 0 ? roundUp5(base / r.tier3_discount) : null },
+    { label: "T4", range: `>${r.tier3_max}`,   price: r.tier4_discount > 0 ? roundUp5(base / r.tier4_discount) : null },
+  ].filter(t => t.price !== null);
+
+  if (tierPrices.length === 0) {
+    return {
+      min: r.sell_min,
+      max: r.sell_max,
+      notes: "Tiered pricing applies"
+    };
+  }
+
+  const prices = tierPrices.map(t => t.price as number);
+  const minVal = Math.min(...prices);
+  const maxVal = Math.max(...prices);
+
+  const notes = tierPrices.map(t => {
+    const formattedPrice = t.price?.toLocaleString("en-EG", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return `${t.label} (${t.range}): EGP ${formattedPrice}`;
+  }).join(" | ");
+
+  return {
+    min: minVal,
+    max: maxVal,
+    notes
+  };
+}
+
 function printWindow(html: string, title: string) {
   const win = window.open("", "_blank", "width=950,height=750");
   if (!win) { alert("Please allow pop-ups to generate PDF reports."); return; }
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Inter',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
-      .header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:24px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
+      .header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
-      .brand-mark{width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px}
+      .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
       .meta{text-align:right}
       .meta .doc-title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .meta .doc-sub{font-size:11px;color:#6b7280}
       .stamp{display:inline-block;padding:4px 12px;border-radius:99px;background:rgba(16,185,129,0.1);border:1.5px solid #10b981;color:#065f46;font-weight:800;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin-top:6px}
-      .cat-header{background:#f5f3ff;padding:8px 12px;font-weight:800;font-size:12px;color:#4338ca;border-left:3px solid #6366f1;margin:16px 0 6px;border-radius:0 4px 4px 0}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:16px 0 6px;border-radius:0 4px 4px 0}
       table{width:100%;border-collapse:collapse;margin-bottom:8px}
-      th{background:#f9fafb;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;padding:8px 10px;border-bottom:2px solid #e5e7eb;text-align:left}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
       th.r{text-align:right}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
       tr:hover td{background:#fafafa}
       .r{text-align:right;font-variant-numeric:tabular-nums}
       .sell-min{color:#0284c7;font-weight:800}
-      .sell-max{color:#6366f1;font-weight:800}
-      .tier-tag{display:inline-block;padding:1px 6px;background:#f5f3ff;color:#6d28d9;border-radius:4px;font-size:9px;font-weight:800;margin-left:4px}
+      .sell-max{color:#1e3a8a;font-weight:800}
+      .tier-tag{display:inline-block;padding:1px 6px;background:#eff6ff;color:#1e3a8a;border-radius:4px;font-size:9px;font-weight:800;margin-left:4px}
       .muted{color:#9ca3af}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4}}
+      @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
     </style>
   </head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
   win.document.close();
@@ -85,7 +129,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
     let body = `
       <div class="header">
         <div class="brand">
-          <div class="brand-mark">F</div>
+          <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
           <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
         </div>
         <div class="meta">
@@ -103,14 +147,15 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
           <th class="r">Min Price (EGP)</th><th class="r">Max Price (EGP)</th><th>Notes</th>
         </tr></thead><tbody>`;
       for (const r of catRows) {
-        const tiered = r.tier_pricing_enabled && r.is_tiered;
+        const info = getTierInfo(r);
+        const hasTiers = r.is_tiered === 1 && r.buy_avg != null;
         body += `<tr>
-          <td>${r.item_name}${tiered ? '<span class="tier-tag">TIERED</span>' : ""}</td>
+          <td>${r.item_name}${hasTiers ? '<span class="tier-tag">TIERED</span>' : ""}</td>
           <td class="muted">${r.unit}</td>
           <td class="r muted">${r.moq || "—"}</td>
-          <td class="r sell-min">${fmtEGP(r.sell_min)}</td>
-          <td class="r sell-max">${fmtEGP(r.sell_max)}</td>
-          <td class="muted" style="font-size:10px">${tiered ? "Tiered pricing applies" : ""}</td>
+          <td class="r sell-min">${fmtEGP(info.min)}</td>
+          <td class="r sell-max">${fmtEGP(info.max)}</td>
+          <td class="muted" style="font-size:10px">${info.notes}</td>
         </tr>`;
       }
       body += `</tbody></table>`;
@@ -130,60 +175,233 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
     setExporting(true);
     try {
       const wb = XLSX.utils.book_new();
-      const headerStyle = {
-        font: { bold: true, sz: 9, color: { rgb: "6B7280" } },
-        fill: { fgColor: { rgb: "F9FAFB" } },
-        border: { bottom: { style: "medium", color: { rgb: "E5E7EB" } } },
-        alignment: { horizontal: "center" as const },
+      
+      // Style Definitions (matching WH Supplier Request layout style)
+      const titleStyle = {
+        font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } },
+        alignment: { horizontal: "left", vertical: "center" }
       };
+
+      const subtitleStyle = {
+        font: { name: "Segoe UI", sz: 10, italic: true, color: { rgb: "475569" } },
+        alignment: { horizontal: "left", vertical: "center" }
+      };
+
+      const statusStyle = {
+        font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "065F46" } },
+        alignment: { horizontal: "left", vertical: "center" }
+      };
+
+      const headerStyleLeft = {
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
+        alignment: { horizontal: "left", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "1B357F" } },
+          bottom: { style: "medium", color: { rgb: "1B357F" } },
+          left: { style: "thin", color: { rgb: "1B357F" } },
+          right: { style: "thin", color: { rgb: "1B357F" } }
+        }
+      };
+
+      const headerStyleCenter = {
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "1B357F" } },
+          bottom: { style: "medium", color: { rgb: "1B357F" } },
+          left: { style: "thin", color: { rgb: "1B357F" } },
+          right: { style: "thin", color: { rgb: "1B357F" } }
+        }
+      };
+
+      const headerStyleRight = {
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
+        alignment: { horizontal: "right", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "1B357F" } },
+          bottom: { style: "medium", color: { rgb: "1B357F" } },
+          left: { style: "thin", color: { rgb: "1B357F" } },
+          right: { style: "thin", color: { rgb: "1B357F" } }
+        }
+      };
+
       const catStyle = {
-        font: { bold: true, sz: 11, color: { rgb: "4338CA" } },
-        fill: { fgColor: { rgb: "F5F3FF" } },
+        font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "4338CA" } },
+        fill: { fgColor: { rgb: "F5F3FF" } }, // Purple-50
+        border: {
+          top: { style: "thin", color: { rgb: "E5E7EB" } },
+          bottom: { style: "thin", color: { rgb: "E5E7EB" } },
+          left: { style: "thin", color: { rgb: "E5E7EB" } },
+          right: { style: "thin", color: { rgb: "E5E7EB" } }
+        }
       };
-      const minStyle  = { font: { bold: true, sz: 11, color: { rgb: "0284C7" } }, alignment: { horizontal: "right" as const } };
-      const maxStyle  = { font: { bold: true, sz: 11, color: { rgb: "6366F1" } }, alignment: { horizontal: "right" as const } };
-      const mutedStyle = { font: { sz: 10, color: { rgb: "9CA3AF" } } };
+
+      const cellStyleProduct = {
+        font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "334155" } },
+        alignment: { horizontal: "left", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const cellStyleUnit = {
+        font: { name: "Segoe UI", sz: 10, color: { rgb: "334155" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const cellStyleMOQ = {
+        font: { name: "Segoe UI", sz: 10, color: { rgb: "334155" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const cellStyleMin = {
+        font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "0284C7" } },
+        alignment: { horizontal: "right", vertical: "center" },
+        numFmt: '"EGP" #,##0.00',
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const cellStyleMax = {
+        font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "6366F1" } },
+        alignment: { horizontal: "right", vertical: "center" },
+        numFmt: '"EGP" #,##0.00',
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const cellStyleNotes = {
+        font: { name: "Segoe UI", sz: 10, color: { rgb: "475569" } },
+        alignment: { horizontal: "left", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
 
       const wsData: any[][] = [];
+      const rowHeights: any[] = [
+        { hpt: 35 }, // Title
+        { hpt: 22 }, // Prepared by / Date
+        { hpt: 22 }, // SC Approved label
+        { hpt: 10 }, // Spacer
+        { hpt: 28 }, // Headers
+      ];
 
       // Title rows
-      wsData.push([{ v: "FAERP — Final Approved Price List", s: { font: { bold: true, sz: 16, color: { rgb: "111827" } } } }]);
-      wsData.push([{ v: `${monthLabel} · Prepared by ${username} · ${formatDate()}`, s: { font: { sz: 10, color: { rgb: "6B7280" } } } }]);
-      wsData.push([{ v: "✓ Published & Approved by SC", s: { font: { bold: true, sz: 10, color: { rgb: "065F46" } } } }]);
+      wsData.push([{ v: "FAERP — Final Approved Price List", s: titleStyle }]);
+      wsData.push([{ v: `${monthLabel} · Prepared by ${username} · ${formatDate()}`, s: subtitleStyle }]);
+      wsData.push([{ v: "✓ Published & Approved by SC", s: statusStyle }]);
       wsData.push([]);
 
       // Headers
       wsData.push([
-        { v: "Product",         s: headerStyle },
-        { v: "Unit",            s: headerStyle },
-        { v: "MOQ",             s: headerStyle },
-        { v: "Min Price (EGP)", s: { ...headerStyle, alignment: { horizontal: "right" as const } } },
-        { v: "Max Price (EGP)", s: { ...headerStyle, alignment: { horizontal: "right" as const } } },
-        { v: "Notes",           s: headerStyle },
+        { v: "Product",         s: headerStyleLeft },
+        { v: "Unit",            s: headerStyleCenter },
+        { v: "MOQ",             s: headerStyleCenter },
+        { v: "Min Price (EGP)", s: headerStyleRight },
+        { v: "Max Price (EGP)", s: headerStyleRight },
+        { v: "Notes",           s: headerStyleLeft },
       ]);
 
       for (const [cat, catRows] of Object.entries(grouped)) {
-        wsData.push([{ v: cat, s: catStyle }, { v: "", s: catStyle }, { v: "", s: catStyle }, { v: "", s: catStyle }, { v: "", s: catStyle }, { v: "", s: catStyle }]);
+        wsData.push([
+          { v: cat, s: catStyle },
+          { v: "", s: catStyle },
+          { v: "", s: catStyle },
+          { v: "", s: catStyle },
+          { v: "", s: catStyle },
+          { v: "", s: catStyle }
+        ]);
+        rowHeights.push({ hpt: 26 });
+        
         for (const r of catRows) {
+          const info = getTierInfo(r);
           wsData.push([
-            { v: r.item_name, s: { font: { bold: true, sz: 11 } } },
-            { v: r.unit, s: mutedStyle },
-            { v: r.moq || "", s: { ...mutedStyle, alignment: { horizontal: "center" as const } } },
-            { v: r.sell_min ?? "", s: minStyle },
-            { v: r.sell_max ?? "", s: maxStyle },
-            { v: r.tier_pricing_enabled && r.is_tiered ? "Tiered pricing" : "", s: mutedStyle },
+            { v: r.item_name, s: cellStyleProduct },
+            { v: r.unit, s: cellStyleUnit },
+            { v: r.moq || "", s: cellStyleMOQ },
+            { v: info.min ?? "", s: cellStyleMin },
+            { v: info.max ?? "", s: cellStyleMax },
+            { v: info.notes, s: cellStyleNotes },
           ]);
+          rowHeights.push({ hpt: 22 });
         }
         wsData.push([]);
+        rowHeights.push({ hpt: 10 });
       }
 
       const ws = XLSX.utils.aoa_to_sheet(wsData);
-      ws["!cols"] = [{ wch: 36 }, { wch: 10 }, { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+      
+      // Auto-fit column widths based on content length
+      const colWidths = [20, 10, 10, 16, 16, 24]; // Minimum base widths
+      for (let rIdx = 5; rIdx < wsData.length; rIdx++) {
+        const row = wsData[rIdx];
+        if (!row || row.length === 0) continue;
+        
+        // Skip category header rows (where column 1 is empty)
+        const isCatRow = !row[1] || row[1].v === "";
+        
+        for (let cIdx = 0; cIdx < row.length; cIdx++) {
+          const cell = row[cIdx];
+          if (!cell) continue;
+          
+          let valStr = "";
+          if (typeof cell.v === "number") {
+            if (cIdx === 3 || cIdx === 4) {
+              valStr = `EGP ${cell.v.toLocaleString("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            } else {
+              valStr = String(cell.v);
+            }
+          } else if (cell.v !== undefined && cell.v !== null) {
+            valStr = String(cell.v);
+          }
+          
+          if (valStr.length > 0) {
+            if (isCatRow && cIdx === 0) continue;
+            if (valStr.length + 5 > colWidths[cIdx]) {
+              colWidths[cIdx] = valStr.length + 5;
+            }
+          }
+        }
+      }
+
+      ws["!cols"] = colWidths.map(w => ({ wch: w }));
+      ws["!rows"] = rowHeights;
       ws["!merges"] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
         { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
       ];
+      
       XLSX.utils.book_append_sheet(wb, ws, monthLabel.substring(0, 31));
       XLSX.writeFile(wb, `FAERP_PriceList_${month}_${username}.xlsx`);
     } finally {

@@ -40,7 +40,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
   };
 
   // Nav items defined here so they pick up translations
-  type NavLabelKey = "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"|"nav.suppliers"|"nav.items"|"nav.notifications"|"nav.pricing"|"nav.categoryPricing"|"nav.itemPricing"|"nav.referenceData";
+  type NavLabelKey = "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"|"nav.suppliers"|"nav.items"|"nav.notifications"|"nav.pricing"|"nav.categoryPricing"|"nav.itemPricing"|"nav.referenceData"|"nav.about"|"nav.activityLog";
   type NavItem = {
     href: string; labelKey: NavLabelKey; icon: string;
     exact?: boolean;
@@ -93,9 +93,11 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       { href: "/dashboard/notifications", labelKey: "nav.notifications",     icon: "📨", pendingKey: "ackCount" },
     ],
     AD: [
-      { href: "/dashboard/admin",           labelKey: "nav.admin",     icon: "⚙️", exact: true },
-      { href: "/dashboard/admin/suppliers", labelKey: "nav.suppliers", icon: "🏭", exact: true },
-      { href: "/dashboard/admin/items",     labelKey: "nav.items",     icon: "📦", exact: true },
+      { href: "/dashboard/admin",           labelKey: "nav.admin",       icon: "⚙️", exact: true },
+      { href: "/dashboard/admin/suppliers", labelKey: "nav.suppliers",   icon: "🏭", exact: true },
+      { href: "/dashboard/admin/items",     labelKey: "nav.items",       icon: "📦", exact: true },
+      { href: "/dashboard/admin/activity",  labelKey: "nav.activityLog", icon: "📜", exact: true },
+      { href: "/dashboard/admin/about",     labelKey: "nav.about",       icon: "ℹ️", exact: true },
     ],
   };
 
@@ -108,7 +110,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
 
       {/* ── Floating alert pills — fixed top-right, always visible when pending ── */}
       {(pendingRequests > 0 || ackCount > 0) && (
-        <div style={{
+        <div className="no-print" style={{
           position: "fixed", top: "14px", right: "20px",
           display: "flex", gap: "8px", zIndex: 600,
           pointerEvents: "auto",
@@ -160,12 +162,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
         {/* Brand */}
         <div className="brand-block">
           <div className="brand-mark">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <rect x="2" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.9)"/>
-              <rect x="12" y="8" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.55)"/>
-              <rect x="7" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.75)"/>
-              <rect x="4" y="17" width="14" height="2.5" rx="1.25" fill="rgba(255,255,255,0.4)"/>
-            </svg>
+            <img src="/faerp logo.svg" style={{ width: "28px", height: "28px", objectFit: "contain" }} alt="Logo" />
           </div>
           <div>
             <p className="eyebrow">{t("app.tagline")}</p>
@@ -332,7 +329,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px", padding: "12px", flexShrink: 0 }}>
 
           {/* Universal Search */}
-          {(role === "WH" || role === "SC") && searchIndex && (
+          {(role === "WH" || role === "SC" || role === "SA") && searchIndex && (
             <UniversalSearch index={searchIndex} role={role} />
           )}
 

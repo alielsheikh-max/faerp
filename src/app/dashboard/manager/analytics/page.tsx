@@ -141,7 +141,10 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
     const participationRate = monthsInRange.length > 0 ? (monthsQuoted / monthsInRange.length) * 100 : 0;
     return {
       id: sid,
-      name: suppliers.find((s) => s.id === sid)?.name || `Supplier ${sid}`,
+      name: (() => {
+        const s = suppliers.find((x) => x.id === sid);
+        return s?.fame_name || s?.name || `Supplier ${sid}`;
+      })(),
       avgPrice: sPrices.length > 0 ? calculateMean(sPrices) : 0,
       avgDeviation,
       participationRate,
@@ -274,15 +277,6 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
         viewMode={viewMode}
       />
 
-      {/* Chart */}
-      {selectedItem && (
-        <AnalyticsChart
-          history={analyticsData}
-          months={monthsInRange}
-          groupMode={viewMode === "category" ? "item" : "supplier"}
-        />
-      )}
-
       {/* Premium Analytics Dashboard (client component) */}
       <AnalyticsDashboard
         viewMode={viewMode}
@@ -310,6 +304,15 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
         mostVolatileItemId={mostVolatileItem?.itemId}
         mostStableItemId={mostStableItem?.itemId}
         dashboardHref="/dashboard"
+        chart={
+          selectedItem && (
+            <AnalyticsChart
+              history={analyticsData}
+              months={monthsInRange}
+              groupMode={viewMode === "category" ? "item" : "supplier"}
+            />
+          )
+        }
       />
 
     </div>

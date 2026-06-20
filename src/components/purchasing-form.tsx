@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect, useMemo, useTransition } from "react";
-import { createBatchPriceEntries, saveBatchPriceEntriesSilent, submitPriceChangeRequestAction, extendPreviousMonthPricesAction } from "@/app/actions/pricing";
+import { saveBatchPriceEntriesSilent, submitPriceChangeRequestAction, extendPreviousMonthPricesAction, saveNegotiatedPriceAction } from "@/app/actions/pricing";
 import { shiftMonth, formatMonthLabel, formatCurrency } from "@/lib/format";
 import { ItemCombobox } from "./item-combobox";
 import { useI18n } from "@/lib/i18n-context";
 
-type Category    = { id: number; name: string; description: string };
-type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
-type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
-type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null };
+export type Category    = { id: number; name: string; description: string };
+export type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
+export type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
+type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null; negotiated_price?: number | null; negotiated_notes?: string | null };
 type HistoryFilter = "3" | "6" | "all";
 
 type Props = {
@@ -21,6 +21,8 @@ type Props = {
   displayName: string;
   purchasingHistory: HistoryEntry[];
   wasSaved?: boolean;
+  initialCategoryId?: string;
+  initialItemId?: string;
 };
 
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4"];
@@ -29,45 +31,122 @@ const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4"];
 const PRICE_PRESETS = ["Price change", "Price negotiation"];
 const TRANS_PRESETS = ["Transport cost change", "Rate negotiation"];
 
-function ChangeRequestModal({
-  supplier, item, month, currentPrice, newPrice, oldTransport, newTransport, requestedBy, onClose,
+export function ChangeRequestModal({
+  supplier, item, month, currentPrice, newPrice, oldTransport, newTransport, requestedBy, isNegotiation, isFirstEntry, onClose,
 }: {
   supplier: Supplier; item: Item; month: string;
   currentPrice: number; newPrice: number;
   oldTransport?: number | null; newTransport?: number | null;
-  requestedBy: string; onClose: () => void;
+  requestedBy: string; isNegotiation?: boolean; isFirstEntry?: boolean; onClose: () => void;
 }) {
-  const hasPrice   = newPrice !== currentPrice;
-  const hasTrans   = newTransport != null && oldTransport != null && newTransport !== oldTransport;
-  const presets    = hasTrans && !hasPrice ? TRANS_PRESETS : PRICE_PRESETS;
+  const [purpose, setPurpose] = useState<"price" | "trans" | "both">(() => {
+    if (isFirstEntry) return "both";
+    const hasPriceChange = newPrice !== currentPrice;
+    const oldTrans = oldTransport ?? 0;
+    const hasTransChange = newTransport != null && newTransport !== oldTrans;
+    if (hasPriceChange && hasTransChange) return "both";
+    if (hasTransChange) return "trans";
+    return "price";
+  });
 
-  const [reason, setReason]        = useState("");
+  const [negotiatedPriceVal, setNegotiatedPriceVal] = useState(String(newPrice > 0 ? newPrice : ""));
+  const [revisedPriceVal, setRevisedPriceVal]       = useState(String(newPrice > 0 ? newPrice : ""));
+  const [revisedTransVal, setRevisedTransVal]       = useState(String(newTransport ?? oldTransport ?? 0));
+  const [notesVal, setNotesVal]                      = useState("");
+  
   const [pending, startTransition] = useTransition();
   const [done, setDone]            = useState<"request" | "direct" | null>(null);
   const [err, setErr]              = useState<string | null>(null);
 
-  const priceDiff = newPrice - currentPrice;
-  const pricePct  = currentPrice > 0 ? (priceDiff / currentPrice) * 100 : 0;
-  const transDiff = hasTrans ? (newTransport! - oldTransport!) : 0;
-
   const handleSubmit = () => {
-    if (!reason.trim()) { setErr("Please select or enter a reason."); return; }
-    setErr(null);
-    const fd = new FormData();
-    fd.set("itemId",      String(item.id));
-    fd.set("supplierId",  String(supplier.id));
-    fd.set("month",       month);
-    fd.set("oldPrice",    String(currentPrice));
-    fd.set("newPrice",    String(newPrice));
-    fd.set("reason",      reason);
-    fd.set("requestedBy", requestedBy);
-    if (oldTransport != null) fd.set("oldTransport", String(oldTransport));
-    if (newTransport != null) fd.set("newTransport", String(newTransport));
-    startTransition(async () => {
-      const res = await submitPriceChangeRequestAction(fd);
-      if (res?.ok) { setDone(res.directSaved ? "direct" : "request"); setTimeout(onClose, 1800); }
-      else          { setErr(res?.error ?? "Failed to submit"); }
-    });
+    if (isFirstEntry) {
+      const priceNum = Number(revisedPriceVal);
+      const transNum = Number(revisedTransVal);
+
+      if (isNaN(priceNum) || priceNum <= 0) {
+        setErr("Please enter a valid positive price.");
+        return;
+      }
+      if (isNaN(transNum) || transNum < 0) {
+        setErr("Please enter a valid non-negative transport cost.");
+        return;
+      }
+
+      setErr(null);
+      const fd = new FormData();
+      fd.set("itemId", String(item.id));
+      fd.set("month", month);
+      fd.set("collectedBy", requestedBy);
+      fd.set("collectedRole", "WH");
+      fd.set(`price_${supplier.id}`, String(priceNum));
+      fd.set(`notes_${supplier.id}`, notesVal);
+      fd.set(`actual_transport_${supplier.id}`, String(transNum));
+
+      startTransition(async () => {
+        const res = await saveBatchPriceEntriesSilent(fd);
+        if (res?.ok) {
+          setDone("direct");
+          setTimeout(onClose, 1500);
+        } else {
+          setErr(res?.error ?? "Failed to save price.");
+        }
+      });
+    } else if (isNegotiation) {
+      const priceNum = Number(negotiatedPriceVal);
+      if (isNaN(priceNum) || priceNum <= 0) {
+        setErr("Please enter a valid positive negotiated price.");
+        return;
+      }
+      setErr(null);
+      const fd = new FormData();
+      fd.set("itemId", String(item.id));
+      fd.set("supplierId", String(supplier.id));
+      fd.set("month", month);
+      fd.set("negotiatedPrice", String(priceNum));
+      fd.set("notes", notesVal);
+      startTransition(async () => {
+        const res = await saveNegotiatedPriceAction(fd);
+        if (res?.ok) {
+          setDone("direct");
+          setTimeout(onClose, 1500);
+        } else {
+          setErr(res?.error ?? "Failed to save negotiated price.");
+        }
+      });
+    } else {
+      const priceNum = purpose === "trans" ? currentPrice : Number(revisedPriceVal);
+      const transNum = purpose === "price" ? (oldTransport ?? 0) : Number(revisedTransVal);
+
+      if (purpose !== "trans" && (isNaN(priceNum) || priceNum <= 0)) {
+        setErr("Please enter a valid positive revised price.");
+        return;
+      }
+      if (purpose !== "price" && (isNaN(transNum) || transNum < 0)) {
+        setErr("Please enter a valid non-negative revised transport cost.");
+        return;
+      }
+
+      setErr(null);
+      const fd = new FormData();
+      fd.set("itemId",      String(item.id));
+      fd.set("supplierId",  String(supplier.id));
+      fd.set("month",       month);
+      fd.set("oldPrice",    String(currentPrice));
+      fd.set("newPrice",    String(priceNum));
+      
+      const purposeText = purpose === "both" ? "Revised trans and price" : purpose === "trans" ? "Revised trans" : "Revised price";
+      const reasonText  = notesVal.trim() ? `${purposeText} - Note: ${notesVal}` : purposeText;
+      fd.set("reason",      reasonText);
+      fd.set("requestedBy", requestedBy);
+      fd.set("oldTransport", String(oldTransport ?? 0));
+      fd.set("newTransport", String(transNum));
+
+      startTransition(async () => {
+        const res = await submitPriceChangeRequestAction(fd);
+        if (res?.ok) { setDone(res.directSaved ? "direct" : "request"); setTimeout(onClose, 1800); }
+        else          { setErr(res?.error ?? "Failed to submit"); }
+      });
+    }
   };
 
   return (
@@ -75,7 +154,7 @@ function ChangeRequestModal({
       position: "fixed", inset: 0, zIndex: 3000,
       background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    }}>
       <div style={{
         background: "var(--bg-surface)", border: "1px solid var(--border-medium)",
         borderRadius: "16px", boxShadow: "var(--shadow-xl)",
@@ -83,10 +162,9 @@ function ChangeRequestModal({
         display: "flex", flexDirection: "column", gap: "14px",
         animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)",
       }}>
-        {/* Header */}
         <div>
-          <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--warning)", marginBottom: "4px" }}>
-            Change Request
+          <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: isFirstEntry ? "#3b82f6" : isNegotiation ? "#8b5cf6" : "var(--warning)", marginBottom: "4px" }}>
+            {isFirstEntry ? "Record Price" : isNegotiation ? "Log Negotiated Price" : "Price Revision Request"}
           </p>
           <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{item.name}</h3>
           <div style={{ display: "flex", gap: "6px", marginTop: "5px", flexWrap: "wrap" }}>
@@ -95,81 +173,233 @@ function ChangeRequestModal({
           </div>
         </div>
 
-        {/* Price diff card */}
-        {hasPrice && (
-          <div style={{
-            padding: "10px 14px",
-            background: priceDiff > 0 ? "var(--danger-light)" : "var(--success-light)",
-            border: `1px solid ${priceDiff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
-            borderRadius: "var(--radius)", display: "flex", gap: "14px", alignItems: "center",
-          }}>
-            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>Price</span>
-            <span style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>{formatCurrency(currentPrice)}</span>
-            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>→</span>
-            <span style={{ fontSize: "13px", fontWeight: 700, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>{formatCurrency(newPrice)}</span>
-            <span style={{ marginInlineStart: "auto", fontSize: "12px", fontWeight: 700, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
-              {priceDiff > 0 ? "▲" : "▼"} {Math.abs(pricePct).toFixed(1)}%
-            </span>
+        {isFirstEntry ? (
+          /* Record Price Layout */
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Price (EGP) *</span>
+              <input
+                type="number"
+                step="any"
+                min="0.01"
+                placeholder="0.00"
+                value={revisedPriceVal}
+                onChange={e => setRevisedPriceVal(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1.5px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+                autoFocus
+              />
+            </label>
+
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Transport Cost (EGP) *</span>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={revisedTransVal}
+                onChange={e => setRevisedTransVal(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1.5px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+              />
+            </label>
+
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Notes (Optional)</span>
+              <input
+                type="text"
+                value={notesVal}
+                onChange={e => setNotesVal(e.target.value)}
+                placeholder="Notes for this entry..."
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+              />
+            </label>
+          </div>
+        ) : isNegotiation ? (
+          /* Redesigned Negotiation Layout */
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Purpose</span>
+              <input
+                type="text"
+                value="price negotation"
+                disabled
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: "13px", cursor: "not-allowed" }}
+              />
+            </label>
+
+            <div style={{ padding: "10px 14px", background: "var(--bg-elevated)", border: "1px solid var(--border-medium)", borderRadius: "var(--radius)", fontSize: "13px" }}>
+              <span style={{ color: "var(--text-muted)" }}>Submitted Price: </span>
+              <strong>{formatCurrency(currentPrice)}</strong>
+            </div>
+
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Price after negotiation (EGP) *</span>
+              <input
+                type="number"
+                step="any"
+                min="0.01"
+                value={negotiatedPriceVal}
+                onChange={e => setNegotiatedPriceVal(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1.5px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+                autoFocus
+              />
+            </label>
+
+            {/* Auto calculated amount and percentage based on original price */}
+            {(() => {
+              const priceNum = Number(negotiatedPriceVal);
+              if (isNaN(priceNum) || priceNum <= 0 || currentPrice <= 0) return null;
+              const diff = currentPrice - priceNum;
+              const pct = (diff / currentPrice) * 100;
+              return (
+                <div style={{
+                  padding: "10px 14px",
+                  background: diff >= 0 ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+                  border: `1.5px solid ${diff >= 0 ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
+                  borderRadius: "8px",
+                  fontSize: "12.5px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>Negotiated Discount Amount:</span>
+                    <strong style={{ color: diff >= 0 ? "var(--success)" : "var(--danger)" }}>
+                      {diff >= 0 ? "Saved" : "Increased by"} {formatCurrency(Math.abs(diff))}
+                    </strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>Negotiated Discount %:</span>
+                    <strong style={{ color: diff >= 0 ? "var(--success)" : "var(--danger)" }}>
+                      {pct.toFixed(2)}% {diff >= 0 ? "discount" : "increase"}
+                    </strong>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Notes (Optional)</span>
+              <input
+                type="text"
+                value={notesVal}
+                onChange={e => setNotesVal(e.target.value)}
+                placeholder="e.g. Agreed to discount based on volume..."
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+              />
+            </label>
+          </div>
+        ) : (
+          /* Redesigned Revision Layout */
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>Purpose *</span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {(["price", "trans", "both"] as const).map(p => {
+                  const label = p === "price" ? "Revised price" : p === "trans" ? "Revised trans" : "Revised trans and price";
+                  const isSelected = purpose === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPurpose(p)}
+                      style={{
+                        flex: 1, padding: "6px 8px", borderRadius: "8px", fontSize: "11px",
+                        border: `1.5px solid ${isSelected ? "var(--warning)" : "var(--border-medium)"}`,
+                        background: isSelected ? "rgba(245,158,11,0.08)" : "var(--bg-elevated)",
+                        color: isSelected ? "var(--warning)" : "var(--text-secondary)",
+                        fontWeight: isSelected ? 700 : 400, cursor: "pointer", transition: "all 150ms",
+                        textAlign: "center"
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {(purpose === "price" || purpose === "both") && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                  Original Price: <strong>{formatCurrency(currentPrice)}</strong>
+                </div>
+                <label className="field">
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Revised Price (EGP) *</span>
+                  <input
+                    type="number" step="any" min="0.01"
+                    value={revisedPriceVal}
+                    onChange={e => setRevisedPriceVal(e.target.value)}
+                    style={{ padding: "8px 12px", borderRadius: "8px", border: "1.5px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+                    autoFocus
+                  />
+                </label>
+              </div>
+            )}
+
+            {(purpose === "trans" || purpose === "both") && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                  Original Transport: <strong>{formatCurrency(oldTransport ?? 0)}</strong>
+                </div>
+                <label className="field">
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Revised Transport (EGP) *</span>
+                  <input
+                    type="number" step="any" min="0"
+                    value={revisedTransVal}
+                    onChange={e => setRevisedTransVal(e.target.value)}
+                    style={{ padding: "8px 12px", borderRadius: "8px", border: "1.5px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+                  />
+                </label>
+              </div>
+            )}
+
+            <label className="field">
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Note (Optional)</span>
+              <input
+                type="text"
+                value={notesVal}
+                onChange={e => setNotesVal(e.target.value)}
+                placeholder="Write a note in case WH wants to write a note..."
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
+              />
+            </label>
           </div>
         )}
-
-        {/* Transport diff card */}
-        {hasTrans && (
-          <div style={{
-            padding: "10px 14px",
-            background: transDiff > 0 ? "var(--danger-light)" : "var(--success-light)",
-            border: `1px solid ${transDiff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
-            borderRadius: "var(--radius)", display: "flex", gap: "14px", alignItems: "center",
-          }}>
-            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>Trans.</span>
-            <span style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>{formatCurrency(oldTransport!)}</span>
-            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>→</span>
-            <span style={{ fontSize: "13px", fontWeight: 700, color: transDiff > 0 ? "var(--danger)" : "var(--success)" }}>{formatCurrency(newTransport!)}</span>
-          </div>
-        )}
-
-        {/* Preset reason chips + custom input */}
-        <div>
-          <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "7px" }}>
-            Reason <span style={{ color: "var(--danger)" }}>*</span>
-          </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
-            {presets.map(p => (
-              <button key={p} type="button" onClick={() => setReason(p)} style={{
-                padding: "5px 12px", borderRadius: "99px", fontSize: "12px",
-                border: `1.5px solid ${reason === p ? "var(--primary)" : "var(--border-medium)"}`,
-                background: reason === p ? "rgba(99,102,241,0.1)" : "var(--bg-elevated)",
-                color: reason === p ? "var(--primary)" : "var(--text-secondary)",
-                fontWeight: reason === p ? 700 : 400, cursor: "pointer", transition: "all 150ms",
-              }}>{p}</button>
-            ))}
-          </div>
-          <input
-            type="text" value={reason} onChange={e => setReason(e.target.value)}
-            placeholder="Or type a custom reason…"
-            style={{
-              width: "100%", padding: "8px 12px", borderRadius: "8px",
-              border: "1px solid var(--border-medium)", background: "var(--bg-elevated)",
-              color: "var(--text-primary)", fontSize: "13px",
-            }}
-          />
-        </div>
 
         {err && <div style={{ fontSize: "12px", color: "var(--danger)", fontWeight: 600 }}>⚠️ {err}</div>}
         {done && (
           <div style={{ fontSize: "13px", color: "var(--success)", fontWeight: 700, textAlign: "center", padding: "6px" }}>
-            {done === "direct" ? "✓ Saved directly." : "✓ Request submitted — awaiting SC review."}
+            {done === "direct" 
+              ? (isNegotiation ? "✓ Notified Supply Chain successfully." : "✓ Saved successfully.") 
+              : "✓ Request submitted — awaiting SC review."
+            }
           </div>
         )}
 
         <div style={{ display: "flex", gap: "10px" }}>
           <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={onClose} disabled={pending}>Cancel</button>
-          <button type="button" className="button button-warning" style={{ flex: 2 }} onClick={handleSubmit} disabled={pending || Boolean(done)}>
-            {pending ? "Submitting…" : "Submit Request"}
+          <button
+            type="button"
+            className={isFirstEntry ? "button button-primary" : isNegotiation ? "button button-primary" : "button button-warning"}
+            style={{
+              flex: 2,
+              background: isFirstEntry ? "#3b82f6" : isNegotiation ? "#8b5cf6" : undefined,
+              borderColor: isFirstEntry ? "#2563eb" : isNegotiation ? "#7c3aed" : undefined,
+              color: (isFirstEntry || isNegotiation) ? "#fff" : undefined
+            }}
+            onClick={handleSubmit}
+            disabled={pending || Boolean(done)}
+          >
+            {pending ? "Saving…" : isFirstEntry ? "Save Price" : isNegotiation ? "Notify SC" : "Submit Request"}
           </button>
         </div>
         <p style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
-          This will be sent to SC for approval. Nothing changes until approved.
+          {isFirstEntry
+            ? "This will save the initial price directly to the database for this month."
+            : isNegotiation
+              ? "This will log a negotiated price for this month and notify SC. The original price is preserved."
+              : "This will be sent to SC for approval. Nothing changes until approved."
+          }
         </p>
       </div>
     </div>
@@ -230,7 +460,6 @@ function ExtendPricesModal({
   return (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", opacity: 1 }}
-      onClick={e => e.target === e.currentTarget && onClose(false)}
     >
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-medium)", borderRadius: "16px", boxShadow: "var(--shadow-xl)", width: "100%", maxWidth: "500px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)", willChange: "transform, opacity" }}>
         <div>
@@ -278,28 +507,107 @@ function ExtendPricesModal({
   );
 }
 
-export default function PurchasingForm({ categories, items, suppliers, month, role, displayName, purchasingHistory, wasSaved }: Props) {
+export default function PurchasingForm({
+  categories,
+  items,
+  suppliers,
+  month,
+  role,
+  displayName,
+  purchasingHistory,
+  wasSaved,
+  initialCategoryId,
+  initialItemId,
+}: Props) {
   const { t, locale } = useI18n();
   const isAr = locale === "ar";
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories.length > 0 ? String(categories[0].id) : "");
-  const [selectedItemId, setSelectedItemId]         = useState<string>("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
+    initialCategoryId || (categories.length > 0 ? String(categories[0].id) : "")
+  );
+  const [selectedItemId, setSelectedItemId]         = useState<string>(
+    initialItemId || ""
+  );
   const [historyFilter, setHistoryFilter]           = useState<HistoryFilter>("3");
-  const [supplierPrices, setSupplierPrices]         = useState<Record<number, string>>({});
-  const [supplierNotes, setSupplierNotes]           = useState<Record<number, string>>({});
-  // T25: Actual transport per supplier for FIRST-ENTRY rows (saved to DB)
-  const [supplierTransportMain, setSupplierTransportMain] = useState<Record<number, string>>({});
-  // T25: WH can record actual transport cost per supplier/item (review modal)
-  const [supplierActualTransport, setSupplierActualTransport] = useState<Record<string, string>>({});
 
   // Change request modal state
   const [changeRequestModal, setChangeRequestModal] = useState<{
-    supplier: Supplier; currentPrice: number; newPrice: number;
+    supplier: Supplier; item: Item; currentPrice: number; newPrice: number;
     oldTransport?: number | null; newTransport?: number | null;
+    isNegotiation?: boolean;
+    isFirstEntry?: boolean;
   } | null>(null);
 
-  // Revised transport for CONFIRMED rows (editable field)
-  const [supplierTransportRevised, setSupplierTransportRevised] = useState<Record<number, string>>({});
+  // Inline entry states for unrecorded suppliers
+  const [inlinePrices, setInlinePrices] = useState<Record<number, string>>({});
+  const [inlineTransports, setInlineTransports] = useState<Record<number, string>>({});
+  const [inlineNotes, setInlineNotes] = useState<Record<number, string>>({});
+  const [inlineError, setInlineError] = useState<Record<number, string>>({});
+  const [inlinePending, startInlineTransition] = useTransition();
+
+  const handleInlinePriceChange = (supplierId: number, val: string) => {
+    setInlinePrices(prev => ({ ...prev, [supplierId]: val }));
+  };
+
+  const handleInlineTransportChange = (supplierId: number, val: string) => {
+    setInlineTransports(prev => ({ ...prev, [supplierId]: val }));
+  };
+
+  const handleInlineNotesChange = (supplierId: number, val: string) => {
+    setInlineNotes(prev => ({ ...prev, [supplierId]: val }));
+  };
+
+  const handleInlineSubmit = (supplierId: number) => {
+    const priceVal = inlinePrices[supplierId];
+    const transVal = inlineTransports[supplierId] || "";
+    const notesVal = inlineNotes[supplierId] || "";
+
+    const priceNum = Number(priceVal);
+    if (!priceVal || isNaN(priceNum) || priceNum <= 0) {
+      setInlineError(prev => ({ ...prev, [supplierId]: isAr ? "سعر غير صحيح" : "Invalid price" }));
+      return;
+    }
+
+    const transNum = transVal ? Number(transVal) : 0;
+    if (isNaN(transNum) || transNum < 0) {
+      setInlineError(prev => ({ ...prev, [supplierId]: isAr ? "تكلفة غير صحيحة" : "Invalid transport" }));
+      return;
+    }
+
+    setInlineError(prev => ({ ...prev, [supplierId]: "" }));
+
+    const fd = new FormData();
+    fd.set("itemId", String(selectedItem!.id));
+    fd.set("month", month);
+    fd.set("collectedBy", displayName);
+    fd.set("collectedRole", "WH");
+    fd.set(`price_${supplierId}`, String(priceNum));
+    fd.set(`notes_${supplierId}`, notesVal);
+    fd.set(`actual_transport_${supplierId}`, String(transNum));
+
+    startInlineTransition(async () => {
+      const res = await saveBatchPriceEntriesSilent(fd);
+      if (res?.ok) {
+        setInlinePrices(prev => {
+          const next = { ...prev };
+          delete next[supplierId];
+          return next;
+        });
+        setInlineTransports(prev => {
+          const next = { ...prev };
+          delete next[supplierId];
+          return next;
+        });
+        setInlineNotes(prev => {
+          const next = { ...prev };
+          delete next[supplierId];
+          return next;
+        });
+      } else {
+        setInlineError(prev => ({ ...prev, [supplierId]: res?.error ?? "Save failed" }));
+      }
+    });
+  };
 
   // Extend prices modal state (SC only)
   const [extendModal, setExtendModal] = useState(false);
@@ -308,8 +616,6 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [editingEntry, setEditingEntry] = useState<{ itemId: number; supplierId: number; price: string; notes: string } | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   const filteredItems = useMemo(
     () => selectedCategoryId === "" ? items : items.filter(i => i.category_id === Number(selectedCategoryId)),
@@ -335,14 +641,14 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
     return map;
   }, [purchasingHistory, month]);
 
-  useEffect(() => {
-    // When category changes, always reset to blank (WH must explicitly select an item)
+  const [prevCategoryId, setPrevCategoryId] = useState(selectedCategoryId);
+
+  if (selectedCategoryId !== prevCategoryId) {
+    setPrevCategoryId(selectedCategoryId);
     setSelectedItemId("");
-  }, [selectedCategoryId]);
+  }
 
-  // No auto-select: do NOT auto-pick first item
 
-  useEffect(() => { setSupplierPrices({}); setSupplierNotes({}); setSupplierTransportMain({}); setSupplierTransportRevised({}); }, [selectedItemId]);
 
   const selectedItem = items.find(i => String(i.id) === selectedItemId);
 
@@ -461,63 +767,11 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
     });
   };
 
-  const handleSaveInline = async (item: Item, supplier: Supplier, existingEntry?: HistoryEntry) => {
-    if (!editingEntry) return;
-    const priceNum = Number(editingEntry.price);
-    if (isNaN(priceNum) || priceNum <= 0) {
-      alert("Please enter a valid positive price.");
-      return;
-    }
-
-    const key = `${item.id}_${supplier.id}`;
-    const existingConfirmed = confirmedCurrentMonthEntries.get(key);
-
-    if (existingConfirmed) {
-      // Set the active selected item to this item so ChangeRequestModal displays correctly
-      setSelectedItemId(String(item.id));
-      // Set changeRequestModal state to trigger the ChangeRequestModal overlay
-      setChangeRequestModal({
-        supplier,
-        currentPrice: existingConfirmed.price,
-        newPrice: priceNum,
-      });
-    } else {
-      // Save directly
-      setIsSaving(true);
-      try {
-        const fd = new FormData();
-        fd.set("itemId", String(item.id));
-        fd.set("month", month);
-        fd.set("collectedBy", displayName);
-        fd.set("collectedRole", role);
-        fd.set(`price_${supplier.id}`, editingEntry.price);
-        fd.set(`notes_${supplier.id}`, editingEntry.notes);
-        
-        const res = await saveBatchPriceEntriesSilent(fd);
-        if (res?.ok) {
-          setEditingEntry(null);
-        } else {
-          alert(res?.error ?? "Failed to save price.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("An error occurred while saving.");
-      } finally {
-        setIsSaving(false);
-      }
-    }
-  };
-
   // Suppliers that have a prev-month price but NO current-month price (extendable)
   const suppliersExtendable = useMemo(
     () => filteredSuppliers.filter(s => prevMonthPriceMap[s.id] != null && !currentMonthEntriesBySupplier.has(s.id)).map(s => s.id),
     [filteredSuppliers, prevMonthPriceMap, currentMonthEntriesBySupplier]
   );
-
-  // Count suppliers that are "new" (no confirmed price this month) vs "change" mode
-  const newEntries    = Object.entries(supplierPrices).filter(([sid, v]) => !currentMonthEntriesBySupplier.has(Number(sid)) && v && Number(v) > 0);
-  const changeEntries = Object.entries(supplierPrices).filter(([sid, v]) => currentMonthEntriesBySupplier.has(Number(sid)) && v && Number(v) > 0);
-  const filledCount   = newEntries.length + changeEntries.length;
 
   const pivotData = useMemo(() => {
     const allMonths = Array.from(new Set(itemHistory.map(h => h.month))).sort((a, b) => b.localeCompare(a));
@@ -544,82 +798,24 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
     return { pivotMonths, priceMap, activeSuppliers, minByMonth, monthAvgs };
   }, [itemHistory, historyFilter, month, suppliers, latestMap]);
 
-  // Custom submit handler — separates new entries from change requests
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    // Only intercept if there are change-request entries (confirmed suppliers being updated)
-    if (changeEntries.length === 0) {
-      // Pure new entries — let the form action run normally
-      return;
-    }
-
-    // There are change entries — prevent the full form submit and handle each path
-    e.preventDefault();
-
-    // If there are also NEW entries to save, submit those first via the silent action
-    if (newEntries.length > 0) {
-      const form = e.currentTarget;
-      const fd = new FormData(form);
-      // Remove stale price_ keys that belong to confirmed suppliers
-      for (const [sid] of changeEntries) {
-        fd.delete(`price_${sid}`);
-        fd.delete(`notes_${sid}`);
-      }
-      const hasNewPrices = newEntries.some(([sid]) => fd.has(`price_${sid}`));
-      if (hasNewPrices) {
-        await saveBatchPriceEntriesSilent(fd);
-      }
-    }
-
-    // Now handle the first change-request entry via modal
-    const [sidStr, newPriceStr] = changeEntries[0];
-    const sid = Number(sidStr);
-    const supplier = suppliers.find(s => s.id === sid);
-    const currentEntry = currentMonthEntriesBySupplier.get(sid);
-
-    if (supplier && currentEntry) {
-      // Normal change request — open modal
-      setChangeRequestModal({
-        supplier,
-        currentPrice: currentEntry.price,
-        newPrice: Number(newPriceStr),
-      });
-      setSupplierPrices(prev => {
-        const next = { ...prev };
-        delete next[sid];
-        return next;
-      });
-    } else if (supplier) {
-      // Current-month state changed while the form was open; fall back to a direct save.
-      // Save it as a direct new price entry.
-      const fd = new FormData();
-      fd.set("itemId",        String(selectedItem?.id ?? ""));
-      fd.set("month",         month);
-      fd.set("collectedBy",   displayName);
-      fd.set("collectedRole", role);
-      fd.set(`price_${sid}`,  newPriceStr);
-      fd.set(`notes_${sid}`,  supplierNotes[sid] ?? "");
-      await saveBatchPriceEntriesSilent(fd);
-      setSupplierPrices(prev => { const next = { ...prev }; delete next[sid]; return next; });
-    }
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
       {/* Change request modal */}
-      {changeRequestModal && selectedItem && (
+      {changeRequestModal && changeRequestModal.item && (
         <ChangeRequestModal
           supplier={changeRequestModal.supplier}
-          item={selectedItem}
+          item={changeRequestModal.item}
           month={month}
           currentPrice={changeRequestModal.currentPrice}
           newPrice={changeRequestModal.newPrice}
           oldTransport={changeRequestModal.oldTransport}
           newTransport={changeRequestModal.newTransport}
           requestedBy={displayName}
+          isNegotiation={changeRequestModal.isNegotiation}
+          isFirstEntry={changeRequestModal.isFirstEntry}
           onClose={() => {
             setChangeRequestModal(null);
-            setEditingEntry(null);
           }}
         />
       )}
@@ -633,13 +829,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
           suppliersWithoutCurrentPrice={suppliersExtendable}
           prevMonthPrices={prevMonthPriceMap}
           extendedBy={displayName}
-          onClose={(refreshed) => {
+          onClose={() => {
             setExtendModal(false);
-            if (refreshed) {
-              // Reset price inputs so the form reflects the newly extended entries
-              setSupplierPrices({});
-              setSupplierNotes({});
-            }
           }}
         />
       )}
@@ -651,7 +842,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
           background: "rgba(15, 23, 42, 0.45)", backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
           animation: "fadeIn 0.2s ease-out",
-        }} onClick={e => e.target === e.currentTarget && setShowReviewModal(false)}>
+        }}>
           <div style={{
             width: "100%", maxWidth: "1000px", height: "90vh", maxHeight: "800px",
             display: "flex", flexDirection: "column", background: "var(--bg-surface)",
@@ -795,7 +986,16 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                                 <span style={{ fontSize: "14px" }}>{isExpanded ? "▼" : "▶"}</span>
                                 <div>
-                                  <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{item.name}</strong>
+                                  <strong
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: item.id } }));
+                                    }}
+                                    className="clickable-detail-trigger"
+                                    style={{ fontSize: "14px" }}
+                                  >
+                                    {item.name}
+                                  </strong>
                                   <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "8px", marginRight: "8px" }}>
                                     · {isAr ? "الوحدة" : "Unit"}: {item.unit}
                                     {" · "}{isAr ? "أقل كمية طلب (MOQ)" : "MOQ"}: {item.moq ?? 0}
@@ -834,12 +1034,11 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                       </tr>
                                     ) : suppliersForItem.map((supplier, idx) => {
                                       const entry = itemEntries?.get(supplier.id);
-                                      const isEditing = editingEntry?.itemId === item.id && editingEntry?.supplierId === supplier.id;
                                       const color = COLORS[idx % COLORS.length];
                                       const prevPrice = prevMonthPriceMapAll.get(`${item.id}_${supplier.id}`);
                                       
                                       return (
-                                        <tr key={supplier.id} style={{ borderBottom: "1px solid var(--border-light)", background: isEditing ? "var(--bg-elevated)" : "transparent" }}>
+                                        <tr key={supplier.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
                                           {/* Supplier Name */}
                                           <td style={{ padding: "8px 12px", verticalAlign: "middle", textAlign: isAr ? "right" : "left" }}>
                                             <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
@@ -847,7 +1046,13 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                                 {(supplier.fame_name || supplier.name).charAt(0)}
                                               </span>
                                               <div style={{ textAlign: isAr ? "right" : "left" }}>
-                                                <div style={{ fontWeight: 600 }}>{supplier.fame_name || supplier.name}</div>
+                                                <div
+                                                  onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: supplier.id } }))}
+                                                  className="clickable-detail-trigger"
+                                                  style={{ fontWeight: 600 }}
+                                                >
+                                                  {supplier.fame_name || supplier.name}
+                                                </div>
                                                 {prevPrice != null && (
                                                   <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
                                                     {isAr ? "السابق" : "Prev"}: {formatCurrency(prevPrice)}
@@ -870,40 +1075,33 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                             )}
                                           </td>
 
-                                          {/* T25: Editable Actual Transport Cost */}
+                                          {/* Transport Cost */}
                                           <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle" }}>
-                                            <input
-                                              type="number"
-                                              min="0" step="any"
-                                              value={supplierActualTransport[`${item.id}_${supplier.id}`] ?? String(item.transportation_per_unit ?? 0)}
-                                              onChange={e => setSupplierActualTransport(prev => ({ ...prev, [`${item.id}_${supplier.id}`]: e.target.value }))}
-                                              title="Actual transport cost for this quote (overrides item default)"
-                                              style={{
-                                                width: "90px", padding: "4px 8px", fontSize: "12px",
-                                                border: "1px solid var(--border-medium)",
-                                                borderRadius: "var(--radius-sm)",
-                                                background: "var(--bg-elevated)",
-                                                color: "var(--text-primary)",
-                                                textAlign: "center"
-                                              }}
-                                            />
+                                            <span style={{ fontSize: "12px" }}>
+                                              {entry?.actual_transport != null ? formatCurrency(entry.actual_transport) : formatCurrency(item.transportation_per_unit ?? 0)}
+                                            </span>
                                           </td>
                                           
                                           {/* Price */}
                                           <td style={{ padding: "8px 12px", textAlign: isAr ? "left" : "right", verticalAlign: "middle" }}>
-                                            {isEditing ? (
-                                              <input
-                                                type="number"
-                                                step="any"
-                                                min="0.01"
-                                                value={editingEntry.price}
-                                                onChange={e => setEditingEntry(prev => prev ? { ...prev, price: e.target.value } : null)}
-                                                placeholder="0.00"
-                                                style={{ width: "100px", padding: "4px 8px", fontSize: "13px", border: "1.5px solid var(--border-medium)", borderRadius: "var(--radius-sm)", background: "var(--bg-surface)", color: "var(--text-primary)", textAlign: isAr ? "left" : "right" }}
-                                                autoFocus
-                                              />
-                                            ) : entry ? (
-                                              <strong style={{ fontSize: "13px" }}>{formatCurrency(entry.price)}</strong>
+                                            {entry ? (
+                                              <div style={{ display: "flex", flexDirection: "column", alignItems: isAr ? "flex-start" : "flex-end" }}>
+                                                <strong style={{ fontSize: "13px" }}>{formatCurrency(entry.price)}</strong>
+                                                {entry.negotiated_price != null && (
+                                                  <span className="badge" style={{
+                                                    fontSize: "10px",
+                                                    background: "rgba(139,92,246,0.12)",
+                                                    color: "#8b5cf6",
+                                                    border: "1px solid rgba(139,92,246,0.35)",
+                                                    fontWeight: 700,
+                                                    marginTop: "4px",
+                                                    padding: "2px 6px",
+                                                    whiteSpace: "nowrap"
+                                                  }}>
+                                                    {isAr ? "تفاوض: " : "Negotiated: "}{formatCurrency(entry.negotiated_price)}
+                                                  </span>
+                                                )}
+                                              </div>
                                             ) : (
                                               <span style={{ color: "var(--text-muted)" }}>—</span>
                                             )}
@@ -911,15 +1109,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                           
                                           {/* Notes */}
                                           <td style={{ padding: "8px 12px", verticalAlign: "middle", textAlign: isAr ? "right" : "left" }}>
-                                            {isEditing ? (
-                                              <input
-                                                type="text"
-                                                value={editingEntry.notes}
-                                                onChange={e => setEditingEntry(prev => prev ? { ...prev, notes: e.target.value } : null)}
-                                                placeholder={isAr ? "ملاحظات اختيارية..." : "Optional notes..."}
-                                                style={{ width: "100%", padding: "4px 8px", fontSize: "13px", border: "1px solid var(--border-medium)", borderRadius: "var(--radius-sm)", background: "var(--bg-surface)", color: "var(--text-primary)", textAlign: isAr ? "right" : "left" }}
-                                              />
-                                            ) : entry?.notes ? (
+                                            {entry?.notes ? (
                                               <span style={{ color: "var(--text-secondary)", fontSize: "12px" }}>{entry.notes}</span>
                                             ) : (
                                               <span style={{ color: "var(--text-muted)", fontStyle: "italic", fontSize: "12px" }}>{isAr ? "لا يوجد ملاحظات" : "No notes"}</span>
@@ -928,56 +1118,72 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                                           
                                           {/* Actions */}
                                           <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle" }}>
-                                            {isEditing ? (
-                                              <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                                            <div style={{ display: "flex", gap: "6px", justifyContent: "center", flexWrap: "wrap" }}>
+                                              {entry ? (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    className="button button-warning"
+                                                    style={{ padding: "4px 8px", fontSize: "11px" }}
+                                                    onClick={() => setChangeRequestModal({
+                                                      supplier,
+                                                      item,
+                                                      currentPrice: entry.price,
+                                                      newPrice: entry.price,
+                                                      oldTransport: entry.actual_transport,
+                                                      newTransport: entry.actual_transport,
+                                                      isNegotiation: false,
+                                                      isFirstEntry: false,
+                                                    })}
+                                                  >
+                                                    {isAr ? "تعديل" : "Edit"}
+                                                  </button>
+                                                  {role === "WH" && (
+                                                    <button
+                                                      type="button"
+                                                      className="button"
+                                                      style={{
+                                                        padding: "4px 8px", fontSize: "11px",
+                                                        background: "rgba(139,92,246,0.12)",
+                                                        color: "#8b5cf6",
+                                                        border: "1px solid rgba(139,92,246,0.35)",
+                                                        borderRadius: "var(--radius-sm)"
+                                                      }}
+                                                      onClick={() => setChangeRequestModal({
+                                                        supplier,
+                                                        item,
+                                                        currentPrice: entry.price,
+                                                        newPrice: entry.price,
+                                                        oldTransport: entry.actual_transport,
+                                                        newTransport: entry.actual_transport,
+                                                        isNegotiation: true,
+                                                        isFirstEntry: false,
+                                                      })}
+                                                    >
+                                                      {isAr ? "تفاوض" : "Negotiate ↗"}
+                                                    </button>
+                                                  )}
+                                                </>
+                                              ) : (
                                                 <button
                                                   type="button"
                                                   className="button button-primary"
                                                   style={{ padding: "4px 8px", fontSize: "11px" }}
-                                                  onClick={() => handleSaveInline(item, supplier, entry)}
-                                                  disabled={isSaving}
+                                                  onClick={() => setChangeRequestModal({
+                                                    supplier,
+                                                    item,
+                                                    currentPrice: 0,
+                                                    newPrice: 0,
+                                                    oldTransport: item.transportation_per_unit ?? 0,
+                                                    newTransport: item.transportation_per_unit ?? 0,
+                                                    isFirstEntry: true,
+                                                    isNegotiation: false,
+                                                  })}
                                                 >
-                                                  {isSaving ? (isAr ? "جاري الحفظ..." : "Saving...") : (isAr ? "حفظ" : "Save")}
+                                                  {isAr ? "تسجيل السعر" : "Record Price"}
                                                 </button>
-                                                <button
-                                                  type="button"
-                                                  className="button button-secondary"
-                                                  style={{ padding: "4px 8px", fontSize: "11px" }}
-                                                  onClick={() => setEditingEntry(null)}
-                                                  disabled={isSaving}
-                                                >
-                                                  {isAr ? "إلغاء" : "Cancel"}
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <div style={{ display: "flex", gap: "4px", justifyContent: "center", flexWrap: "wrap" }}>
-                                                <button
-                                                  type="button"
-                                                  className="button button-secondary"
-                                                  style={{ padding: "4px 10px", fontSize: "11px" }}
-                                                  onClick={() => setEditingEntry({ itemId: item.id, supplierId: supplier.id, price: entry ? String(entry.price) : "", notes: entry?.notes ?? "" })}
-                                                >
-                                                  {entry ? (isAr ? "تعديل" : "Edit") : (isAr ? "تسجيل السعر" : "Record Price")}
-                                                </button>
-                                                {/* T23: Negotiate button — open change request modal for existing entries */}
-                                                {entry && role === "WH" && (
-                                                  <button
-                                                    type="button"
-                                                    className="button"
-                                                    style={{
-                                                      padding: "4px 8px", fontSize: "10px",
-                                                      background: "rgba(139,92,246,0.12)",
-                                                      color: "#8b5cf6",
-                                                      border: "1px solid rgba(139,92,246,0.35)",
-                                                      borderRadius: "var(--radius-sm)"
-                                                    }}
-                                                    onClick={() => setChangeRequestModal({ supplier, currentPrice: entry.price, newPrice: entry.price })}
-                                                  >
-                                                    {isAr ? "تفاوض" : "Negotiate ↗"}
-                                                  </button>
-                                                )}
-                                              </div>
-                                            )}
+                                              )}
+                                            </div>
                                           </td>
                                         </tr>
                                       );
@@ -1067,26 +1273,22 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
       </div>
 
       {selectedItem && (
-        <form action={createBatchPriceEntries} onSubmit={handleFormSubmit}>
-          <input type="hidden" name="itemId" value={selectedItem.id} />
-          <input type="hidden" name="month" value={month} />
-          <input type="hidden" name="collectedBy" value={displayName} />
-          <input type="hidden" name="collectedRole" value={role} />
-
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <div className="panel" style={{ padding: "20px 24px" }}>
             <div className="panel-header">
               <div>
                 <p className="eyebrow">3. {t("purch.recordPrices")}</p>
-                <h2 style={{ fontSize: "14px" }}>{selectedItem.name}</h2>
-                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{t("purch.enterPrices")}</p>
+                <h2
+                  onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: selectedItem.id } }))}
+                  className="clickable-detail-trigger"
+                  style={{ fontSize: "14px" }}
+                >
+                  {selectedItem.name}
+                </h2>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{isAr ? "سجل الأسعار أو تصفح التفاصيل لكل مورد أدناه." : "Record prices or view details for each supplier below."}</p>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
                 <span className="badge badge-strong">{selectedItem.unit}</span>
-                {newEntries.length > 0 && (
-                  <span className="badge badge-success" style={{ fontSize: "10px" }}>
-                    {newEntries.length} will save directly
-                  </span>
-                )}
 
                 {/* SC only: extend previous month prices */}
                 {role === "SC" && suppliersExtendable.length > 0 && (
@@ -1103,7 +1305,7 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
             </div>
 
             {/* Supplier rows */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
 
               {/* Empty state: no suppliers configured for this category */}
               {filteredSuppliers.length === 0 && (
@@ -1130,25 +1332,18 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
 
               {filteredSuppliers.map((supplier, idx) => {
                 const color         = COLORS[idx % COLORS.length];
-                const currentPrice  = supplierPrices[supplier.id] ?? "";
                 const lastEntry     = latestMap[`${supplier.id}_${shiftMonth(month, -1)}`];
                 const thisEntry     = currentMonthEntriesBySupplier.get(supplier.id);
                 const isConfirmed   = Boolean(thisEntry);
 
                 // ── CONFIRMED (revision) row ────────────────────────────────
                 if (isConfirmed && thisEntry) {
-                  const revisedTransVal = supplierTransportRevised[supplier.id] ?? "";
-                  const revisedTrans    = revisedTransVal && Number(revisedTransVal) > 0 ? Number(revisedTransVal) : null;
-                  const revisedPrice    = currentPrice && Number(currentPrice) > 0 ? Number(currentPrice) : null;
-                  const canNegotiate    = revisedPrice !== null || revisedTrans !== null;
-                  const inputBase       = { height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%" } as const;
-
                   return (
                     <div key={supplier.id} style={{
                       display: "flex", alignItems: "center", gap: "10px",
                       padding: "14px 18px", borderRadius: "12px",
-                      border: `1.5px solid ${canNegotiate ? "var(--warning)" : "rgba(16,185,129,0.3)"}`,
-                      background: canNegotiate ? "rgba(245,158,11,0.025)" : "rgba(16,185,129,0.025)",
+                      border: "1.5px solid rgba(16,185,129,0.3)",
+                      background: "rgba(16,185,129,0.025)",
                       transition: "all 200ms ease",
                     }}>
 
@@ -1158,7 +1353,11 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                           {(supplier.fame_name || supplier.name).charAt(0)}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div
+                            onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: supplier.id } }))}
+                            className="clickable-detail-trigger"
+                            style={{ fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          >
                             {supplier.fame_name || supplier.name}
                           </div>
                           {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>Last: {formatCurrency(lastEntry.price)}</div>}
@@ -1166,22 +1365,38 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                       </div>
 
                       {/* Submitted price — read-only */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flexShrink: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flexShrink: 0, minWidth: "140px" }}>
                         <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted price</span>
                         <div style={{
-                          ...inputBase, display: "flex", alignItems: "center", whiteSpace: "nowrap",
+                          height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%",
+                          display: "flex", alignItems: "center", whiteSpace: "nowrap",
                           background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)",
                           color: "var(--success)", paddingLeft: "10px",
                         }}>
                           ✓ {formatCurrency(thisEntry.price)}
                         </div>
+                        {thisEntry.negotiated_price != null && (
+                          <div className="badge" style={{
+                            fontSize: "10px",
+                            background: "rgba(139,92,246,0.12)",
+                            color: "#8b5cf6",
+                            border: "1px solid rgba(139,92,246,0.35)",
+                            fontWeight: 700,
+                            padding: "3px 6px",
+                            marginTop: "2px",
+                            textAlign: "center"
+                          }}>
+                            {isAr ? "تفاوض: " : "Negotiated: "}{formatCurrency(thisEntry.negotiated_price)}
+                          </div>
+                        )}
                       </div>
 
                       {/* Submitted trans — read-only */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100px", flexShrink: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px", flexShrink: 0 }}>
                         <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted trans.</span>
                         <div style={{
-                          ...inputBase, display: "flex", alignItems: "center", justifyContent: "center",
+                          height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%",
+                          display: "flex", alignItems: "center", justifyContent: "center",
                           background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.18)",
                           color: "var(--text-secondary)",
                         }}>
@@ -1189,174 +1404,215 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
                         </div>
                       </div>
 
-                      {/* Divider */}
-                      <div style={{ width: "1px", height: "40px", background: "var(--border-light)", flexShrink: 0 }} />
-
-                      {/* Revised trans — editable */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100px", flexShrink: 0 }}>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Revised trans.</span>
-                        <input
-                          type="number" min="0" step="any"
-                          placeholder={thisEntry.actual_transport != null ? String(thisEntry.actual_transport) : "0"}
-                          value={revisedTransVal}
-                          onChange={e => setSupplierTransportRevised(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                          style={{
-                            ...inputBase, textAlign: "center",
-                            border: `1.5px solid ${revisedTrans !== null ? "var(--warning)" : "var(--border-medium)"}`,
-                            background: "var(--bg-surface)",
-                            color: revisedTrans !== null ? "var(--warning)" : "var(--text-primary)",
-                          }}
-                        />
+                      {/* Notes — read-only */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "150px" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Notes</span>
+                        <div style={{
+                          height: "40px", padding: "8px 10px", fontSize: "12px", fontWeight: 400, borderRadius: "var(--radius)",
+                          display: "flex", alignItems: "center", background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                          color: thisEntry.notes ? "var(--text-primary)" : "var(--text-muted)", fontStyle: thisEntry.notes ? "normal" : "italic",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                        }}>
+                          {thisEntry.notes || (isAr ? "لا يوجد ملاحظات" : "No notes")}
+                        </div>
                       </div>
 
-                      {/* Revised price — editable */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "110px" }}>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Revised price</span>
-                        <input
-                          type="number" min="0.01" step="any"
-                          placeholder={`e.g. ${formatCurrency(thisEntry.price)}`}
-                          value={currentPrice}
-                          onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                          style={{
-                            ...inputBase,
-                            border: `1.5px solid ${revisedPrice !== null ? "var(--warning)" : "var(--border-medium)"}`,
-                            background: "var(--bg-surface)",
-                            color: revisedPrice !== null ? "var(--warning)" : "var(--text-primary)",
-                          }}
-                        />
-                      </div>
+                      {/* Action buttons */}
+                      <div style={{ display: "flex", gap: "8px", alignSelf: "flex-end", flexShrink: 0 }}>
+                        {role === "WH" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangeRequestModal({
+                                supplier,
+                                item: selectedItem!,
+                                currentPrice: thisEntry.price,
+                                newPrice: thisEntry.price,
+                                oldTransport: thisEntry.actual_transport,
+                                newTransport: thisEntry.actual_transport,
+                                isNegotiation: true,
+                                isFirstEntry: false,
+                              });
+                            }}
+                            style={{
+                              height: "40px", padding: "0 14px", flexShrink: 0,
+                              borderRadius: "var(--radius)",
+                              border: "1px solid rgba(139,92,246,0.35)",
+                              background: "rgba(139,92,246,0.12)",
+                              color: "#8b5cf6",
+                              fontWeight: 600, fontSize: "13px",
+                              cursor: "pointer",
+                              transition: "all 200ms", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {isAr ? "تفاوض ↗" : "Negotiate ↗"}
+                          </button>
+                        )}
 
-                      {/* Negotiate button */}
-                      <button
-                        type="button"
-                        disabled={!canNegotiate}
-                        onClick={() => {
-                          if (!canNegotiate) return;
-                          setChangeRequestModal({
-                            supplier,
-                            currentPrice: thisEntry.price,
-                            newPrice: revisedPrice !== null ? revisedPrice : thisEntry.price,
-                            oldTransport: thisEntry.actual_transport,
-                            newTransport: revisedTrans,
-                          });
-                        }}
-                        style={{
-                          height: "40px", padding: "0 14px", flexShrink: 0,
-                          borderRadius: "var(--radius)", alignSelf: "flex-end",
-                          border: `1.5px solid ${canNegotiate ? "var(--warning)" : "var(--border-medium)"}`,
-                          background: canNegotiate ? "rgba(245,158,11,0.12)" : "var(--bg-subtle)",
-                          color: canNegotiate ? "var(--warning)" : "var(--text-muted)",
-                          fontWeight: 600, fontSize: "13px",
-                          cursor: canNegotiate ? "pointer" : "default",
-                          transition: "all 200ms", whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isAr ? "تفاوض ↗" : "Negotiate ↗"}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChangeRequestModal({
+                              supplier,
+                              item: selectedItem!,
+                              currentPrice: thisEntry.price,
+                              newPrice: thisEntry.price,
+                              oldTransport: thisEntry.actual_transport,
+                              newTransport: thisEntry.actual_transport,
+                              isNegotiation: false,
+                              isFirstEntry: false,
+                            });
+                          }}
+                          style={{
+                            height: "40px", padding: "0 14px", flexShrink: 0,
+                            borderRadius: "var(--radius)",
+                            border: "1.5px solid var(--warning)",
+                            background: "rgba(245,158,11,0.12)",
+                            color: "var(--warning)",
+                            fontWeight: 600, fontSize: "13px",
+                            cursor: "pointer",
+                            transition: "all 200ms", whiteSpace: "nowrap",
+                          }}
+                        >
+                          {isAr ? "طلب تعديل ↗" : "Edit ↗"}
+                        </button>
+                      </div>
                     </div>
                   );
                 }
 
                 /* ── FIRST ENTRY row ─────────────────────────────────────── */
-                const transportVal = supplierTransportMain[supplier.id] ?? String(selectedItem.transportation_per_unit ?? 0);
-                const priceVal     = currentPrice;
-                const isFilled     = priceVal && Number(priceVal) > 0;
-
                 return (
                   <div key={supplier.id} style={{
-                    display: "flex", alignItems: "center", gap: "14px",
+                    display: "flex", flexDirection: "column", gap: "8px",
                     padding: "14px 18px", borderRadius: "12px",
-                    border: `1.5px solid ${isFilled ? color + "66" : "var(--border)"}`,
-                    background: isFilled ? `${color}06` : "var(--bg-elevated)",
+                    border: inlineError[supplier.id] ? "1.5px solid var(--danger)" : "1.5px solid var(--border)",
+                    background: "var(--bg-elevated)",
                     transition: "all 200ms ease",
                   }}>
-
-                    {/* Supplier identity — fixed left column */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "190px", flexShrink: 0 }}>
-                      <span style={{ width: "34px", height: "34px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color, flexShrink: 0 }}>
-                        {(supplier.fame_name || supplier.name).charAt(0)}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {supplier.fame_name || supplier.name}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                      {/* Supplier identity */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "180px", width: "180px", flexShrink: 0 }}>
+                        <span style={{ width: "34px", height: "34px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color, flexShrink: 0 }}>
+                          {(supplier.fame_name || supplier.name).charAt(0)}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: supplier.id } }))}
+                            className="clickable-detail-trigger"
+                            style={{ fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          >
+                            {supplier.fame_name || supplier.name}
+                          </div>
+                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>Last: {formatCurrency(lastEntry.price)}</div>}
                         </div>
-                        {supplier.fame_name && supplier.fame_name !== supplier.name && (
-                          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supplier.name}</div>
-                        )}
-                        {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{t("purch.lastMonth")} {formatCurrency(lastEntry.price)}</div>}
                       </div>
-                    </div>
 
-                    {/* Right: input fields inline */}
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flex: 1 }}>
+                      {/* Price Input Column */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: "140px", width: "140px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                          {isAr ? "السعر (EGP)" : "Price (EGP)"}
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="0.00"
+                          value={inlinePrices[supplier.id] || ""}
+                          onChange={(e) => handleInlinePriceChange(supplier.id, e.target.value)}
+                          style={{
+                            height: "40px",
+                            padding: "8px 10px",
+                            fontSize: "13px",
+                            borderRadius: "var(--radius)",
+                            border: inlineError[supplier.id] && inlineError[supplier.id].includes("price") ? "1.5px solid var(--danger)" : "1.5px solid var(--border)",
+                            background: "var(--bg-surface)",
+                            color: "var(--text-primary)",
+                            outline: "none",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
 
-                      {/* Notes */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "100px" }}>
-                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "ملاحظات" : "Notes"}</span>
+                      {/* Trans Input Column */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                          {isAr ? "تكلفة النقل" : "Trans. (EGP)"}
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder={isAr ? "اختياري" : "Optional"}
+                          value={inlineTransports[supplier.id] || ""}
+                          onChange={(e) => handleInlineTransportChange(supplier.id, e.target.value)}
+                          style={{
+                            height: "40px",
+                            padding: "8px 10px",
+                            fontSize: "13px",
+                            borderRadius: "var(--radius)",
+                            border: inlineError[supplier.id] && inlineError[supplier.id].includes("transport") ? "1.5px solid var(--danger)" : "1.5px solid var(--border)",
+                            background: "var(--bg-surface)",
+                            color: "var(--text-primary)",
+                            outline: "none",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+
+                      {/* Notes Input Column */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "150px" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                          {isAr ? "الملاحظات" : "Notes"}
+                        </span>
                         <input
                           type="text"
-                          name={`notes_${supplier.id}`}
-                          placeholder={t("purch.notesOptional")}
-                          value={supplierNotes[supplier.id] ?? ""}
-                          onChange={e => setSupplierNotes(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                          style={{ padding: "8px 12px", borderRadius: "var(--radius)", border: "1px solid var(--border-medium)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: "12px", height: "40px", width: "100%" }}
-                        />
-                      </div>
-
-                      {/* Actual Transport */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "110px", flexShrink: 0 }}>
-                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{isAr ? "نقل فعلي" : "Actual Trans. (EGP)"}</span>
-                        <input
-                          type="number"
-                          name={`actual_transport_${supplier.id}`}
-                          min="0" step="any"
-                          value={transportVal}
-                          onChange={e => setSupplierTransportMain(prev => ({ ...prev, [supplier.id]: e.target.value }))}
+                          placeholder={isAr ? "اكتب ملاحظة..." : "Write a note..."}
+                          value={inlineNotes[supplier.id] || ""}
+                          onChange={(e) => handleInlineNotesChange(supplier.id, e.target.value)}
                           style={{
-                            padding: "8px 10px", borderRadius: "var(--radius)", height: "40px",
-                            border: "1.5px solid var(--primary-light)",
-                            background: "var(--bg-surface)", color: "var(--primary)",
-                            fontSize: "13px", fontWeight: 600, textAlign: "center", width: "100%",
-                          }}
-                        />
-                      </div>
-
-                      {/* Price */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "140px", flexShrink: 0 }}>
-                        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{isAr ? "السعر" : "Price"} ({selectedItem.unit})</span>
-                        <input
-                          type="number"
-                          name={`price_${supplier.id}`}
-                          step="any" min="0.01"
-                          placeholder={t("purch.pricePlaceholder")}
-                          value={priceVal}
-                          onChange={e => setSupplierPrices(prev => ({ ...prev, [supplier.id]: e.target.value }))}
-                          style={{
-                            width: "100%", padding: "8px 12px", height: "40px",
+                            height: "40px",
+                            padding: "8px 10px",
+                            fontSize: "12px",
                             borderRadius: "var(--radius)",
-                            border: `1.5px solid ${isFilled ? color : "var(--border-medium)"}`,
+                            border: "1px solid var(--border)",
                             background: "var(--bg-surface)",
-                            color: isFilled ? color : "var(--text-primary)",
-                            fontSize: "14px", fontWeight: isFilled ? 700 : 400,
-                            outline: "none", transition: "all 200ms",
+                            color: "var(--text-primary)",
+                            outline: "none",
+                            width: "100%",
                           }}
                         />
                       </div>
 
-                      {/* Status dot */}
-                      <div style={{ paddingBottom: "10px", flexShrink: 0 }}>
-                        <span style={{ fontSize: "18px", opacity: isFilled ? 1 : 0.25, color: isFilled ? color : "var(--text-muted)", transition: "all 200ms" }}>
-                          {isFilled ? "✓" : "○"}
-                        </span>
+                      {/* Action Column */}
+                      <div style={{ display: "flex", gap: "8px", alignSelf: "flex-end", flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          disabled={inlinePending}
+                          onClick={() => handleInlineSubmit(supplier.id)}
+                          style={{
+                            height: "40px", padding: "0 24px", flexShrink: 0,
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "var(--primary)",
+                            color: "#ffffff",
+                            fontWeight: 600, fontSize: "13px",
+                            cursor: "pointer",
+                            transition: "all 200ms", whiteSpace: "nowrap",
+                            opacity: inlinePending ? 0.6 : 1,
+                          }}
+                        >
+                          {isAr ? "حفظ" : "Record"}
+                        </button>
                       </div>
-
                     </div>
+                    {inlineError[supplier.id] && (
+                      <div style={{ fontSize: "11px", color: "var(--danger)", paddingLeft: "44px", paddingRight: "44px" }}>
+                        ⚠️ {inlineError[supplier.id]}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-
-
 
             {/* Pivot history table */}
             <div style={{ marginTop: "16px", borderTop: "1.5px solid var(--border-light)", paddingTop: "16px" }}>
@@ -1460,21 +1716,8 @@ export default function PurchasingForm({ categories, items, suppliers, month, ro
               <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "6px" }}>{t("purch.lowestNote")}</p>
             </div>
 
-            {/* Submit */}
-            <div style={{ marginTop: "8px" }}>
-              <button type="submit" className="button button-primary button-block" disabled={newEntries.length === 0 && changeEntries.length === 0} style={{ opacity: filledCount === 0 ? 0.5 : 1 }}>
-                {filledCount === 0
-                  ? t("purch.enterAtLeastOne")
-                  : newEntries.length > 0 && changeEntries.length === 0
-                    ? `${t("purch.savePrices")} ${newEntries.length} ${t("purch.saveMultiple")} ${formatMonthLabel(month)}`
-                    : changeEntries.length > 0 && newEntries.length === 0
-                      ? `Submit ${changeEntries.length} Change Request(s) for SC Approval`
-                      : `Save ${newEntries.length} New + Request ${changeEntries.length} Change(s)`
-                }
-              </button>
-            </div>
           </div>
-        </form>
+        </div>
       )}
     </div>
   );

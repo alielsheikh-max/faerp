@@ -24,6 +24,7 @@ import {
 } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 import { requireRole } from "@/lib/auth";
+import { log } from "@/lib/activity";
 
 function fail(message: string): never {
   redirect(`/dashboard/admin?error=${encodeURIComponent(message)}`);
@@ -115,13 +116,8 @@ export async function createUserAction(formData: FormData) {
     fail("Please fill all user fields.");
   }
 
-  createUser({
-    username,
-    password,
-    role,
-    displayName
-  });
-
+  createUser({ username, password, role, displayName });
+  log.userCreated({ username: "admin", role: "AD" }, { username, role, displayName });
   done("User created.");
 }
 
@@ -138,15 +134,8 @@ export async function updateUserAction(formData: FormData) {
     fail("Please complete the user update fields.");
   }
 
-  updateUser({
-    id,
-    username,
-    password: password || undefined,
-    role,
-    displayName,
-    active
-  });
-
+  updateUser({ id, username, password: password || undefined, role, displayName, active });
+  log.userUpdated({ username: "admin", role: "AD" }, { username, displayName, active });
   done("User updated.");
 }
 
@@ -158,7 +147,9 @@ export async function deleteUserAction(formData: FormData) {
     fail("User id is missing.");
   }
 
+  const usernameToDelete = asString(formData.get("username")) || `id:${id}`;
   deleteUser(id);
+  log.userDeleted({ username: "admin", role: "AD" }, { username: usernameToDelete });
   done("User deleted.");
 }
 
@@ -172,6 +163,7 @@ export async function createCategoryAction(formData: FormData) {
   }
 
   createCategory({ name, description });
+  log.categoryCreated({ username: "admin", role: "AD" }, { name });
   done("Category created.");
 }
 
@@ -186,6 +178,7 @@ export async function updateCategoryAction(formData: FormData) {
   }
 
   updateCategory({ id, name, description });
+  log.categoryUpdated({ username: "admin", role: "AD" }, { name });
   done("Category updated.");
 }
 
@@ -203,6 +196,7 @@ export async function deleteCategoryAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Category delete failed.");
   }
 
+  log.categoryDeleted({ username: "admin", role: "AD" }, { name: `id:${id}` });
   done("Category deleted.");
 }
 
@@ -224,6 +218,7 @@ export async function createSupplierAction(formData: FormData) {
   }
 
   createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
+  log.supplierCreated({ username: "admin", role: "AD" }, { name });
   done("Supplier created.", "/dashboard/admin/suppliers");
 }
 
@@ -246,6 +241,7 @@ export async function updateSupplierAction(formData: FormData) {
   }
 
   updateSupplier({ id, name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
+  log.supplierUpdated({ username: "admin", role: "AD" }, { name });
   done("Supplier updated.", "/dashboard/admin/suppliers");
 }
 
@@ -263,6 +259,7 @@ export async function deleteSupplierAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Supplier delete failed.");
   }
 
+  log.supplierDeleted({ username: "admin", role: "AD" }, { name: `id:${id}` });
   done("Supplier deleted.", "/dashboard/admin/suppliers");
 }
 
@@ -280,6 +277,7 @@ export async function createItemAction(formData: FormData) {
   }
 
   createItem({ categoryId, name, unit, description, transportationPerUnit, moq });
+  log.itemCreated({ username: "admin", role: "AD" }, { name, category: `Category #${categoryId}` });
   done("Item created.", "/dashboard/admin/items");
 }
 
@@ -298,17 +296,8 @@ export async function updateItemAction(formData: FormData) {
     fail("Item update is incomplete.");
   }
 
-  updateItem({
-    id,
-    categoryId,
-    name,
-    unit,
-    description,
-    active,
-    transportationPerUnit,
-    moq
-  });
-
+  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq });
+  log.itemUpdated({ username: "admin", role: "AD" }, { name });
   done("Item updated.", "/dashboard/admin/items");
 }
 
@@ -326,6 +315,7 @@ export async function deleteItemAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Item delete failed.");
   }
 
+  log.itemDeleted({ username: "admin", role: "AD" }, { name: `id:${id}` });
   done("Item deleted.", "/dashboard/admin/items");
 }
 
