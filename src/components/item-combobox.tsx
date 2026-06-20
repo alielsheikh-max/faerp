@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "@/lib/i18n-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type ItemComboboxOption = {
@@ -53,8 +54,12 @@ export function ItemCombobox({
   onChange,
   placeholder = "— Select an item —",
   disabled = false,
-  locale = "en",
+  locale,
 }: ItemComboboxProps) {
+  const { locale: contextLocale, isRTL } = useI18n();
+  const activeLocale = locale || contextLocale;
+  const isRtl = activeLocale === "ar" || isRTL;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -119,9 +124,10 @@ export function ItemCombobox({
       <div
         ref={triggerRef}
         onClick={handleTriggerClick}
-        dir="rtl"
+        dir={isRtl ? "rtl" : "ltr"}
         style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
+          gap: "8px",
           padding: "8px 12px",
           border: "1.5px solid var(--border, #e5e7eb)",
           borderRadius: "8px",
@@ -134,14 +140,14 @@ export function ItemCombobox({
           userSelect: "none",
           opacity: disabled ? 0.6 : 1,
           width: "100%",
-          textAlign: "right",
+          textAlign: isRtl ? "right" : "left",
         }}
       >
-        {/* Chevron on the left (in RTL flow this is the "end" side) */}
-        <span style={{ fontSize: "10px", marginLeft: "8px", color: "var(--text-muted, #9ca3af)", flexShrink: 0, order: 1 }}>
+        {/* Chevron */}
+        <span style={{ fontSize: "10px", color: "var(--text-muted, #9ca3af)", flexShrink: 0, order: 1 }}>
           {isOpen ? "▲" : "▼"}
         </span>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, order: 0, textAlign: "right" }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, order: 0, textAlign: isRtl ? "right" : "left" }}>
           {selectedOption
             ? `${selectedOption.label}${selectedOption.unit ? ` (${selectedOption.unit})` : ""}`
             : placeholder}
@@ -152,7 +158,7 @@ export function ItemCombobox({
       {isMounted && isOpen && createPortal(
         <div
           ref={panelRef}
-          dir="rtl"
+          dir={isRtl ? "rtl" : "ltr"}
           style={{
             position: "fixed",
             top: pos.top, left: pos.left, width: pos.width,
@@ -163,16 +169,15 @@ export function ItemCombobox({
             boxShadow: "0 12px 40px rgba(0,0,0,0.22)",
             overflow: "hidden", display: "flex", flexDirection: "column",
             maxHeight: "340px", fontFamily: "inherit",
-            direction: "rtl",
           }}
         >
-          {/* Search input — RTL */}
+          {/* Search input */}
           <div style={{ padding: "8px", borderBottom: "1px solid var(--border-light, #f3f4f6)" }}>
             <input
               autoFocus
               type="text"
-              dir="rtl"
-              placeholder={locale === "ar" ? "🔍 ابحث بأي كلمة..." : "🔍 Search by any word..."}
+              dir={isRtl ? "rtl" : "ltr"}
+              placeholder={activeLocale === "ar" ? "🔍 ابحث بأي كلمة..." : "🔍 Search by any word..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -180,7 +185,7 @@ export function ItemCombobox({
                 border: "1px solid var(--border, #e5e7eb)", fontSize: "13px",
                 background: "var(--bg, #f9fafb)", color: "var(--text-primary, #111827)",
                 outline: "none", fontFamily: "inherit",
-                textAlign: "right",
+                textAlign: isRtl ? "right" : "left",
               }}
             />
           </div>
@@ -194,7 +199,7 @@ export function ItemCombobox({
                 padding: "8px 12px", cursor: "pointer", fontSize: "12px",
                 color: "var(--text-muted, #9ca3af)",
                 borderBottom: "1px solid var(--border-light, #f3f4f6)",
-                fontStyle: "italic", textAlign: "right",
+                fontStyle: "italic", textAlign: isRtl ? "right" : "left",
               }}
             >
               {placeholder}
@@ -213,7 +218,6 @@ export function ItemCombobox({
                     padding: "9px 12px", cursor: "pointer", fontSize: "13px",
                     display: "flex", alignItems: "center", gap: "8px",
                     borderBottom: "1px solid var(--border-light, #f3f4f6)",
-                    // borderInlineStart is RTL-aware: right border in RTL, left border in LTR
                     borderInlineStart: isSelected ? "3px solid #6366f1"
                       : showRed ? "3px solid rgba(239,68,68,0.5)"
                       : "3px solid transparent",
@@ -221,26 +225,25 @@ export function ItemCombobox({
                       : showRed ? "rgba(239,68,68,0.05)"
                       : "transparent",
                     color: showRed ? "#b91c1c" : "var(--text-primary, #111827)",
-                    direction: "rtl",
-                    textAlign: "right",
+                    textAlign: isRtl ? "right" : "left",
                   }}
                 >
-                  {/* Item name + unit — text right-aligned */}
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, lineHeight: 1.5, textAlign: "right" }}>
+                  {/* Item name + unit */}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, lineHeight: 1.5, textAlign: isRtl ? "right" : "left" }}>
                     {item.label}
                     {item.unit && (
-                      <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "11px", marginRight: "6px" }}>
+                      <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "11px", marginInlineStart: "6px" }}>
                         {" "}({item.unit})
                       </span>
                     )}
                     {item.category && (
-                      <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "10px", marginRight: "6px", opacity: 0.75 }}>
+                      <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "10px", marginInlineStart: "6px", opacity: 0.75 }}>
                         {" "}[{item.category}]
                       </span>
                     )}
                   </span>
 
-                  {/* Right-side badges (visually leftmost in RTL layout) */}
+                  {/* Right-side badges */}
                   <span style={{ display: "flex", gap: "5px", alignItems: "center", flexShrink: 0 }}>
                     {/* Submission count badge (WH) */}
                     {item.badge && badgeStyle && (
@@ -262,7 +265,7 @@ export function ItemCombobox({
                         padding: "2px 7px", borderRadius: "99px",
                         border: "1px solid rgba(239,68,68,0.3)", whiteSpace: "nowrap",
                       }}>
-                        {locale === "ar" ? "⛔ لم يُنشر" : "⛔ No Price"}
+                        {activeLocale === "ar" ? "⛔ لم يُنشر" : "⛔ No Price"}
                       </span>
                     )}
                     {/* Selected checkmark */}
@@ -277,7 +280,7 @@ export function ItemCombobox({
             {/* Empty state */}
             {filtered.length === 0 && (
               <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted, #9ca3af)", fontSize: "12px" }}>
-                {locale === "ar" ? "لا توجد نتائج" : "No items match your search"}
+                {activeLocale === "ar" ? "لا توجد نتائج" : "No items match your search"}
               </div>
             )}
           </div>

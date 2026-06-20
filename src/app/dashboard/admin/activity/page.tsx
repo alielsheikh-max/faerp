@@ -1,160 +1,198 @@
-import { requireRole } from "@/lib/auth";
-import { getActivityLog, countActivityLog } from "@/lib/db";
+"use client";
 
-/* ── Event type display config ────────────────────────────────────────── */
-const EVENT_META: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-  sign_in:                  { label: "Sign In",             icon: "🔓", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-  sign_out:                 { label: "Sign Out",            icon: "🔒", color: "#6b7280", bg: "rgba(107,114,128,0.12)" },
-  price_quote_submitted:    { label: "Quote Submitted",     icon: "💰", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
-  price_quote_updated:      { label: "Quote Updated",       icon: "✏️", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
-  bulk_quotes_submitted:    { label: "Bulk Quotes",         icon: "📋", color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
-  price_change_requested:   { label: "Change Requested",    icon: "🔄", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  price_change_approved:    { label: "Change Approved",     icon: "✅", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-  price_change_rejected:    { label: "Change Rejected",     icon: "❌", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
-  selling_price_published:  { label: "Price Published",     icon: "📢", color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
-  user_created:             { label: "User Created",        icon: "👤", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
-  user_updated:             { label: "User Updated",        icon: "🔧", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  user_deleted:             { label: "User Deleted",        icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
-  item_created:             { label: "Item Created",        icon: "📦", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-  item_updated:             { label: "Item Updated",        icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  item_deleted:             { label: "Item Deleted",        icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
-  category_created:         { label: "Category Created",    icon: "🗂️", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-  category_updated:         { label: "Category Updated",    icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  category_deleted:         { label: "Category Deleted",    icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
-  supplier_created:         { label: "Supplier Created",    icon: "🏭", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-  supplier_updated:         { label: "Supplier Updated",    icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  supplier_deleted:         { label: "Supplier Deleted",    icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+import { useEffect, useState, useTransition } from "react";
+import { useI18n } from "@/lib/i18n-context";
+import type { ActivityLogEntry } from "@/lib/db";
+
+/* ── Event type → i18n key mapping ───────────────────────────────────── */
+const EVENT_KEY_MAP: Record<string, { labelKey: string; icon: string; color: string; bg: string }> = {
+  sign_in:                  { labelKey: "activity.signIn",           icon: "🔓", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  sign_out:                 { labelKey: "activity.signOut",          icon: "🔒", color: "#6b7280", bg: "rgba(107,114,128,0.12)" },
+  price_quote_submitted:    { labelKey: "activity.quoteSubmitted",   icon: "💰", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+  price_quote_updated:      { labelKey: "activity.quoteUpdated",     icon: "✏️", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+  bulk_quotes_submitted:    { labelKey: "activity.bulkQuotes",       icon: "📋", color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
+  price_change_requested:   { labelKey: "activity.changeRequested",  icon: "🔄", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  price_change_approved:    { labelKey: "activity.changeApproved",   icon: "✅", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  price_change_rejected:    { labelKey: "activity.changeRejected",   icon: "❌", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  selling_price_published:  { labelKey: "activity.pricePublished",   icon: "📢", color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
+  user_created:             { labelKey: "activity.userCreated",      icon: "👤", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+  user_updated:             { labelKey: "activity.userUpdated",      icon: "🔧", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  user_deleted:             { labelKey: "activity.userDeleted",      icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  item_created:             { labelKey: "activity.itemCreated",      icon: "📦", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  item_updated:             { labelKey: "activity.itemUpdated",      icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  item_deleted:             { labelKey: "activity.itemDeleted",      icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  category_created:         { labelKey: "activity.categoryCreated",  icon: "🗂️", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  category_updated:         { labelKey: "activity.categoryUpdated",  icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  category_deleted:         { labelKey: "activity.categoryDeleted",  icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  supplier_created:         { labelKey: "activity.supplierCreated",  icon: "🏭", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  supplier_updated:         { labelKey: "activity.supplierUpdated",  icon: "📝", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  supplier_deleted:         { labelKey: "activity.supplierDeleted",  icon: "🗑️", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
 };
 
-const ROLE_META: Record<string, { label: string; color: string; bg: string }> = {
-  AD: { label: "Admin",     color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
-  SC: { label: "Manager",   color: "#7c3aed", bg: "rgba(124,58,237,0.12)" },
-  WH: { label: "Warehouse", color: "#0891b2", bg: "rgba(8,145,178,0.12)"  },
-  SA: { label: "Sales",     color: "#059669", bg: "rgba(5,150,105,0.12)"  },
+const ROLE_KEY_MAP: Record<string, { labelKey: string; color: string; bg: string }> = {
+  AD: { labelKey: "activity.roleAD", color: "#1e3a8a", bg: "rgba(30,58,138,0.12)" },
+  SC: { labelKey: "activity.roleSC", color: "#7c3aed", bg: "rgba(124,58,237,0.12)" },
+  WH: { labelKey: "activity.roleWH", color: "#0891b2", bg: "rgba(8,145,178,0.12)"  },
+  SA: { labelKey: "activity.roleSA", color: "#059669", bg: "rgba(5,150,105,0.12)"  },
 };
 
-function formatTime(iso: string) {
-  try {
-    const d = new Date(iso.replace(" ", "T") + (iso.includes("T") ? "" : "Z"));
-    return d.toLocaleString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch { return iso; }
-}
-
+const ALL_EVENT_KEYS = Object.keys(EVENT_KEY_MAP);
+const ALL_ROLE_KEYS  = Object.keys(ROLE_KEY_MAP);
 const PAGE_SIZE = 60;
 
-export default async function ActivityLogPage({
-  searchParams,
-}: {
-  searchParams: { page?: string; role?: string; event?: string };
-}) {
-  requireRole(["AD"]);
+export default function ActivityLogClient() {
+  const { t, locale, isRTL } = useI18n();
 
-  const page   = Math.max(1, parseInt(searchParams.page ?? "1") || 1);
-  const role   = searchParams.role || undefined;
-  const event  = searchParams.event || undefined;
-  const offset = (page - 1) * PAGE_SIZE;
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+  const [total,   setTotal]   = useState(0);
+  const [page,    setPage]    = useState(1);
+  const [role,    setRole]    = useState("");
+  const [event,   setEvent]   = useState("");
+  const [loading, startLoad]  = useTransition();
 
-  const entries = getActivityLog({ limit: PAGE_SIZE, offset, role, eventType: event });
-  const total   = countActivityLog({ role, eventType: event });
-  const pages   = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  /* unique event types for filter dropdown */
-  const allEvents = Object.keys(EVENT_META);
-  const allRoles  = Object.keys(ROLE_META);
+  function formatTime(iso: string) {
+    try {
+      const d = new Date(iso.replace(" ", "T") + (iso.includes("T") ? "" : "Z"));
+      return d.toLocaleString(locale === "ar" ? "ar-EG" : "en-GB", {
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return iso; }
+  }
+
+  async function fetchData(p: number, r: string, ev: string) {
+    startLoad(async () => {
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+      if (r)  params.set("role", r);
+      if (ev) params.set("event", ev);
+      const res = await fetch(`/api/activity-log?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        setEntries(json.entries ?? []);
+        setTotal(json.total ?? 0);
+      }
+    });
+  }
+
+  useEffect(() => { fetchData(page, role, event); }, [page, role, event]);
+
+  const filterSelectStyle: React.CSSProperties = {
+    width: "100%", padding: "7px 10px", borderRadius: 8,
+    border: "1px solid var(--border)", background: "var(--bg-elevated)",
+    color: "var(--text-primary)", fontSize: 13,
+    textAlign: isRTL ? "right" : "left",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
+    textTransform: "uppercase", display: "block", marginBottom: 4,
+    textAlign: isRTL ? "right" : "left",
+  };
+  const thStyle: React.CSSProperties = {
+    textAlign: isRTL ? "right" : "left",
+    padding: "10px 12px", fontSize: 11, fontWeight: 700,
+    color: "var(--text-muted)", textTransform: "uppercase",
+    letterSpacing: "0.05em", whiteSpace: "nowrap" as const,
+  };
 
   return (
     <div className="page-stack">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="panel-header" style={{ marginBottom: 0 }}>
         <div>
-          <p className="eyebrow">System Administration</p>
+          <p className="eyebrow">{t("activity.eyebrow")}</p>
           <h2 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>📜</span> Activity Log
+            <span>📜</span> {t("activity.title")}
           </h2>
         </div>
-        <span className="badge badge-strong">{total.toLocaleString()} events</span>
+        <span className="badge badge-strong">
+          {total.toLocaleString(locale === "ar" ? "ar-EG" : "en")} {t("activity.events")}
+        </span>
       </div>
 
       {/* ── Filters ─────────────────────────────────────────────────── */}
-      <form
-        method="GET"
+      <div
         style={{
           display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
           padding: "14px 0", borderBottom: "1px solid var(--border-light)",
+          direction: isRTL ? "rtl" : "ltr",
         }}
       >
-        <label className="field" style={{ minWidth: 160, margin: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-            Role
-          </span>
-          <select name="role" defaultValue={role ?? ""} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13 }}>
-            <option value="">All roles</option>
-            {allRoles.map(r => (
-              <option key={r} value={r}>{ROLE_META[r]?.label ?? r}</option>
+        <label style={{ minWidth: 160, margin: 0 }}>
+          <span style={labelStyle}>{t("activity.roleFilter")}</span>
+          <select
+            value={role}
+            onChange={e => { setRole(e.target.value); setPage(1); }}
+            style={filterSelectStyle}
+          >
+            <option value="">{t("activity.allRoles")}</option>
+            {ALL_ROLE_KEYS.map(r => (
+              <option key={r} value={r}>{t(ROLE_KEY_MAP[r].labelKey as any)}</option>
             ))}
           </select>
         </label>
 
-        <label className="field" style={{ minWidth: 200, margin: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-            Event Type
-          </span>
-          <select name="event" defaultValue={event ?? ""} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13 }}>
-            <option value="">All events</option>
-            {allEvents.map(e => (
-              <option key={e} value={e}>{EVENT_META[e]?.label ?? e}</option>
+        <label style={{ minWidth: 200, margin: 0 }}>
+          <span style={labelStyle}>{t("activity.eventFilter")}</span>
+          <select
+            value={event}
+            onChange={e => { setEvent(e.target.value); setPage(1); }}
+            style={filterSelectStyle}
+          >
+            <option value="">{t("activity.allEvents")}</option>
+            {ALL_EVENT_KEYS.map(ev => (
+              <option key={ev} value={ev}>{t(EVENT_KEY_MAP[ev].labelKey as any)}</option>
             ))}
           </select>
         </label>
 
         <div style={{ display: "flex", gap: 8, alignSelf: "flex-end" }}>
-          <button type="submit" className="btn btn-primary" style={{ padding: "8px 18px", fontSize: 13 }}>
-            Filter
+          <button
+            onClick={() => { setRole(""); setEvent(""); setPage(1); }}
+            className="btn btn-ghost"
+            style={{ padding: "8px 14px", fontSize: 13 }}
+          >
+            {t("gen.clear")}
           </button>
-          <a href="/dashboard/admin/activity" className="btn btn-ghost" style={{ padding: "8px 14px", fontSize: 13 }}>
-            Clear
-          </a>
         </div>
-      </form>
+      </div>
+
+      {/* ── Loading indicator ────────────────────────────────────────── */}
+      {loading && (
+        <div style={{ padding: "8px 0", color: "var(--text-muted)", fontSize: 13 }}>
+          {t("gen.loading")}
+        </div>
+      )}
 
       {/* ── Table ───────────────────────────────────────────────────── */}
-      {entries.length === 0 ? (
+      {!loading && entries.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>No activity recorded yet</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Events will appear here as users sign in and perform actions.</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{t("activity.emptyTitle")}</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>{t("activity.emptyDesc")}</div>
         </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", direction: isRTL ? "rtl" : "ltr" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                {["Time", "Actor", "Role", "Event", "Summary"].map(h => (
-                  <th key={h} style={{
-                    textAlign: "left", padding: "10px 12px", fontSize: 11,
-                    fontWeight: 700, color: "var(--text-muted)",
-                    textTransform: "uppercase", letterSpacing: "0.05em",
-                    whiteSpace: "nowrap",
-                  }}>{h}</th>
+                {(["activity.colTime","activity.colActor","activity.colRole","activity.colEvent","activity.colSummary"] as const).map(k => (
+                  <th key={k} style={thStyle}>{t(k)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {entries.map((entry, i) => {
-                const meta = EVENT_META[entry.event_type];
-                const roleMeta = ROLE_META[entry.role];
+                const meta     = EVENT_KEY_MAP[entry.event_type];
+                const roleMeta = ROLE_KEY_MAP[entry.role];
                 return (
                   <tr
                     key={entry.id}
                     style={{
                       borderBottom: "1px solid var(--border-light)",
                       background: i % 2 === 0 ? "transparent" : "var(--bg-elevated)",
-                      transition: "background 120ms",
                     }}
-                    onMouseEnter={undefined}
                   >
                     {/* Time */}
                     <td style={{ padding: "10px 12px", color: "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "monospace", fontSize: 12 }}>
@@ -175,7 +213,7 @@ export default async function ActivityLogPage({
                         background: roleMeta?.bg ?? "var(--bg-elevated)",
                         border: `1px solid ${roleMeta?.color ?? "var(--border)"}22`,
                       }}>
-                        {roleMeta?.label ?? entry.role}
+                        {roleMeta ? t(roleMeta.labelKey as any) : entry.role}
                       </span>
                     </td>
 
@@ -187,9 +225,10 @@ export default async function ActivityLogPage({
                         color: meta?.color ?? "var(--text-secondary)",
                         background: meta?.bg ?? "var(--bg-elevated)",
                         border: `1px solid ${meta?.color ?? "var(--border)"}22`,
+                        direction: "ltr", // always LTR for icon+label pill
                       }}>
                         <span>{meta?.icon}</span>
-                        <span>{meta?.label ?? entry.event_type}</span>
+                        <span>{meta ? t(meta.labelKey as any) : entry.event_type}</span>
                       </span>
                     </td>
 
@@ -209,19 +248,19 @@ export default async function ActivityLogPage({
       {pages > 1 && (
         <div style={{ display: "flex", gap: 6, justifyContent: "center", paddingTop: 16, flexWrap: "wrap" }}>
           {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
-            <a
+            <button
               key={p}
-              href={`?page=${p}${role ? `&role=${role}` : ""}${event ? `&event=${event}` : ""}`}
+              onClick={() => setPage(p)}
               style={{
-                padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: p === page ? 700 : 500,
+                padding: "5px 12px", borderRadius: 8, fontSize: 13,
+                fontWeight: p === page ? 700 : 500, cursor: "pointer",
                 background: p === page ? "var(--primary)" : "var(--bg-elevated)",
                 color: p === page ? "#fff" : "var(--text-secondary)",
                 border: "1px solid var(--border)",
-                textDecoration: "none",
               }}
             >
               {p}
-            </a>
+            </button>
           ))}
         </div>
       )}

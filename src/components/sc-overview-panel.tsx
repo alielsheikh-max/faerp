@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { useI18n } from "@/lib/i18n-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type CategoryStat = { id: number; name: string; totalItems: number; pricedItems: number; pct: number };
@@ -69,11 +70,12 @@ export default function ScOverviewPanel({
   month, username, pricedCount, totalActiveItems, pendingCount,
   quotesThisMonth, suppliersThisMonth, categoryStats, supplierStats, recentChanges,
 }: Props) {
+  const { t, isRTL } = useI18n();
   const coveragePct     = totalActiveItems > 0 ? Math.round(pricedCount / totalActiveItems * 100) : 0;
   const catsDone        = categoryStats.filter(c => c.pct === 100).length;
   const catsPct         = categoryStats.length > 0 ? Math.round(catsDone / categoryStats.length * 100) : 0;
   const maxQuotes       = supplierStats[0]?.quotesThisMonth ?? 1;
-  const overallStatus   = coveragePct === 100 ? "Complete ✅" : coveragePct > 0 ? "In Progress" : "Not Started";
+  const overallStatus   = coveragePct === 100 ? t("sco.statusComplete") : coveragePct > 0 ? t("sco.statusInProgress") : t("sco.statusNotStarted");
   const statusColor     = coveragePct === 100 ? "#10b981" : coveragePct > 0 ? "#f59e0b" : "#ef4444";
 
   return (
@@ -93,7 +95,7 @@ export default function ScOverviewPanel({
           display: "flex", alignItems: "center", gap: "4px",
           transition: "all 150ms",
         }}>
-          ← {formatMonthLabel(shiftMonth(month, -1))}
+          {isRTL ? `${formatMonthLabel(shiftMonth(month, -1))} ←` : `← ${formatMonthLabel(shiftMonth(month, -1))}`}
         </Link>
 
         <div style={{ flex: 1, textAlign: "center" }}>
@@ -101,7 +103,7 @@ export default function ScOverviewPanel({
             {formatMonthLabel(month)}
           </div>
           <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>
-            SC Dashboard · {username}
+            {t("sco.title").replace("{user}", username)}
           </div>
         </div>
 
@@ -112,7 +114,7 @@ export default function ScOverviewPanel({
           display: "flex", alignItems: "center", gap: "4px",
           transition: "all 150ms",
         }}>
-          {formatMonthLabel(shiftMonth(month, +1))} →
+          {isRTL ? `→ ${formatMonthLabel(shiftMonth(month, +1))}` : `${formatMonthLabel(shiftMonth(month, +1))} →`}
         </Link>
       </div>
 
@@ -127,8 +129,8 @@ export default function ScOverviewPanel({
         position: "relative", overflow: "hidden",
       }}>
         {/* background glow orbs */}
-        <div style={{ position: "absolute", top: "-40px", right: "-40px", width: "180px", height: "180px", borderRadius: "50%", background: "rgba(139,92,246,0.15)", filter: "blur(30px)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: "-30px", left: "200px", width: "120px", height: "120px", borderRadius: "50%", background: "rgba(99,102,241,0.12)", filter: "blur(24px)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "-40px", right: isRTL ? "auto" : "-40px", left: isRTL ? "-40px" : "auto", width: "180px", height: "180px", borderRadius: "50%", background: "rgba(139,92,246,0.15)", filter: "blur(30px)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: "-30px", left: isRTL ? "auto" : "200px", right: isRTL ? "200px" : "auto", width: "120px", height: "120px", borderRadius: "50%", background: "rgba(99,102,241,0.12)", filter: "blur(24px)", pointerEvents: "none" }} />
 
         {/* Circular progress */}
         <div style={{ position: "relative", flexShrink: 0 }}>
@@ -138,15 +140,17 @@ export default function ScOverviewPanel({
             alignItems: "center", justifyContent: "center", gap: "0px",
           }}>
             <div style={{ fontSize: "26px", fontWeight: 900, color: "#e0e7ff", lineHeight: 1 }}>{coveragePct}%</div>
-            <div style={{ fontSize: "9px", fontWeight: 700, color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.08em" }}>priced</div>
+            <div style={{ fontSize: "9px", fontWeight: 700, color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("sco.priced")}</div>
           </div>
         </div>
 
         {/* Status text + stat chips */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 0, textAlign: isRTL ? "right" : "left" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "22px", fontWeight: 900, color: "#e0e7ff", letterSpacing: "-0.02em" }}>
-              {pricedCount} of {totalActiveItems} Items Priced
+              {t("sco.pricedItemsCount")
+                .replace("{priced}", String(pricedCount))
+                .replace("{total}", String(totalActiveItems))}
             </span>
             <span style={{
               fontSize: "11px", fontWeight: 800, padding: "3px 10px", borderRadius: "99px",
@@ -155,21 +159,27 @@ export default function ScOverviewPanel({
             }}>{overallStatus}</span>
           </div>
           <div style={{ fontSize: "12px", color: "rgba(165,180,252,0.75)", marginBottom: "16px" }}>
-            {catsDone}/{categoryStats.length} categories fully priced &nbsp;·&nbsp; {suppliersThisMonth} active supplier{suppliersThisMonth !== 1 ? "s" : ""} this month
+            {t("sco.catsDoneDesc")
+              .replace("{done}", String(catsDone))
+              .replace("{total}", String(categoryStats.length))}
+            &nbsp;·&nbsp;
+            {t("sco.activeSuppliersDesc")
+              .replace("{count}", String(suppliersThisMonth))}
           </div>
 
           {/* Mini stat chips */}
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
             {[
-              { label: "Categories Done", value: `${catsDone}/${categoryStats.length}`, color: "#6ee7b7" },
-              { label: "Supplier Quotes", value: String(quotesThisMonth), color: "#93c5fd" },
-              { label: "Suppliers Active", value: String(suppliersThisMonth), color: "#c4b5fd" },
-              ...(pendingCount > 0 ? [{ label: "Pending Approval", value: String(pendingCount), color: "#fcd34d" }] : []),
+              { label: t("sco.chipCatsDone"), value: `${catsDone}/${categoryStats.length}`, color: "#6ee7b7" },
+              { label: t("sco.chipQuotes"), value: String(quotesThisMonth), color: "#93c5fd" },
+              { label: t("sco.chipSuppliers"), value: String(suppliersThisMonth), color: "#c4b5fd" },
+              ...(pendingCount > 0 ? [{ label: t("sco.chipPending"), value: String(pendingCount), color: "#fcd34d" }] : []),
             ].map(chip => (
               <div key={chip.label} style={{
                 padding: "8px 14px", borderRadius: "10px",
                 background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
                 backdropFilter: "blur(8px)",
+                textAlign: isRTL ? "right" : "left",
               }}>
                 <div style={{ fontSize: "9px", fontWeight: 700, color: "rgba(165,180,252,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "2px" }}>{chip.label}</div>
                 <div style={{ fontSize: "18px", fontWeight: 900, color: chip.color, lineHeight: 1 }}>{chip.value}</div>
@@ -180,7 +190,7 @@ export default function ScOverviewPanel({
 
         {/* Pending approvals alert (if any) */}
         {pendingCount > 0 && (
-          <Link href="/dashboard/approvals" style={{ textDecoration: "none", flexShrink: 0 }}>
+          <Link href="/dashboard/approvals" style={{ textDecoration: "none", flexShrink: 0, marginInlineStart: isRTL ? "0" : "auto", marginInlineEnd: isRTL ? "auto" : "0" }}>
             <div style={{
               padding: "12px 16px", borderRadius: "12px",
               background: "rgba(245,158,11,0.15)", border: "1.5px solid rgba(245,158,11,0.4)",
@@ -188,8 +198,8 @@ export default function ScOverviewPanel({
               transition: "background 150ms",
             }}>
               <div style={{ fontSize: "22px", fontWeight: 900, color: "#fcd34d" }}>{pendingCount}</div>
-              <div style={{ fontSize: "10px", fontWeight: 700, color: "#fbbf24", marginTop: "2px" }}>Pending</div>
-              <div style={{ fontSize: "9px", color: "rgba(251,191,36,0.7)", marginTop: "1px" }}>Review →</div>
+              <div style={{ fontSize: "10px", fontWeight: 700, color: "#fbbf24", marginTop: "2px" }}>{t("gen.pending")}</div>
+              <div style={{ fontSize: "9px", color: "rgba(251,191,36,0.7)", marginTop: "1px" }}>{isRTL ? "← مراجعة" : "Review →"}</div>
             </div>
           </Link>
         )}
@@ -197,12 +207,14 @@ export default function ScOverviewPanel({
 
       {/* ── Category Progress Grid ───────────────────────────────────────── */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", flexDirection: isRTL ? "row-reverse" : "row" }}>
           <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-            📂 Category Pricing Progress
+            {t("sco.categoryProgressTitle")}
           </span>
           <span style={{ fontSize: "10px", color: "var(--text-muted)", background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: "99px", padding: "1px 7px" }}>
-            {catsDone}/{categoryStats.length} complete
+            {t("sco.categoryProgressComplete")
+              .replace("{done}", String(catsDone))
+              .replace("{total}", String(categoryStats.length))}
           </span>
         </div>
 
@@ -224,15 +236,16 @@ export default function ScOverviewPanel({
                   transition: "transform 180ms, box-shadow 180ms",
                   cursor: "pointer",
                   display: "flex", flexDirection: "column", gap: "10px",
+                  textAlign: isRTL ? "right" : "left",
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; (e.currentTarget as HTMLElement).style.boxShadow = isComplete ? "0 8px 24px rgba(16,185,129,0.2)" : `0 8px 24px ${pal.glow}`; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = isComplete ? "0 2px 12px rgba(16,185,129,0.1)" : `0 2px 12px ${pal.glow}22`; }}
                 >
                   {/* Category header */}
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", flexDirection: isRTL ? "row-reverse" : "row" }}>
                     <div>
                       <div style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: isComplete ? "var(--success)" : pal.text, marginBottom: "3px" }}>
-                        Category
+                        {t("gen.category")}
                       </div>
                       <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2 }}>{cat.name}</div>
                     </div>
@@ -244,7 +257,7 @@ export default function ScOverviewPanel({
                       color: isComplete ? "var(--success)" : isEmpty ? "var(--danger)" : pal.text,
                       border: `1px solid ${isComplete ? "rgba(16,185,129,0.3)" : isEmpty ? "rgba(239,68,68,0.3)" : `${pal.text}40`}`,
                     }}>
-                      {isComplete ? "✅ Done" : isEmpty ? "⚠️ Pending" : `${cat.pct}%`}
+                      {isComplete ? t("sco.catStatusDone") : isEmpty ? t("sco.catStatusPending") : `${cat.pct}%`}
                     </span>
                   </div>
 
@@ -258,8 +271,12 @@ export default function ScOverviewPanel({
                         transition: "width 0.9s cubic-bezier(0.4,0,0.2,1)",
                       }} />
                     </div>
-                    <div style={{ marginTop: "5px", fontSize: "11px", color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
-                      <span>{cat.pricedItems} of {cat.totalItems} items priced</span>
+                    <div style={{ marginTop: "5px", fontSize: "11px", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                      <span>
+                        {t("sco.catPricedCount")
+                          .replace("{priced}", String(cat.pricedItems))
+                          .replace("{total}", String(cat.totalItems))}
+                      </span>
                       <span style={{ fontWeight: 700, color: isComplete ? "var(--success)" : pal.text }}>{cat.pct}%</span>
                     </div>
                   </div>
@@ -270,9 +287,10 @@ export default function ScOverviewPanel({
                     fontSize: "11px", fontWeight: 700,
                     color: isComplete ? "var(--success)" : pal.text,
                     display: "flex", alignItems: "center", gap: "4px",
+                    flexDirection: isRTL ? "row-reverse" : "row",
                   }}>
-                    {isComplete ? "🔍 Review Prices" : isEmpty ? "▶️ Start Pricing" : "⚡ Continue Pricing"}
-                    <span style={{ marginInlineStart: "auto" }}>→</span>
+                    {isComplete ? t("sco.ctaReview") : isEmpty ? t("sco.ctaStart") : t("sco.ctaContinue")}
+                    <span style={{ marginInlineStart: isRTL ? "0" : "auto", marginInlineEnd: isRTL ? "auto" : "0" }}>{isRTL ? "←" : "→"}</span>
                   </div>
                 </div>
               </Link>
@@ -289,25 +307,26 @@ export default function ScOverviewPanel({
           padding: "20px", borderRadius: "16px",
           background: "var(--bg-elevated)", border: "1px solid var(--border)",
           display: "flex", flexDirection: "column", gap: "0",
+          textAlign: isRTL ? "right" : "left",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexDirection: isRTL ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "16px" }}>🔄</span>
             <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-              Recent Price Changes
+              {t("sco.recentChangesTitle")}
             </span>
             <span style={{
-              marginInlineStart: "auto", fontSize: "9.5px", fontWeight: 700,
+              marginInlineStart: isRTL ? "0" : "auto", marginInlineEnd: isRTL ? "auto" : "0", fontSize: "9.5px", fontWeight: 700,
               background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: "99px",
               padding: "1px 7px", color: "var(--text-muted)",
-            }}>{recentChanges.length} this month</span>
+            }}>{t("sco.recentChangesCount").replace("{count}", String(recentChanges.length))}</span>
           </div>
 
           {recentChanges.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px", fontStyle: "italic" }}>
-              No price changes published yet this month.
+              {t("sco.noChanges")}
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "280px", overflowY: "auto", paddingRight: "4px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "280px", overflowY: "auto", paddingInlineEnd: "4px" }}>
               {recentChanges.slice(0, 8).map((rc, i) => {
                 const up   = rc.prev_sell_min !== null && rc.new_sell_min > rc.prev_sell_min;
                 const dn   = rc.prev_sell_min !== null && rc.new_sell_min < rc.prev_sell_min;
@@ -317,6 +336,7 @@ export default function ScOverviewPanel({
                     padding: "10px 12px", borderRadius: "10px",
                     background: "var(--bg-surface)", border: "1px solid var(--border-light)",
                     display: "flex", gap: "10px", alignItems: "flex-start",
+                    flexDirection: isRTL ? "row-reverse" : "row",
                   }}>
                     <div style={{
                       width: "32px", height: "32px", borderRadius: "9px", flexShrink: 0,
@@ -325,14 +345,14 @@ export default function ScOverviewPanel({
                     }}>
                       {up ? "📈" : dn ? "📉" : "✨"}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0, textAlign: isRTL ? "right" : "left" }}>
                       <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
                         {rc.item_name}
                       </div>
-                      <div style={{ fontSize: "10.5px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <div style={{ fontSize: "10.5px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
                         <span style={{ background: "var(--bg-subtle)", padding: "1px 6px", borderRadius: "4px", fontSize: "9.5px", fontWeight: 600 }}>{rc.category_name}</span>
                         {rc.prev_sell_min !== null && (
-                          <span>{formatCurrency(rc.prev_sell_min)} →</span>
+                          <span>{formatCurrency(rc.prev_sell_min)} {isRTL ? "←" : "→"}</span>
                         )}
                         <span style={{ fontWeight: 700, color: up ? "var(--danger)" : dn ? "var(--success)" : "var(--primary)" }}>
                           {formatCurrency(rc.new_sell_min)}
@@ -348,7 +368,7 @@ export default function ScOverviewPanel({
                         )}
                       </div>
                     </div>
-                    <div style={{ fontSize: "9.5px", color: "var(--text-dim)", flexShrink: 0, textAlign: "right" }}>
+                    <div style={{ fontSize: "9.5px", color: "var(--text-dim)", flexShrink: 0, textAlign: isRTL ? "left" : "right" }}>
                       {shortDate(rc.changed_at)}
                     </div>
                   </div>
@@ -363,22 +383,23 @@ export default function ScOverviewPanel({
           padding: "20px", borderRadius: "16px",
           background: "var(--bg-elevated)", border: "1px solid var(--border)",
           display: "flex", flexDirection: "column",
+          textAlign: isRTL ? "right" : "left",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexDirection: isRTL ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "16px" }}>🚛</span>
             <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-              Supplier Quote Activity
+              {t("sco.quoteActivityTitle")}
             </span>
             <span style={{
-              marginInlineStart: "auto", fontSize: "9.5px", fontWeight: 700,
+              marginInlineStart: isRTL ? "0" : "auto", marginInlineEnd: isRTL ? "auto" : "0", fontSize: "9.5px", fontWeight: 700,
               background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: "99px",
               padding: "1px 7px", color: "var(--text-muted)",
-            }}>{quotesThisMonth} total</span>
+            }}>{t("sco.quoteActivityCount").replace("{count}", String(quotesThisMonth))}</span>
           </div>
 
           {supplierStats.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px", fontStyle: "italic" }}>
-              No quotes collected yet this month.
+              {t("sco.noQuotes")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
@@ -387,7 +408,7 @@ export default function ScOverviewPanel({
                 const rankColors = ["#f59e0b", "#9ca3af", "#d97706", "#6366f1", "#10b981", "#ec4899", "#06b6d4"];
                 return (
                   <div key={s.id}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px", flexDirection: isRTL ? "row-reverse" : "row" }}>
                       <span style={{
                         fontSize: "10px", fontWeight: 900,
                         width: "20px", height: "20px", borderRadius: "50%", flexShrink: 0,
@@ -396,11 +417,11 @@ export default function ScOverviewPanel({
                         border: i < 3 ? "none" : "1px solid var(--border)",
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>{i + 1}</span>
-                      <span style={{ fontSize: "12px", fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, color: "var(--text-primary)" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, color: "var(--text-primary)", textAlign: isRTL ? "right" : "left" }}>
                         {s.name}
                       </span>
                       <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--primary)", flexShrink: 0 }}>
-                        {s.quotesThisMonth} item{s.quotesThisMonth !== 1 ? "s" : ""}
+                        {t("sco.quoteActivityItem").replace("{count}", String(s.quotesThisMonth))}
                       </span>
                     </div>
                     <div style={{ height: "5px", borderRadius: "99px", background: "var(--bg-subtle)", overflow: "hidden" }}>
@@ -408,6 +429,7 @@ export default function ScOverviewPanel({
                         height: "100%", borderRadius: "99px", width: `${barW}%`,
                         background: i === 0 ? "linear-gradient(90deg,#f59e0b,#fcd34d)" : i === 1 ? "linear-gradient(90deg,#9ca3af,#d1d5db)" : "var(--primary)",
                         transition: "width 0.8s ease",
+                        marginInlineStart: isRTL ? "auto" : "0",
                       }} />
                     </div>
                   </div>
@@ -420,36 +442,36 @@ export default function ScOverviewPanel({
 
       {/* ── Quick Access ──────────────────────────────────────────────────── */}
       <div>
-        <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-secondary)", marginBottom: "12px" }}>
-          ⚡ Quick Access
+        <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-secondary)", marginBottom: "12px", textAlign: isRTL ? "right" : "left" }}>
+          {t("sco.quickAccessTitle")}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: "12px" }}>
           {[
             {
               href: `/dashboard/pricing?month=${month}`,
-              icon: "⚡", label: "Item Pricing Engine",
-              sub: "Set prices per item",
+              icon: "⚡", label: t("sco.qaPricingEngine"),
+              sub: t("sco.qaPricingEngineSub"),
               grad: "linear-gradient(135deg,#4f46e5,#6366f1)",
               shadow: "rgba(99,102,241,0.35)",
             },
             {
               href: `/dashboard/pricing/category?month=${month}`,
-              icon: "📊", label: "Category Pricing",
-              sub: "Bulk markup by category",
+              icon: "📊", label: t("sco.qaCategoryPricing"),
+              sub: t("sco.qaCategoryPricingSub"),
               grad: "linear-gradient(135deg,#0e7490,#0891b2)",
               shadow: "rgba(6,182,212,0.35)",
             },
             {
               href: `/dashboard/reports?month=${month}`,
-              icon: "📄", label: "PDF & XLSX Reports",
-              sub: "Export price reports",
+              icon: "📄", label: t("sco.qaReports"),
+              sub: t("sco.qaReportsSub"),
               grad: "linear-gradient(135deg,#047857,#059669)",
               shadow: "rgba(16,185,129,0.35)",
             },
             {
               href: "/dashboard/approvals",
-              icon: "📋", label: "Price Approvals",
-              sub: pendingCount > 0 ? `${pendingCount} pending review` : "All requests approved",
+              icon: "📋", label: t("sco.qaApprovals"),
+              sub: pendingCount > 0 ? t("sco.qaApprovalsPending").replace("{count}", String(pendingCount)) : t("sco.qaApprovalsAllApproved"),
               grad: pendingCount > 0 ? "linear-gradient(135deg,#b45309,#d97706)" : "linear-gradient(135deg,#374151,#4b5563)",
               shadow: pendingCount > 0 ? "rgba(245,158,11,0.35)" : "rgba(0,0,0,0.2)",
               badge: pendingCount > 0 ? String(pendingCount) : undefined,
@@ -463,15 +485,18 @@ export default function ScOverviewPanel({
                 display: "flex", flexDirection: "column", gap: "8px",
                 transition: "transform 180ms, box-shadow 180ms",
                 position: "relative", overflow: "hidden",
+                textAlign: isRTL ? "right" : "left",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; (e.currentTarget as HTMLElement).style.boxShadow = `0 10px 30px ${q.shadow}`; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 20px ${q.shadow}`; }}
               >
-                <div style={{ position: "absolute", top: "-20px", right: "-20px", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", pointerEvents: "none" }} />
+                <div style={{ position: "absolute", top: "-20px", right: isRTL ? "auto" : "-20px", left: isRTL ? "-20px" : "auto", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", pointerEvents: "none" }} />
                 <div style={{ fontSize: "24px", lineHeight: 1 }}>{q.icon}</div>
                 <div style={{ fontSize: "13px", fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>{q.label}</div>
                 <div style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.7)" }}>{q.sub}</div>
-                <div style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.9)", marginTop: "4px" }}>Go →</div>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.9)", marginTop: "4px" }}>
+                  {isRTL ? "← الذهاب" : "Go →"}
+                </div>
                 {q.badge && (
                   <div style={{
                     position: "absolute", top: "12px", right: "12px",

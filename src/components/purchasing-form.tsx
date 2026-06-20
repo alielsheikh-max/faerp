@@ -39,6 +39,7 @@ export function ChangeRequestModal({
   oldTransport?: number | null; newTransport?: number | null;
   requestedBy: string; isNegotiation?: boolean; isFirstEntry?: boolean; onClose: () => void;
 }) {
+  const { t, isRTL } = useI18n();
   const [purpose, setPurpose] = useState<"price" | "trans" | "both">(() => {
     if (isFirstEntry) return "both";
     const hasPriceChange = newPrice !== currentPrice;
@@ -64,11 +65,11 @@ export function ChangeRequestModal({
       const transNum = Number(revisedTransVal);
 
       if (isNaN(priceNum) || priceNum <= 0) {
-        setErr("Please enter a valid positive price.");
+        setErr(t("purch.errValidPrice"));
         return;
       }
       if (isNaN(transNum) || transNum < 0) {
-        setErr("Please enter a valid non-negative transport cost.");
+        setErr(t("purch.errValidTransport"));
         return;
       }
 
@@ -94,7 +95,7 @@ export function ChangeRequestModal({
     } else if (isNegotiation) {
       const priceNum = Number(negotiatedPriceVal);
       if (isNaN(priceNum) || priceNum <= 0) {
-        setErr("Please enter a valid positive negotiated price.");
+        setErr(t("purch.errValidNegPrice"));
         return;
       }
       setErr(null);
@@ -118,11 +119,11 @@ export function ChangeRequestModal({
       const transNum = purpose === "price" ? (oldTransport ?? 0) : Number(revisedTransVal);
 
       if (purpose !== "trans" && (isNaN(priceNum) || priceNum <= 0)) {
-        setErr("Please enter a valid positive revised price.");
+        setErr(t("purch.errValidRevPrice"));
         return;
       }
       if (purpose !== "price" && (isNaN(transNum) || transNum < 0)) {
-        setErr("Please enter a valid non-negative revised transport cost.");
+        setErr(t("purch.errValidRevTrans"));
         return;
       }
 
@@ -164,7 +165,7 @@ export function ChangeRequestModal({
       }}>
         <div>
           <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: isFirstEntry ? "#3b82f6" : isNegotiation ? "#8b5cf6" : "var(--warning)", marginBottom: "4px" }}>
-            {isFirstEntry ? "Record Price" : isNegotiation ? "Log Negotiated Price" : "Price Revision Request"}
+            {isFirstEntry ? t("purch.recordPriceHeader") : isNegotiation ? t("purch.logNegotiatedHeader") : t("purch.priceRevisionHeader")}
           </p>
           <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{item.name}</h3>
           <div style={{ display: "flex", gap: "6px", marginTop: "5px", flexWrap: "wrap" }}>
@@ -177,7 +178,7 @@ export function ChangeRequestModal({
           /* Record Price Layout */
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Price (EGP) *</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.priceEGP")}</span>
               <input
                 type="number"
                 step="any"
@@ -191,7 +192,7 @@ export function ChangeRequestModal({
             </label>
 
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Transport Cost (EGP) *</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.transportCostEGP")}</span>
               <input
                 type="number"
                 step="any"
@@ -203,12 +204,12 @@ export function ChangeRequestModal({
             </label>
 
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Notes (Optional)</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.notesOptionalLabel")}</span>
               <input
                 type="text"
                 value={notesVal}
                 onChange={e => setNotesVal(e.target.value)}
-                placeholder="Notes for this entry..."
+                placeholder={t("purch.notesPlaceholder")}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
               />
             </label>
@@ -217,22 +218,22 @@ export function ChangeRequestModal({
           /* Redesigned Negotiation Layout */
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Purpose</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.purpose")}</span>
               <input
                 type="text"
-                value="price negotation"
+                value={t("purch.priceNegotiation")}
                 disabled
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: "13px", cursor: "not-allowed" }}
               />
             </label>
 
             <div style={{ padding: "10px 14px", background: "var(--bg-elevated)", border: "1px solid var(--border-medium)", borderRadius: "var(--radius)", fontSize: "13px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Submitted Price: </span>
+              <span style={{ color: "var(--text-muted)" }}>{t("purch.submittedPriceLabel")} </span>
               <strong>{formatCurrency(currentPrice)}</strong>
             </div>
 
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Price after negotiation (EGP) *</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.negPriceAfterLabel")}</span>
               <input
                 type="number"
                 step="any"
@@ -262,15 +263,15 @@ export function ChangeRequestModal({
                   gap: "4px"
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Negotiated Discount Amount:</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{t("purch.negDiscountAmtLabel")}</span>
                     <strong style={{ color: diff >= 0 ? "var(--success)" : "var(--danger)" }}>
-                      {diff >= 0 ? "Saved" : "Increased by"} {formatCurrency(Math.abs(diff))}
+                      {diff >= 0 ? t("purch.negSavedText") : t("purch.negIncreasedText")} {formatCurrency(Math.abs(diff))}
                     </strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Negotiated Discount %:</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{t("purch.negDiscountPctLabel")}</span>
                     <strong style={{ color: diff >= 0 ? "var(--success)" : "var(--danger)" }}>
-                      {pct.toFixed(2)}% {diff >= 0 ? "discount" : "increase"}
+                      {pct.toFixed(2)}% {diff >= 0 ? t("purch.negDiscountText") : t("purch.negIncreaseText")}
                     </strong>
                   </div>
                 </div>
@@ -278,12 +279,12 @@ export function ChangeRequestModal({
             })()}
 
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Notes (Optional)</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.notesOptionalLabel")}</span>
               <input
                 type="text"
                 value={notesVal}
                 onChange={e => setNotesVal(e.target.value)}
-                placeholder="e.g. Agreed to discount based on volume..."
+                placeholder={t("purch.negNotesPlaceholder")}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
               />
             </label>
@@ -292,10 +293,10 @@ export function ChangeRequestModal({
           /* Redesigned Revision Layout */
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div>
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>Purpose *</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>{t("purch.purposeRequired")}</span>
               <div style={{ display: "flex", gap: "6px" }}>
                 {(["price", "trans", "both"] as const).map(p => {
-                  const label = p === "price" ? "Revised price" : p === "trans" ? "Revised trans" : "Revised trans and price";
+                  const label = p === "price" ? t("purch.priceChange") : p === "trans" ? t("purch.transportChange") : t("purch.changeRequest");
                   const isSelected = purpose === p;
                   return (
                     <button
@@ -321,10 +322,10 @@ export function ChangeRequestModal({
             {(purpose === "price" || purpose === "both") && (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                  Original Price: <strong>{formatCurrency(currentPrice)}</strong>
+                  {t("purch.originalPrice")} <strong>{formatCurrency(currentPrice)}</strong>
                 </div>
                 <label className="field">
-                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Revised Price (EGP) *</span>
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.revisedPriceEGP")}</span>
                   <input
                     type="number" step="any" min="0.01"
                     value={revisedPriceVal}
@@ -339,10 +340,10 @@ export function ChangeRequestModal({
             {(purpose === "trans" || purpose === "both") && (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                  Original Transport: <strong>{formatCurrency(oldTransport ?? 0)}</strong>
+                  {t("purch.originalTransport")} <strong>{formatCurrency(oldTransport ?? 0)}</strong>
                 </div>
                 <label className="field">
-                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Revised Transport (EGP) *</span>
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.revisedTransportEGP")}</span>
                   <input
                     type="number" step="any" min="0"
                     value={revisedTransVal}
@@ -354,12 +355,12 @@ export function ChangeRequestModal({
             )}
 
             <label className="field">
-              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>Note (Optional)</span>
+              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--text-secondary)" }}>{t("purch.notesOptionalLabel")}</span>
               <input
                 type="text"
                 value={notesVal}
                 onChange={e => setNotesVal(e.target.value)}
-                placeholder="Write a note in case WH wants to write a note..."
+                placeholder={t("purch.notePlaceholderWH")}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-medium)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
               />
             </label>
@@ -370,14 +371,14 @@ export function ChangeRequestModal({
         {done && (
           <div style={{ fontSize: "13px", color: "var(--success)", fontWeight: 700, textAlign: "center", padding: "6px" }}>
             {done === "direct" 
-              ? (isNegotiation ? "✓ Notified Supply Chain successfully." : "✓ Saved successfully.") 
-              : "✓ Request submitted — awaiting SC review."
+              ? (isNegotiation ? t("purch.notifiedSC") : t("purch.savedSuccessfully")) 
+              : t("purch.requestSubmittedSC")
             }
           </div>
         )}
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={onClose} disabled={pending}>Cancel</button>
+          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={onClose} disabled={pending}>{t("gen.cancel")}</button>
           <button
             type="button"
             className={isFirstEntry ? "button button-primary" : isNegotiation ? "button button-primary" : "button button-warning"}
@@ -390,15 +391,15 @@ export function ChangeRequestModal({
             onClick={handleSubmit}
             disabled={pending || Boolean(done)}
           >
-            {pending ? "Saving…" : isFirstEntry ? "Save Price" : isNegotiation ? "Notify SC" : "Submit Request"}
+            {pending ? t("purch.savingBtn") : isFirstEntry ? t("purch.savePriceBtn") : isNegotiation ? t("purch.notifySCBtn") : t("purch.submitRequestBtn")}
           </button>
         </div>
         <p style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
           {isFirstEntry
-            ? "This will save the initial price directly to the database for this month."
+            ? t("purch.descFirstEntry")
             : isNegotiation
-              ? "This will log a negotiated price for this month and notify SC. The original price is preserved."
-              : "This will be sent to SC for approval. Nothing changes until approved."
+              ? t("purch.descNegotiation")
+              : t("purch.descRevision")
           }
         </p>
       </div>
@@ -425,6 +426,7 @@ function ExtendPricesModal({
   extendedBy: string;
   onClose: (refreshed: boolean) => void;
 }) {
+  const { t, isRTL } = useI18n();
   const prevMonth = shiftMonth(month, -1);
   const [selected, setSelected] = useState<Set<number>>(new Set(suppliersWithoutCurrentPrice));
   const [pending, startTransition] = useTransition();
@@ -439,7 +441,7 @@ function ExtendPricesModal({
   });
 
   const handleExtend = () => {
-    if (selected.size === 0) { setErr("Select at least one supplier."); return; }
+    if (selected.size === 0) { setErr(t("purch.errSelectSupplier")); return; }
     setErr(null);
     startTransition(async () => {
       const res = await extendPreviousMonthPricesAction({
@@ -449,7 +451,11 @@ function ExtendPricesModal({
       });
       if (res?.ok) {
         setDone(true);
-        setResult(`✓ Extended prices for ${res.created} supplier(s) into ${formatMonthLabel(month)}.`);
+        setResult(
+          t("purch.extendedResult")
+            .replace("{count}", String(res.created))
+            .replace("{month}", formatMonthLabel(month))
+        );
         setTimeout(() => onClose(true), 1800);
       } else {
         setErr(res?.error ?? "Failed");
@@ -463,10 +469,12 @@ function ExtendPricesModal({
     >
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-medium)", borderRadius: "16px", boxShadow: "var(--shadow-xl)", width: "100%", maxWidth: "500px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)", willChange: "transform, opacity" }}>
         <div>
-          <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--primary)", marginBottom: "4px" }}>SC · Extend Prices</p>
+          <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--primary)", marginBottom: "4px" }}>{t("purch.scExtendTitle")}</p>
           <h3 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{item.name}</h3>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-            Copy confirmed prices from <strong>{formatMonthLabel(prevMonth)}</strong> → <strong>{formatMonthLabel(month)}</strong> for selected suppliers. Only suppliers with no current-month price will be extended.
+            {t("purch.scExtendDesc")
+              .replace("{prevMonth}", formatMonthLabel(prevMonth))
+              .replace("{month}", formatMonthLabel(month))}
           </p>
         </div>
 
@@ -479,10 +487,10 @@ function ExtendPricesModal({
             return (
               <label key={sid} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isChecked ? "var(--primary)" : "var(--border)"}`, background: isChecked ? "var(--primary-light)" : "var(--bg-elevated)", cursor: "pointer", transition: "all 150ms" }}>
                 <input type="checkbox" checked={isChecked} onChange={() => toggle(sid)} style={{ accentColor: "var(--primary)", width: "15px", height: "15px" }} />
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, textAlign: isRTL ? "right" : "left" }}>
                   <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{sup.name}</div>
                   <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    {price != null ? `${formatMonthLabel(prevMonth)}: ${formatCurrency(price)}` : "No prev-month price"}
+                    {price != null ? `${formatMonthLabel(prevMonth)}: ${formatCurrency(price)}` : t("purch.noPrevMonthPrice")}
                   </div>
                 </div>
                 {price != null && (
@@ -497,9 +505,9 @@ function ExtendPricesModal({
         {done && result && <div style={{ fontSize: "13px", color: "var(--success)", fontWeight: 700, textAlign: "center", padding: "8px" }}>{result}</div>}
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={() => onClose(false)} disabled={pending}>Cancel</button>
+          <button type="button" className="button button-secondary" style={{ flex: 1 }} onClick={() => onClose(false)} disabled={pending}>{t("gen.cancel")}</button>
           <button type="button" className="button button-primary" style={{ flex: 2 }} onClick={handleExtend} disabled={pending || done || selected.size === 0}>
-            {pending ? "Extending…" : `Extend ${selected.size} Supplier(s) →`}
+            {pending ? t("purch.extendingBtn") : t("purch.extendBtnLabel").replace("{count}", String(selected.size))}
           </button>
         </div>
       </div>

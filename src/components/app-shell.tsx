@@ -108,10 +108,10 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
   return (
     <div className="app-shell">
 
-      {/* ── Floating alert pills — fixed top-right, always visible when pending ── */}
+      {/* ── Floating alert pills — fixed top-right (RTL: top-left), always visible when pending ── */}
       {(pendingRequests > 0 || ackCount > 0) && (
         <div className="no-print" style={{
-          position: "fixed", top: "14px", right: "20px",
+          position: "fixed", top: "14px", insetInlineEnd: "20px",
           display: "flex", gap: "8px", zIndex: 600,
           pointerEvents: "auto",
         }}>
@@ -128,12 +128,13 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 border: "1.5px solid rgba(255,255,255,0.25)",
                 backdropFilter: "blur(4px)",
                 transition: "transform 150ms, box-shadow 150ms",
+                direction: "ltr",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(245,158,11,0.7)"; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(245,158,11,0.55)"; }}
             >
               <span style={{ fontSize: "14px" }}>🔔</span>
-              <span>{pendingRequests} Approval{pendingRequests > 1 ? "s" : ""} Pending</span>
+              <span>{pendingRequests} {t("shell.approvalsPending")}</span>
             </Link>
           )}
           {ackCount > 0 && (
@@ -147,12 +148,13 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 textDecoration: "none", boxShadow: "0 4px 18px rgba(99,102,241,0.5)",
                 border: "1.5px solid rgba(255,255,255,0.25)",
                 transition: "transform 150ms, box-shadow 150ms",
+                direction: "ltr",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(99,102,241,0.7)"; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(99,102,241,0.5)"; }}
             >
               <span style={{ fontSize: "14px" }}>📨</span>
-              <span>{ackCount} New Notification{ackCount > 1 ? "s" : ""}</span>
+              <span>{ackCount} {t("shell.newNotifications")}</span>
             </Link>
           )}
         </div>
@@ -220,7 +222,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                   <span style={{ fontSize: "18px", lineHeight: 1 }}>{item.icon}</span>
                   {count > 0 && (
                     <span style={{
-                      position: "absolute", top: "-5px", right: "-5px",
+                      position: "absolute", top: "-5px", insetInlineEnd: "-5px",
                       minWidth: "18px", height: "18px", padding: "0 4px",
                       borderRadius: "99px", background: badgeBg,
                       color: "#fff", fontSize: "9px", fontWeight: 900,
