@@ -862,10 +862,18 @@ export default function PurchasingForm({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", flexShrink: 0 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "var(--text-primary)" }}>
-                  🔍 Review & Edit Submitted Prices
+                  {isAr ? "🔍 مراجعة وتعديل الأسعار المرسلة" : "🔍 Review & Edit Submitted Prices"}
                 </h3>
                 <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>
-                  Month: <strong>{formatMonthLabel(month)}</strong> · Total items: <strong>{items.length}</strong>
+                  {isAr ? (
+                    <>
+                      الشهر: <strong>{formatMonthLabel(month)}</strong> · إجمالي الأصناف: <strong>{items.length}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Month: <strong>{formatMonthLabel(month)}</strong> · Total items: <strong>{items.length}</strong>
+                    </>
+                  )}
                 </p>
               </div>
               <button
@@ -883,17 +891,17 @@ export default function PurchasingForm({
               <div style={{ position: "relative", flex: 1 }}>
                 <input
                   type="text"
-                  placeholder="Search items by name or category..."
+                  placeholder={isAr ? "البحث عن الأصناف بالاسم أو الفئة..." : "Search items by name or category..."}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   style={{
-                    width: "100%", padding: "8px 12px 8px 36px",
+                    width: "100%", padding: isAr ? "8px 36px 8px 12px" : "8px 12px 8px 36px",
                     borderRadius: "8px", border: "1px solid var(--border-medium)",
                     background: "var(--bg-surface)", color: "var(--text-primary)",
                     fontSize: "13px"
                   }}
                 />
-                <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "14px", pointerEvents: "none", opacity: 0.5 }}>
+                <span style={{ position: "absolute", [isAr ? "right" : "left"]: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "14px", pointerEvents: "none", opacity: 0.5 }}>
                   🔍
                 </span>
               </div>
@@ -903,7 +911,7 @@ export default function PurchasingForm({
                 style={{ padding: "8px 14px", fontSize: "12px" }}
                 onClick={() => setExpandedItems(new Set(items.map(i => i.id)))}
               >
-                Expand All
+                {isAr ? "توسيع الكل" : "Expand All"}
               </button>
               <button
                 type="button"
@@ -911,7 +919,7 @@ export default function PurchasingForm({
                 style={{ padding: "8px 14px", fontSize: "12px" }}
                 onClick={() => setExpandedItems(new Set())}
               >
-                Collapse All
+                {isAr ? "طي الكل" : "Collapse All"}
               </button>
             </div>
 
@@ -1217,7 +1225,7 @@ export default function PurchasingForm({
                 style={{ padding: "8px 20px" }}
                 onClick={() => setShowReviewModal(false)}
               >
-                Close Dashboard
+                {isAr ? "إغلاق اللوحة" : "Close Dashboard"}
               </button>
             </div>
           </div>
@@ -1239,7 +1247,7 @@ export default function PurchasingForm({
           className="button button-primary"
           style={{ fontSize: "13px", padding: "8px 16px", display: "flex", alignItems: "center", gap: "6px" }}
         >
-          🔍 Review & Edit Submitted Prices
+          {isAr ? "🔍 مراجعة وتعديل الأسعار المرسلة" : "🔍 Review & Edit Submitted Prices"}
         </button>
       </div>
 
@@ -1368,13 +1376,13 @@ export default function PurchasingForm({
                           >
                             {supplier.fame_name || supplier.name}
                           </div>
-                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>Last: {formatCurrency(lastEntry.price)}</div>}
+                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{isAr ? "السابق" : "Last"}: {formatCurrency(lastEntry.price)}</div>}
                         </div>
                       </div>
 
                       {/* Submitted price — read-only */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px", flexShrink: 0, minWidth: "140px" }}>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted price</span>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{isAr ? "السعر المرسل" : "Submitted price"}</span>
                         <div style={{
                           height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%",
                           display: "flex", alignItems: "center", whiteSpace: "nowrap",
@@ -1401,7 +1409,7 @@ export default function PurchasingForm({
 
                       {/* Submitted trans — read-only */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px", flexShrink: 0 }}>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Submitted trans.</span>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{isAr ? "النقل المرسل" : "Submitted trans."}</span>
                         <div style={{
                           height: "40px", padding: "8px 10px", fontSize: "13px", fontWeight: 400, borderRadius: "var(--radius)", outline: "none", transition: "all 200ms", width: "100%",
                           display: "flex", alignItems: "center", justifyContent: "center",
@@ -1414,7 +1422,7 @@ export default function PurchasingForm({
 
                       {/* Notes — read-only */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "150px" }}>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Notes</span>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{isAr ? "الملاحظات" : "Notes"}</span>
                         <div style={{
                           height: "40px", padding: "8px 10px", fontSize: "12px", fontWeight: 400, borderRadius: "var(--radius)",
                           display: "flex", alignItems: "center", background: "var(--bg-elevated)", border: "1px solid var(--border)",
@@ -1512,7 +1520,7 @@ export default function PurchasingForm({
                           >
                             {supplier.fame_name || supplier.name}
                           </div>
-                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>Last: {formatCurrency(lastEntry.price)}</div>}
+                          {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{isAr ? "السابق" : "Last"}: {formatCurrency(lastEntry.price)}</div>}
                         </div>
                       </div>
 
@@ -1648,7 +1656,7 @@ export default function PurchasingForm({
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-subtle)" }}>
-                        <th style={{ padding: "7px 12px", textAlign: "left", fontWeight: 800, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, left: 0, background: "var(--bg-subtle)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)", minWidth: "80px" }}>
+                        <th style={{ padding: "7px 12px", textAlign: isAr ? "right" : "left", fontWeight: 800, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, [isAr ? "right" : "left"]: 0, background: "var(--bg-subtle)", zIndex: 3, whiteSpace: "nowrap", boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light), 0 1px 0 var(--border)`, minWidth: "80px" }}>
                           {t("purch.month")}
                         </th>
                         {pivotData.activeSuppliers.map(sup => {
@@ -1686,7 +1694,7 @@ export default function PurchasingForm({
                         }
                         return (
                           <tr key={m} style={{ borderBottom: mi < pivotData.pivotMonths.length - 1 ? "1px solid var(--border-light)" : "none", background: isLatest ? "rgba(99,102,241,0.04)" : "transparent" }}>
-                            <td style={{ padding: "8px 12px", position: "sticky", left: 0, background: isLatest ? "rgba(99,102,241,0.07)" : "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
+                            <td style={{ padding: "8px 12px", position: "sticky", [isAr ? "right" : "left"]: 0, background: isLatest ? "rgba(99,102,241,0.07)" : "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                                 <span className="badge" style={{ fontSize: "10px", ...(isLatest ? { background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" } : {}) }}>{m}</span>
                                 {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, color: "var(--primary)" }}>{t("gen.latest")}</span>}
