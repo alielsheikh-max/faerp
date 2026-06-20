@@ -1404,14 +1404,7 @@ select option { background: #fff; color: #111827; }
   .form-grid,
   .cell-stack { text-align: right; }
 
-  /* Reverse flex rows */
-  .section-intro,
-  .panel-header,
-  .button-row,
-  .search-bar-wrap,
-  .stat-card,
-  .inline-editor,
-  .brand-block { flex-direction: row-reverse; }
+  /* Keep natural RTL order for flex rows (browser mirrors automatically under dir="rtl") */
 
   /* Nav active indicator: flip side */
   .nav-link.active::before {
@@ -1420,8 +1413,7 @@ select option { background: #fff; color: #111827; }
     border-radius: 3px 0 0 3px;
   }
 
-  /* Nav link: icon on right */
-  .nav-link { flex-direction: row-reverse; }
+  /* Nav link: icon naturally renders on the right in RTL, text on left */
 
   /* Nav active dot: flip to left */
   .nav-link .nav-active-dot { margin-left: 0; margin-right: auto; }
@@ -1449,8 +1441,7 @@ select option { background: #fff; color: #111827; }
   /* Eyebrow / badge gap */
   .badge { direction: rtl; }
 
-  /* Flip restriction banner arrow */
-  .restriction-info-banner { flex-direction: row-reverse; }
+  /* restriction banner: naturally flows right-to-left */
 
   /* Nav section label */
   .nav-section-label { text-align: right; padding: 14px 20px 6px; }
@@ -1461,9 +1452,10 @@ select option { background: #fff; color: #111827; }
   /* Inline editor actions */
   .inline-editor-actions { margin-left: 0; }
 
-  /* Quick role btn arrow */
-  .quick-role-btn { flex-direction: row-reverse; }
+  /* Quick role btn arrow: naturally flows right-to-left */
   .quick-role-btn::after { content: '←'; }
+  .quick-role-btn:hover { transform: translateX(-2px); }
+  .quick-role-btn:hover::after { transform: translateX(-2px); }
 
   /* hero copy: align right for Arabic */
   .hero-copy,
@@ -1471,7 +1463,7 @@ select option { background: #fff; color: #111827; }
   .hero-brand,
   .hero-feature-list { text-align: right; direction: rtl; }
 
-  .hero-feature-item { flex-direction: row-reverse; }
+  /* Feature items: naturally flow checkmark then text in RTL */
 
   /* Glass panel */
   .glass-panel { direction: rtl; }
@@ -1497,8 +1489,7 @@ select option { background: #fff; color: #111827; }
   .table-wrap { direction: rtl; }
   .table-wrap .data-table { direction: rtl; }
 
-  /* Checkbox rows */
-  .checkbox-row { flex-direction: row-reverse; }
+  /* Checkbox rows: naturally flow checkbox then label in RTL */
 
   /* Search input: RTL text */
   .search-input { text-align: right; direction: rtl; }

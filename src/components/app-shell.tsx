@@ -285,7 +285,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                             <span style={{ fontSize: "13px", width: "18px", textAlign: "center", flexShrink: 0 }}>{child.icon}</span>
                             <span>{t(child.labelKey)}</span>
                             {isChildActive && (
-                              <span style={{ marginLeft: "auto", width: "5px", height: "5px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 6px rgba(99,102,241,0.8)", flexShrink: 0 }} />
+                              <span style={{ marginInlineStart: "auto", width: "5px", height: "5px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 6px rgba(99,102,241,0.8)", flexShrink: 0 }} />
                             )}
                           </Link>
                         );
@@ -319,8 +319,8 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                     {badgeCount}
                   </span>
                 )}
-                {isActive && (
-                  <span className="nav-active-dot" style={{ marginLeft: "auto", width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 8px rgba(99,102,241,0.8)", flexShrink: 0 }} />
+                {isActive && !showBadge && (
+                  <span className="nav-active-dot" style={{ marginInlineStart: "auto", width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", boxShadow: "0 0 8px rgba(99,102,241,0.8)", flexShrink: 0 }} />
                 )}
               </Link>
             );

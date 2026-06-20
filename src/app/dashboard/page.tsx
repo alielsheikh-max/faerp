@@ -259,7 +259,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                     transition: "all 150ms",
                   }}
                 >
-                  {searchParams?.simulate === "true" ? "⏹ Stop Simulation" : "⚙️ Simulate June 25th"}
+                  {searchParams?.simulate === "true" ? t("dash.stopSimulation") : t("dash.simulateDate")}
                 </a>
               )}
             </div>
@@ -336,23 +336,25 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               <section className="panel animate-fade-in" style={{ padding: "20px 24px" }}>
                 <div className="panel-header" style={{ marginBottom: "16px" }}>
                   <div>
-                    <p className="eyebrow">Collection Report</p>
-                    <h2>Monthly Quote Progress — {month}</h2>
+                    <p className="eyebrow">{t("purch.collectionReport")}</p>
+                    <h2>{t("purch.monthlyQuoteProgress").replace("{month}", month)}</h2>
                   </div>
                   <span className={`badge ${
                     whOverview.totals.possible === 0 ? "" :
                     whOverview.totals.submitted === whOverview.totals.possible ? "badge-success" :
                     whOverview.totals.submitted > 0 ? "badge-warning" : "badge-danger"
                   }`}>
-                    {whOverview.totals.submitted}/{whOverview.totals.possible} Quotes
+                    {t("purch.quotesCount")
+                      .replace("{submitted}", String(whOverview.totals.submitted))
+                      .replace("{possible}", String(whOverview.totals.possible))}
                   </span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "16px" }}>
                   {[
-                    { label: "Submitted", value: whOverview.totals.submitted, color: "var(--success)" },
-                    { label: "Remaining", value: whOverview.totals.possible - whOverview.totals.submitted, color: "var(--danger)" },
-                    { label: "Categories", value: whOverview.totals.categories, color: "var(--primary)" },
-                    { label: "% Complete", value: whOverview.totals.possible > 0 ? `${Math.round((whOverview.totals.submitted / whOverview.totals.possible) * 100)}%` : "—", color: "var(--warning)" },
+                    { label: t("purch.submitted"), value: whOverview.totals.submitted, color: "var(--success)" },
+                    { label: t("purch.remaining"), value: whOverview.totals.possible - whOverview.totals.submitted, color: "var(--danger)" },
+                    { label: t("purch.categories"), value: whOverview.totals.categories, color: "var(--primary)" },
+                    { label: t("purch.pctComplete"), value: whOverview.totals.possible > 0 ? `${Math.round((whOverview.totals.submitted / whOverview.totals.possible) * 100)}%` : "—", color: "var(--warning)" },
                   ].map(card => (
                     <div key={card.label} style={{
                       padding: "14px 16px", borderRadius: "10px",

@@ -49,8 +49,8 @@ export default function LoginPageClient({ error }: { error?: string }) {
             <div className="signin-overlay-text">
               <span>
                 {signingInRole && signingInRole !== "user"
-                  ? `Signing in as ${signingInRole}…`
-                  : "Authenticating…"}
+                  ? t("login.signingInAs").replace("{role}", t(`role.${signingInRole}.title` as any) || signingInRole)
+                  : t("login.authenticating")}
               </span>
             </div>
             {/* Calm progress bar */}
@@ -63,7 +63,7 @@ export default function LoginPageClient({ error }: { error?: string }) {
 
 
       {/* Language toggle — top right, inside page flow */}
-      <div style={{ position: "absolute", top: "18px", right: "18px", zIndex: 200 }}>
+      <div style={{ position: "absolute", top: "18px", insetInlineEnd: "18px", zIndex: 200 }}>
         <button
           type="button"
           onClick={toggleLocale}
@@ -145,7 +145,7 @@ export default function LoginPageClient({ error }: { error?: string }) {
               {signingIn && signingInRole === "user" ? (
                 <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                   <span className="btn-spinner" />
-                  Signing in…
+                  {t("login.signingIn")}
                 </span>
               ) : t("login.signInBtn")}
             </button>
@@ -168,8 +168,8 @@ export default function LoginPageClient({ error }: { error?: string }) {
               }}>
                 <span style={{ fontSize: "18px", flexShrink: 0 }}>🔒</span>
                 <div>
-                  <strong style={{ display: "block", marginBottom: "3px" }}>Account Disabled</strong>
-                  This account has been suspended by the system administrator. Please contact your System Administrator to restore access.
+                  <strong style={{ display: "block", marginBottom: "3px" }}>{t("login.accountDisabled")}</strong>
+                  {t("login.accountDisabledDesc")}
                 </div>
               </div>
             )}
