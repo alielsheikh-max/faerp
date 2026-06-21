@@ -28,7 +28,7 @@ export type ItemComboboxOption = {
    *  "partial"  → amber  (some submitted)
    *  "complete" → green  (all submitted)
    */
-  badgeVariant?: "empty" | "partial" | "complete";
+  badgeVariant?: "empty" | "partial" | "complete" | "rejected";
 };
 
 type ItemComboboxProps = {
@@ -45,6 +45,7 @@ const BADGE_STYLES: Record<string, { bg: string; color: string; border: string }
   empty:    { bg: "rgba(107,114,128,0.12)", color: "#6b7280", border: "rgba(107,114,128,0.3)" },
   partial:  { bg: "rgba(217,119,6,0.12)",  color: "#b45309", border: "rgba(217,119,6,0.3)"   },
   complete: { bg: "rgba(5,150,105,0.12)",  color: "#047857", border: "rgba(5,150,105,0.3)"   },
+  rejected: { bg: "rgba(239,68,68,0.12)",  color: "#dc2626", border: "rgba(239,68,68,0.3)"   },
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────

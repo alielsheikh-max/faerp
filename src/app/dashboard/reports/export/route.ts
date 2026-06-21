@@ -11,13 +11,14 @@ function computeTierPrice(
   buyAvg: number | null,
   discount: number | null,
   transport: number,
-  other: number
+  other: number,
+  sellMin: number | null
 ): number | string {
   if (!buyAvg || !discount) return "";
   const raw =
     discount < 1
       ? buyAvg / discount + transport + other
-      : buyAvg * (1 + discount / 100) + transport + other;
+      : (sellMin !== null ? (sellMin - transport - other) : buyAvg) * (1 - discount / 100) + transport + other;
   return roundUp5(raw);
 }
 
@@ -109,12 +110,13 @@ export async function GET(request: Request) {
     const transport = row.transportation ?? 0;
     const other = row.other_expenses ?? 0;
     if (isTier) {
+      const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
       return [
         row.category_name, row.item_name, row.unit ?? "", "TIER",
-        computeTierPrice(row.buy_avg, row.tier1_discount, transport, other),
-        computeTierPrice(row.buy_avg, row.tier2_discount, transport, other),
-        computeTierPrice(row.buy_avg, row.tier3_discount, transport, other),
-        computeTierPrice(row.buy_avg, row.tier4_discount, transport, other),
+        computeTierPrice(baseCost, row.tier1_discount, transport, other, row.sell_min),
+        computeTierPrice(baseCost, row.tier2_discount, transport, other, row.sell_min),
+        computeTierPrice(baseCost, row.tier3_discount, transport, other, row.sell_min),
+        computeTierPrice(baseCost, row.tier4_discount, transport, other, row.sell_min),
         row.created_at ?? "",
       ];
     }

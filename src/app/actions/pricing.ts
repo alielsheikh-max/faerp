@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database, saveNegotiatedPrice } from "@/lib/db";
+import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database, saveNegotiatedPrice, approvePriceEntry, rejectPriceEntry } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 import { log } from "@/lib/activity";
 
@@ -181,7 +181,7 @@ export async function publishSellingPrice(formData: FormData) {
   const month = asString(formData.get("month"));
   const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg";
   const markupTypeRaw = asString(formData.get("markupType")) || "percent";
-  const markupType = (markupTypeRaw === "amount" ? "amount" : "percent") as "percent" | "amount";
+  const markupType = (["percent", "amount", "divisor"].includes(markupTypeRaw) ? markupTypeRaw : "percent") as "percent" | "amount" | "divisor";
   const markupMin = asNumber(formData.get("markupMin"));
   const markupMax = asNumber(formData.get("markupMax"));
   const createdBy = asString(formData.get("createdBy")) || "SC Manager";
@@ -194,6 +194,17 @@ export async function publishSellingPrice(formData: FormData) {
   // T17: dual note fields
   const internalNote = asString(formData.get("internalNote")) || undefined;
   const saNote = asString(formData.get("saNote")) || undefined;
+
+  // Custom tiers override
+  const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
+  const tier1Max = asNumber(formData.get("tier1Max"));
+  const tier1Discount = asNumber(formData.get("tier1Discount"));
+  const tier2Max = asNumber(formData.get("tier2Max"));
+  const tier2Discount = asNumber(formData.get("tier2Discount"));
+  const tier3Max = asNumber(formData.get("tier3Max"));
+  const tier3Discount = asNumber(formData.get("tier3Discount"));
+  const tier4Discount = asNumber(formData.get("tier4Discount"));
+
   const redirectTo =
     asString(formData.get("redirectTo")) ||
     `/dashboard?month=${month}&itemId=${itemId}&saved=1`;
@@ -229,6 +240,14 @@ export async function publishSellingPrice(formData: FormData) {
       transportOverride,
       internalNote,
       saNote,
+      tierPricingEnabled,
+      tier1Max,
+      tier1Discount,
+      tier2Max,
+      tier2Discount,
+      tier3Max,
+      tier3Discount,
+      tier4Discount,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
@@ -517,13 +536,20 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     const month = asString(formData.get("month"));
     const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg";
     const markupTypeRaw = asString(formData.get("markupType")) || "percent";
-    const markupType = (markupTypeRaw === "amount" ? "amount" : "percent") as "percent" | "amount";
+    const markupType = (["percent", "amount", "divisor"].includes(markupTypeRaw) ? markupTypeRaw : "percent") as "percent" | "amount" | "divisor";
     const markupMin = asNumber(formData.get("markupMin"));
     const markupMax = asNumber(formData.get("markupMax"));
     const createdBy = asString(formData.get("createdBy")) || "SC Manager";
     const changeReason = asString(formData.get("changeReason")) || undefined;
     const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
+    const tier1Max = asNumber(formData.get("tier1Max"));
+    const tier1Discount = asNumber(formData.get("tier1Discount"));
+    const tier2Max = asNumber(formData.get("tier2Max"));
+    const tier2Discount = asNumber(formData.get("tier2Discount"));
+    const tier3Max = asNumber(formData.get("tier3Max"));
+    const tier3Discount = asNumber(formData.get("tier3Discount"));
+    const tier4Discount = asNumber(formData.get("tier4Discount"));
 
     if (
       itemId === null ||
@@ -550,6 +576,13 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
       changeReason,
       otherExpenses,
       tierPricingEnabled,
+      tier1Max,
+      tier1Discount,
+      tier2Max,
+      tier2Discount,
+      tier3Max,
+      tier3Discount,
+      tier4Discount,
     });
 
     revalidatePath("/dashboard");
@@ -661,3 +694,48 @@ export async function saveNegotiatedPriceAction(formData: FormData): Promise<{ o
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save negotiated price." };
   }
 }
+
+export async function approvePriceEntryAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    requireRole(["SC", "AD"]);
+    const entryId = asNumber(formData.get("entryId"));
+    const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+    const note = asString(formData.get("reviewNote")) || undefined;
+
+    if (entryId === null) return { ok: false, error: "Missing entry ID." };
+
+    approvePriceEntry(entryId, reviewedBy, note);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/approvals");
+    revalidatePath("/dashboard/pricing");
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to approve quote." };
+  }
+}
+
+export async function rejectPriceEntryAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    requireRole(["SC", "AD"]);
+    const entryId = asNumber(formData.get("entryId"));
+    const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+    const note = asString(formData.get("reviewNote")) || "";
+
+    if (entryId === null) return { ok: false, error: "Missing entry ID." };
+    if (!note.trim()) return { ok: false, error: "Rejection note is required." };
+
+    rejectPriceEntry(entryId, reviewedBy, note);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/approvals");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/notifications");
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reject quote." };
+  }
+}
+

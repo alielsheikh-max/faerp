@@ -74,7 +74,10 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
               <tbody>
                 {report.monthlySellingPrices.map((row) => {
                   const isTier = row.tier_pricing_enabled === 1 && row.is_tiered === 1;
-                  const tp = (d: number) => tierPrice(row.buy_avg, d, row.transportation ?? 0, row.other_expenses ?? 0);
+                  const tp = (d: number) => {
+                    const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
+                    return tierPrice(baseCost, d, row.transportation ?? 0, row.other_expenses ?? 0);
+                  };
                   const t1max = row.tier1_max ?? 100;
                   const t2max = row.tier2_max ?? 200;
                   const t3max = row.tier3_max ?? 800;

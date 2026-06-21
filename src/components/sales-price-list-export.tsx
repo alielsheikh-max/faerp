@@ -20,6 +20,8 @@ type SalesRow = {
   tier3_max: number; tier3_discount: number;
   tier4_max: number; tier4_discount: number;
   buy_avg: number | null;
+  transportation: number;
+  other_expenses: number;
 };
 
 type Props = { rows: SalesRow[]; month: string; username: string };
@@ -42,14 +44,27 @@ function getTierInfo(r: SalesRow, locale?: string) {
     };
   }
 
-  const base = r.buy_avg ?? 0;
+  const buyAvg = r.buy_avg ?? 0;
+  const transport = r.transportation ?? 0;
+  const other = r.other_expenses ?? 0;
+  const sellMin = r.sell_min;
   const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
   const isAr = locale === "ar";
+
+  function getPriceForDiscount(discount: number) {
+    if (discount <= 0 || buyAvg <= 0) return null;
+    if (discount < 1) {
+      return roundUp5(buyAvg / discount + transport + other);
+    }
+    const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
+    return roundUp5(baseSellMin * (1 - discount / 100) + transport + other);
+  }
+
   const tierPrices = [
-    { label: isAr ? "أساسي" : "B",  range: `1–${r.tier1_max}`,  price: r.tier1_discount > 0 ? roundUp5(base / r.tier1_discount) : null },
-    { label: isAr ? "ش٢" : "T2", range: `${r.tier1_max + 1}–${r.tier2_max}`, price: r.tier2_discount > 0 ? roundUp5(base / r.tier2_discount) : null },
-    { label: isAr ? "ش٣" : "T3", range: `${r.tier2_max + 1}–${r.tier3_max}`, price: r.tier3_discount > 0 ? roundUp5(base / r.tier3_discount) : null },
-    { label: isAr ? "ش٤" : "T4", range: `>${r.tier3_max}`,   price: r.tier4_discount > 0 ? roundUp5(base / r.tier4_discount) : null },
+    { label: isAr ? "أساسي" : "B",  range: `1–${r.tier1_max}`,  price: sellMin ?? getPriceForDiscount(r.tier1_discount) },
+    { label: isAr ? "ش٢" : "T2", range: `${r.tier1_max + 1}–${r.tier2_max}`, price: getPriceForDiscount(r.tier2_discount) },
+    { label: isAr ? "ش٣" : "T3", range: `${r.tier2_max + 1}–${r.tier3_max}`, price: getPriceForDiscount(r.tier3_discount) },
+    { label: isAr ? "ش٤" : "T4", range: `>${r.tier3_max}`,   price: getPriceForDiscount(r.tier4_discount) },
   ].filter(t => t.price !== null);
 
   if (tierPrices.length === 0) {

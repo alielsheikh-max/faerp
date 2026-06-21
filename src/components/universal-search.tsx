@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useTransition, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import { fetchItemCard, fetchSupplierCard } from "@/app/actions/search";
@@ -289,6 +290,11 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
   const [card, setCard]       = useState<CardState>(null);
   const [loading, startLoad]  = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const openModal = () => { setOpen(true); setCard(null); setTimeout(() => inputRef.current?.focus(), 60); };
   const closeModal = () => { setOpen(false); setQuery(""); setCard(null); };
@@ -402,7 +408,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
       </button>
 
       {/* ── Full-screen modal ── */}
-      {open && (
+      {open && mounted && createPortal(
         <div
           onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
           style={{ position: "fixed", inset: 0, background: "rgba(6,9,15,0.75)", backdropFilter: "blur(8px)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 4000, padding: "60px 20px 20px", animation: "fadeIn 0.15s ease-out" }}
@@ -558,7 +564,8 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
               <span style={{ marginInlineStart: "auto" }}>{filteredItems.length + filteredSuppliers.length > 0 ? t("search.resultsCount").replace("{count}", String(filteredItems.length + filteredSuppliers.length)) : ""}</span>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

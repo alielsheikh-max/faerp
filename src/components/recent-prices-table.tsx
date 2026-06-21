@@ -24,6 +24,8 @@ type Entry = {
   actual_transport?: number | null;
   negotiated_price?: number | null;
   negotiated_notes?: string | null;
+  status?: string;
+  review_note?: string | null;
 };
 
 type Group = {
@@ -296,13 +298,25 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                         }}>
                           {/* Supplier */}
                           <td style={{ padding: "8px 12px", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : "var(--text-primary)", minWidth: "130px" }}>
-                            {isBest && <span style={{ marginInlineEnd: "4px" }}>🏆</span>}
-                            <span
-                              onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: e.supplier_id } }))}
-                              className="clickable-detail-trigger"
-                            >
-                              {e.supplier_display_name}
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              {isBest && <span>🏆</span>}
+                              <span
+                                onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: e.supplier_id } }))}
+                                className="clickable-detail-trigger"
+                              >
+                                {e.supplier_display_name}
+                              </span>
+                              {e.status === 'pending' && (
+                                <span className="badge badge-warning" style={{ fontSize: '9px', padding: '1px 6px', lineHeight: 1 }}>
+                                  {isAr ? "معلق" : "Pending"}
+                                </span>
+                              )}
+                              {e.status === 'rejected' && (
+                                <span className="badge badge-danger" style={{ fontSize: '9px', padding: '1px 6px', lineHeight: 1 }} title={e.review_note || undefined}>
+                                  {isAr ? "مرفوض" : "Rejected"}
+                                </span>
+                              )}
+                            </div>
                             {e.supplier_display_name !== e.supplier_name && (
                               <div style={{ fontSize: "9.5px", color: "var(--text-muted)", marginTop: "1px" }}>{e.supplier_name}</div>
                             )}

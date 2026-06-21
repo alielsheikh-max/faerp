@@ -178,19 +178,27 @@ function footer(username: string) {
 
 // ── Tier price helpers for reports (same formula as SC pricing engine) ─────────────
 function rpt_roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
-function rpt_getTierPrice(buyAvg: number, divisor: number) {
+function rpt_getTierPrice(buyAvg: number, divisor: number, transport: number, other: number, sellMin: number | null) {
   if (divisor <= 0 || buyAvg <= 0) return 0;
-  return rpt_roundUp5(buyAvg / divisor);
+  if (divisor < 1) {
+    return rpt_roundUp5(buyAvg / divisor + transport + other);
+  }
+  const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
+  return rpt_roundUp5(baseSellMin * (1 - divisor / 100) + transport + other);
 }
 /** Returns HTML tier grid or min–max for the PDF "Approved Prices" column */
 function rpt_tierPriceHtml(r: any) {
   if (r.is_tiered === 1 && r.buy_avg) {
-    const ba = r.buy_avg;
+    const baseCost = r.strategy === "min" ? (r.buy_min ?? 0) : r.strategy === "max" ? (r.buy_max ?? 0) : (r.buy_avg ?? 0);
+    const ba = baseCost;
+    const t = r.transportation ?? 0;
+    const o = r.other_expenses ?? 0;
+    const sm = r.sell_min;
     const tiers: { label: string; range: string; price: number }[] = [];
-    if (r.tier1_discount > 0) tiers.push({ label: "B",  range: `1–${r.tier1_max}`,               price: rpt_getTierPrice(ba, r.tier1_discount) });
-    if (r.tier2_discount > 0) tiers.push({ label: "T2", range: `${r.tier1_max+1}–${r.tier2_max}`, price: rpt_getTierPrice(ba, r.tier2_discount) });
-    if (r.tier3_discount > 0) tiers.push({ label: "T3", range: `${r.tier2_max+1}–${r.tier3_max}`, price: rpt_getTierPrice(ba, r.tier3_discount) });
-    if (r.tier4_discount > 0) tiers.push({ label: "T4", range: `${r.tier3_max+1}+`,               price: rpt_getTierPrice(ba, r.tier4_discount) });
+    if (r.tier1_discount > 0) tiers.push({ label: "B",  range: `1–${r.tier1_max}`,               price: rpt_getTierPrice(ba, r.tier1_discount, t, o, sm) });
+    if (r.tier2_discount > 0) tiers.push({ label: "T2", range: `${r.tier1_max+1}–${r.tier2_max}`, price: rpt_getTierPrice(ba, r.tier2_discount, t, o, sm) });
+    if (r.tier3_discount > 0) tiers.push({ label: "T3", range: `${r.tier2_max+1}–${r.tier3_max}`, price: rpt_getTierPrice(ba, r.tier3_discount, t, o, sm) });
+    if (r.tier4_discount > 0) tiers.push({ label: "T4", range: `${r.tier3_max+1}+`,               price: rpt_getTierPrice(ba, r.tier4_discount, t, o, sm) });
     const COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b"];
     return `<div style="display:flex;gap:6px;flex-wrap:wrap;">${tiers.map((t, i) =>
       `<div style="text-align:center;min-width:54px;background:${i===0?"#eef2ff":i===1?"#f0f9ff":i===2?"#f0fdf4":"#fffbeb"};border:1px solid ${COLORS[i]}33;border-radius:6px;padding:3px 7px;">
@@ -205,12 +213,16 @@ function rpt_tierPriceHtml(r: any) {
 /** Returns plain text tier description for Excel "Approved Prices" cell */
 function rpt_tierPriceText(r: any): string {
   if (r.is_tiered === 1 && r.buy_avg) {
-    const ba = r.buy_avg;
+    const baseCost = r.strategy === "min" ? (r.buy_min ?? 0) : r.strategy === "max" ? (r.buy_max ?? 0) : (r.buy_avg ?? 0);
+    const ba = baseCost;
+    const t = r.transportation ?? 0;
+    const o = r.other_expenses ?? 0;
+    const sm = r.sell_min;
     const parts: string[] = [];
-    if (r.tier1_discount > 0) parts.push(`B (1–${r.tier1_max}): EGP ${rpt_getTierPrice(ba, r.tier1_discount)}`);
-    if (r.tier2_discount > 0) parts.push(`T2 (${r.tier1_max+1}–${r.tier2_max}): EGP ${rpt_getTierPrice(ba, r.tier2_discount)}`);
-    if (r.tier3_discount > 0) parts.push(`T3 (${r.tier2_max+1}–${r.tier3_max}): EGP ${rpt_getTierPrice(ba, r.tier3_discount)}`);
-    if (r.tier4_discount > 0) parts.push(`T4 (${r.tier3_max+1}+): EGP ${rpt_getTierPrice(ba, r.tier4_discount)}`);
+    if (r.tier1_discount > 0) parts.push(`B (1–${r.tier1_max}): EGP ${rpt_getTierPrice(ba, r.tier1_discount, t, o, sm)}`);
+    if (r.tier2_discount > 0) parts.push(`T2 (${r.tier1_max+1}–${r.tier2_max}): EGP ${rpt_getTierPrice(ba, r.tier2_discount, t, o, sm)}`);
+    if (r.tier3_discount > 0) parts.push(`T3 (${r.tier2_max+1}–${r.tier3_max}): EGP ${rpt_getTierPrice(ba, r.tier3_discount, t, o, sm)}`);
+    if (r.tier4_discount > 0) parts.push(`T4 (${r.tier3_max+1}+): EGP ${rpt_getTierPrice(ba, r.tier4_discount, t, o, sm)}`);
     return parts.join(" | ");
   }
   return `Min: EGP ${r.sell_min ?? "—"}  –  Max: EGP ${r.sell_max ?? "—"}`;

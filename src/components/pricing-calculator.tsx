@@ -98,7 +98,6 @@ export default function PricingCalculator({
   const [sellMinStr, setSellMinStr] = useState<string>("");
   const [sellMaxStr, setSellMaxStr] = useState<string>("");
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
-  const [changeReason, setChangeReason] = useState("");
   // T17: dual note fields
   const [internalNote, setInternalNote] = useState("");
   const [saNote, setSaNote] = useState("");
@@ -116,11 +115,29 @@ export default function PricingCalculator({
   useEffect(() => { setUsesTierStrategy(isTiered); }, [isTiered]);
 
   // ── Markup Assistant state ─────────────────────────────────────────
-  const [useMarkup, setUseMarkup]       = useState(false);
+  const [useMarkup, setUseMarkup]       = useState(true);
   const [markupRef, setMarkupRef]       = useState<"min" | "avg" | "max">("max");
   const [markupType, setMarkupType]     = useState<"pct" | "fixed" | "div">("pct");
   const [markupMinVal, setMarkupMinVal] = useState<string>("");
   const [markupMaxVal, setMarkupMaxVal] = useState<string>("");
+
+  // Custom Tiers Overwrites state
+  const [t1Max, setT1Max] = useState<string>("");
+  const [t1Disc, setT1Disc] = useState<string>("");
+  const [t2Max, setT2Max] = useState<string>("");
+  const [t2Disc, setT2Disc] = useState<string>("");
+  const [t3Max, setT3Max] = useState<string>("");
+  const [t3Disc, setT3Disc] = useState<string>("");
+  const [t4Disc, setT4Disc] = useState<string>("");
+
+  // Numeric equivalents of custom tier configurations
+  const numT1Max = isNaN(parseInt(t1Max)) ? 100 : parseInt(t1Max);
+  const numT1Disc = isNaN(parseFloat(t1Disc)) ? 0.0 : parseFloat(t1Disc);
+  const numT2Max = isNaN(parseInt(t2Max)) ? 200 : parseInt(t2Max);
+  const numT2Disc = isNaN(parseFloat(t2Disc)) ? 0.0 : parseFloat(t2Disc);
+  const numT3Max = isNaN(parseInt(t3Max)) ? 800 : parseInt(t3Max);
+  const numT3Disc = isNaN(parseFloat(t3Disc)) ? 0.0 : parseFloat(t3Disc);
+  const numT4Disc = isNaN(parseFloat(t4Disc)) ? 0.0 : parseFloat(t4Disc);
 
   const [showRecommendationModal, setShowRecommendationModal] = useState(false);
 
@@ -306,12 +323,20 @@ export default function PricingCalculator({
     formData.set("createdBy", createdBy);
     if (redirectTo) formData.set("redirectTo", redirectTo);
     if (errorRedirect) formData.set("errorRedirect", errorRedirect);
-    formData.set("strategy", "avg");
-    formData.set("markupType", "percent");
-    formData.set("markupMin", String(Math.max(0, calculatedMarkupMin)));
-    formData.set("markupMax", String(Math.max(0, calculatedMarkupMax)));
+    formData.set("strategy", useMarkup ? markupRef : "avg");
+    formData.set("markupType", useMarkup ? (markupType === "div" ? "divisor" : markupType === "fixed" ? "amount" : "percent") : "percent");
+    formData.set("markupMin", useMarkup ? markupMinVal : String(Math.max(0, calculatedMarkupMin)));
+    formData.set("markupMax", useMarkup ? (usesTierStrategy ? markupMinVal : markupMaxVal) : String(Math.max(0, calculatedMarkupMax)));
     formData.set("tierPricingEnabled", usesTierStrategy ? "on" : "off");
     formData.set("otherExpenses", String(otherExpenses));
+    formData.set("changeReason", internalNote);
+    formData.set("tier1Max", t1Max);
+    formData.set("tier1Discount", t1Disc);
+    formData.set("tier2Max", t2Max);
+    formData.set("tier2Discount", t2Disc);
+    formData.set("tier3Max", t3Max);
+    formData.set("tier3Discount", t3Disc);
+    formData.set("tier4Discount", t4Disc);
 
     try {
       const res = await publishSellingPriceAction(formData);
@@ -346,13 +371,62 @@ export default function PricingCalculator({
     setSellMinStr(String(parseFloat(baseSellMinVal.toFixed(2))));
     setSellMaxStr(String(parseFloat(baseSellMaxVal.toFixed(2))));
     setOtherExpenses(existingExpenses);
-  }, [existing, buyMin, buyMax, buyAvg, transportation, usesTierStrategy]);
+
+    // Load custom tiers first to extract default T1 divisor
+    const getValidDivisor = (val: any, fallback: number): number => {
+      const num = parseFloat(val);
+      if (!isNaN(num) && num > 0 && num < 1) {
+        return num;
+      }
+      return fallback;
+    };
+
+    const ext = existing as any;
+    const resolvedT1Max = ext?.tier1_max ?? (tier1Max && tier1Max > 0 ? tier1Max : 100);
+    const resolvedT2Max = ext?.tier2_max ?? (tier2Max && tier2Max > 0 ? tier2Max : 200);
+    const resolvedT3Max = ext?.tier3_max ?? (tier3Max && tier3Max > 0 ? tier3Max : 800);
+
+    // Resolve divisors using the helper
+    const resolvedT1Disc = getValidDivisor(ext?.tier1_discount ?? tier1Discount, 0.77);
+    const resolvedT2Disc = getValidDivisor(ext?.tier2_discount ?? tier2Discount, 0.83);
+    const resolvedT3Disc = getValidDivisor(ext?.tier3_discount ?? tier3Discount, 0.85);
+    const resolvedT4Disc = getValidDivisor(ext?.tier4_discount ?? tier4Discount, 0.89);
+
+    setT1Max(String(resolvedT1Max));
+    setT1Disc(resolvedT1Disc.toFixed(2));
+    setT2Max(String(resolvedT2Max));
+    setT2Disc(resolvedT2Disc.toFixed(2));
+    setT3Max(String(resolvedT3Max));
+    setT3Disc(resolvedT3Disc.toFixed(2));
+    setT4Disc(resolvedT4Disc.toFixed(2));
+
+    // Initialize/Reset Markup Assistant (always default to Max + Divisor)
+    setUseMarkup(true);
+    setMarkupRef("max"); // Always default Reference Cost to Max buy price
+    setMarkupType("div"); // Always default Type to ÷ Divisor
+
+    const defaultDivMin = resolvedT1Disc;
+    const defaultDivMax = resolvedT2Disc;
+
+    if (existing && existing.markup_type === "divisor") {
+      setMarkupMinVal(getValidDivisor(existing.markup_min, defaultDivMin).toFixed(2));
+    } else {
+      setMarkupMinVal(defaultDivMin.toFixed(2));
+    }
+
+    if (existing && existing.markup_type === "divisor" && existing.markup_max) {
+      setMarkupMaxVal(getValidDivisor(existing.markup_max, defaultDivMax).toFixed(2));
+    } else {
+      setMarkupMaxVal(defaultDivMax.toFixed(2));
+    }
+  }, [itemId, existing, buyMin, buyMax, buyAvg, transportation, usesTierStrategy, recommendationData.recMarkup, recommendationData.recMaxMarkup, tier1Max, tier1Discount, tier2Max, tier2Discount, tier3Max, tier3Discount, tier4Discount]);
 
   // Reset success and confirmation state ONLY when the active itemId changes
   useEffect(() => {
     setPublishSuccess(false);
     setErrorMsg(null);
-    setChangeReason("");
+    setInternalNote("");
+    setSaNote("");
     setConfirmUpdate(false);
   }, [itemId]);
 
@@ -367,6 +441,33 @@ export default function PricingCalculator({
   const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
 
   const markupRefPrice = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
+
+  const convertMarkupValue = (currentValStr: string, fromType: "pct" | "fixed" | "div", toType: "pct" | "fixed" | "div"): string => {
+    const val = parseFloat(currentValStr) || 0;
+    if (val <= 0 || markupRefPrice <= 0) return "";
+    
+    // 1. Calculate implied selling price (S) from fromType
+    let S = markupRefPrice;
+    if (fromType === "pct") {
+      S = markupRefPrice * (1 + val / 100);
+    } else if (fromType === "fixed") {
+      S = markupRefPrice + val;
+    } else if (fromType === "div") {
+      S = val > 0 ? markupRefPrice / val : markupRefPrice;
+    }
+    
+    // 2. Convert implied selling price (S) to toType
+    let newVal = 0;
+    if (toType === "pct") {
+      newVal = ((S / markupRefPrice) - 1) * 100;
+    } else if (toType === "fixed") {
+      newVal = S - markupRefPrice;
+    } else if (toType === "div") {
+      newVal = S > 0 ? markupRefPrice / S : 1.0;
+    }
+    
+    return newVal.toFixed(2);
+  };
 
   // Effective base selling prices (WITHOUT transport/expenses) — rounded up to nearest 5 when markup assistant is active
   const effectiveSellMin = useMarkup
@@ -720,10 +821,10 @@ export default function PricingCalculator({
               }}>
                 <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Published Tier Prices</div>
                 {[
-                  { label: `Tier 1  (1 – ${tier1Max} units)`, price: finalSellMin },
-                  { label: `Tier 2  (${tier1Max + 1} – ${tier2Max} units)`, price: tier2Discount > 0 && tier2Discount < 1 ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses) },
-                  { label: `Tier 3  (${tier2Max + 1} – ${tier3Max} units)`, price: tier3Discount > 0 && tier3Discount < 1 ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses) },
-                  ...(tier4Discount > 0 ? [{ label: `Tier 4  (${tier3Max + 1}+ units)`, price: tier4Discount < 1 ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses) }] : []),
+                  { label: `Tier 1  (1 – ${numT1Max} units)`, price: finalSellMin },
+                  { label: `Tier 2  (${numT1Max + 1} – ${numT2Max} units)`, price: numT2Disc > 0 && numT2Disc < 1 ? roundUp5(markupRefPrice / numT2Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT2Disc / 100) + transportation + otherExpenses) },
+                  { label: `Tier 3  (${numT2Max + 1} – ${numT3Max} units)`, price: numT3Disc > 0 && numT3Disc < 1 ? roundUp5(markupRefPrice / numT3Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT3Disc / 100) + transportation + otherExpenses) },
+                  ...(numT4Disc > 0 ? [{ label: `Tier 4  (${numT3Max + 1}+ units)`, price: numT4Disc < 1 ? roundUp5(markupRefPrice / numT4Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT4Disc / 100) + transportation + otherExpenses) }] : []),
                 ].map(({ label, price }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px dashed var(--border-light)", fontSize: "12px" }}>
                     <span style={{ color: "var(--text-secondary)" }}>{label}</span>
@@ -767,7 +868,8 @@ export default function PricingCalculator({
                 className="button button-secondary"
                 onClick={() => {
                   setPublishSuccess(false);
-                  setChangeReason("");
+                  setInternalNote("");
+                  setSaNote("");
                 }}
                 style={{ flex: 1, padding: "8px", fontSize: "12px", cursor: "pointer" }}
               >
@@ -839,7 +941,7 @@ export default function PricingCalculator({
           )}
 
           {/* TOP SECTION: Side-by-Side (Inputs & Cost stats) */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "20px", alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "20px", alignItems: "start" }}>
             
             {/* Top Left: Input fields */}
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -847,7 +949,11 @@ export default function PricingCalculator({
               {/* ── Markup Assistant ─────────────────────────────────── */}
               <div style={{ border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                 <button type="button"
-                  onClick={() => setUseMarkup(v => !v)}
+                  onClick={() => setUseMarkup(v => {
+                    const next = !v;
+                    if (next) setMarkupRef("max");
+                    return next;
+                  })}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "10px 14px",
@@ -907,7 +1013,13 @@ export default function PricingCalculator({
                         <div style={{ display: "flex", borderRadius: "7px", border: "1.5px solid var(--border)", overflow: "hidden" }}>
                           {(["pct", "fixed", "div"] as const).map(t => (
                             <button key={t} type="button"
-                              onClick={() => setMarkupType(t)}
+                              onClick={() => {
+                                setMarkupMinVal(prev => convertMarkupValue(prev, markupType, t));
+                                if (!usesTierStrategy) {
+                                  setMarkupMaxVal(prev => convertMarkupValue(prev, markupType, t));
+                                }
+                                setMarkupType(t);
+                              }}
                               style={{
                                 padding: "6px 10px", border: "none", cursor: "pointer",
                                 fontSize: "11px", fontWeight: 700,
@@ -1297,55 +1409,144 @@ export default function PricingCalculator({
               {/* Volume Tier Preview */}
               {usesTierStrategy && (
                 <div style={{
-                  padding: "14px",
+                  padding: "16px",
                   background: "linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%)",
                   border: "1.5px dashed rgba(16,185,129,0.3)",
                   borderRadius: "12px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "8px"
+                  gap: "12px"
                 }}>
                   <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    ⚡ Live Volume Tier Prices (rounded to 5 EGP)
+                    ⚡ Live Volume Tier Editor (rounded to 5 EGP)
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                      <span>Tier 1 (1 – {tier1Max} units):</span>
-                      <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(finalSellMin)}</strong>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
+                    {/* Table Header */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", fontWeight: 700, color: "var(--text-muted)", fontSize: "10px", textTransform: "uppercase", paddingBottom: "4px", borderBottom: "1.5px solid var(--border)" }}>
+                      <span>Tier Range</span>
+                      <span style={{ textAlign: "center" }}>Max Unit</span>
+                      <span style={{ textAlign: "center" }}>Disc% / Div</span>
+                      <span style={{ textAlign: "right" }}>Price</span>
                     </div>
-                    {tier2Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                        <span>Tier 2 ({tier1Max + 1} – {tier2Max} units){tier2Discount < 1 ? ` ÷ ${tier2Discount}` : ` ${tier2Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier2Discount < 1
-                            ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
+
+                    {/* Tier 1 Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", alignItems: "center", borderBottom: "1px dashed var(--border-light)", paddingBottom: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>T1 (1 – {numT1Max} units)</span>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          min="1"
+                          value={t1Max}
+                          onChange={(e) => setT1Max(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                        />
                       </div>
-                    )}
-                    {tier3Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: tier4Discount > 0 ? "1px dashed var(--border-light)" : "none", paddingBottom: "4px" }}>
-                        <span>Tier 3 ({tier2Max + 1} – {tier3Max} units){tier3Discount < 1 ? ` ÷ ${tier3Discount}` : ` ${tier3Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier3Discount < 1
-                            ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={t1Disc}
+                          onChange={(e) => setT1Disc(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                          placeholder="0.0"
+                        />
                       </div>
-                    )}
-                    {tier4Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Tier 4 ({tier3Max + 1}+ units){tier4Discount < 1 ? ` ÷ ${tier4Discount}` : ` ${tier4Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier4Discount < 1
-                            ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
+                      <strong style={{ color: "var(--success)", fontSize: "13.5px", textAlign: "right" }}>
+                        {formatCurrency(finalSellMin)}
+                      </strong>
+                    </div>
+
+                    {/* Tier 2 Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", alignItems: "center", borderBottom: "1px dashed var(--border-light)", paddingBottom: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>T2 ({numT1Max + 1} – {numT2Max} U)</span>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          min={numT1Max + 1}
+                          value={t2Max}
+                          onChange={(e) => setT2Max(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                        />
                       </div>
-                    )}
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={t2Disc}
+                          onChange={(e) => setT2Disc(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                          placeholder="5.0"
+                        />
+                      </div>
+                      <strong style={{ color: "var(--primary)", fontSize: "13.5px", textAlign: "right" }}>
+                        {formatCurrency(
+                          numT2Disc > 0 && numT2Disc < 1
+                            ? roundUp5(markupRefPrice / numT2Disc + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - numT2Disc / 100) + transportation + otherExpenses)
+                        )}
+                      </strong>
+                    </div>
+
+                    {/* Tier 3 Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", alignItems: "center", borderBottom: "1px dashed var(--border-light)", paddingBottom: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>T3 ({numT2Max + 1} – {numT3Max} U)</span>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          min={numT2Max + 1}
+                          value={t3Max}
+                          onChange={(e) => setT3Max(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={t3Disc}
+                          onChange={(e) => setT3Disc(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                          placeholder="10.0"
+                        />
+                      </div>
+                      <strong style={{ color: "var(--primary)", fontSize: "13.5px", textAlign: "right" }}>
+                        {formatCurrency(
+                          numT3Disc > 0 && numT3Disc < 1
+                            ? roundUp5(markupRefPrice / numT3Disc + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - numT3Disc / 100) + transportation + otherExpenses)
+                        )}
+                      </strong>
+                    </div>
+
+                    {/* Tier 4 Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", alignItems: "center", paddingBottom: "4px" }}>
+                      <span style={{ fontWeight: 600 }}>T4 ({numT3Max + 1}+ U)</span>
+                      <div style={{ display: "flex", justifyContent: "center", fontSize: "12px", color: "var(--text-muted)" }}>
+                        ∞
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={t4Disc}
+                          onChange={(e) => setT4Disc(e.target.value)}
+                          style={{ width: "70px", padding: "3px 6px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "12px", background: "var(--bg-elevated)", color: "var(--text-primary)", textAlign: "center" }}
+                          placeholder="0.0"
+                        />
+                      </div>
+                      <strong style={{ color: "var(--primary)", fontSize: "13.5px", textAlign: "right" }}>
+                        {formatCurrency(
+                          numT4Disc > 0 && numT4Disc < 1
+                            ? roundUp5(markupRefPrice / numT4Disc + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - numT4Disc / 100) + transportation + otherExpenses)
+                        )}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1374,30 +1575,6 @@ export default function PricingCalculator({
                   ⚠️ Price Update Confirmation Required
                 </div>
                 
-                <label className="field" style={{ margin: 0 }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "4px" }}>
-                    <span>Change Reason</span>
-                    <span style={{ color: "var(--danger)" }}>*</span>
-                  </span>
-                  <input
-                    type="text"
-                    name="changeReason"
-                    required
-                    value={changeReason}
-                    onChange={(e) => setChangeReason(e.target.value)}
-                    placeholder="Required — e.g. Supplier raised prices, seasonal adjustment…"
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      background: "var(--bg-elevated)",
-                      color: "var(--text-primary)",
-                      fontSize: "13px",
-                      marginTop: "4px"
-                    }}
-                  />
-                </label>
-
                 {/* T17: SA notification note */}
                 <label className="field" style={{ margin: 0 }}>
                   <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
@@ -1419,22 +1596,24 @@ export default function PricingCalculator({
                   />
                 </label>
 
-                {/* T17: Internal SC-only note */}
+                {/* T17: Internal SC-only note & Change Reason */}
                 <label className="field" style={{ margin: 0 }}>
                   <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
                     <span>🔒</span>
-                    <span>Internal Note</span>
+                    <span>Internal Note & Change Reason</span>
+                    <span style={{ color: "var(--danger)" }}>*</span>
                     <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-subtle)", padding: "1px 6px", borderRadius: "4px" }}>SC / Admin only</span>
                   </span>
                   <textarea
                     name="internalNote"
                     rows={2}
+                    required
                     value={internalNote}
                     onChange={e => setInternalNote(e.target.value)}
-                    placeholder="Optional — private note not shown to SA, e.g. 'awaiting confirmation from supplier'"
+                    placeholder="Required — e.g. Supplier raised prices, USD rate change. Private audit note."
                     style={{
                       padding: "8px 12px", borderRadius: "8px", fontSize: "12px", resize: "vertical",
-                      border: "1px solid var(--border)", background: "var(--bg-elevated)",
+                      border: "1.5px solid rgba(245,158,11,0.5)", background: "var(--bg-elevated)",
                       color: "var(--text-primary)", marginTop: "4px", width: "100%"
                     }}
                   />
@@ -1459,11 +1638,11 @@ export default function PricingCalculator({
             <div style={{ marginTop: "4px" }}>
               <button
                 type="submit"
-                disabled={floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !changeReason.trim()))}
+                disabled={floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))}
                 className="button button-primary button-block"
                 style={{
-                  padding: "10px", fontSize: "13px", cursor: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !changeReason.trim()))) ? "not-allowed" : "pointer",
-                  opacity: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !changeReason.trim()))) ? 0.5 : 1,
+                  padding: "10px", fontSize: "13px", cursor: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))) ? "not-allowed" : "pointer",
+                  opacity: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))) ? 0.5 : 1,
                 }}
                 title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : maxViolated ? "Cannot save: max markup is less than min markup" : undefined}
               >
@@ -1586,18 +1765,18 @@ export default function PricingCalculator({
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
                         <span>Tier 2 (${tier1Max + 1}–${tier2Max} units):</span>
-                        <span>{formatCurrency(tier2Discount < 1 ? Math.ceil((buyAvg / tier2Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier2Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                        <span>{formatCurrency(tier2Discount < 1 ? Math.ceil((markupRefPrice / tier2Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier2Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
                       </div>
                       {tier3Discount > 0 && (
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
                           <span>Tier 3 (${tier2Max + 1}–${tier3Max} units):</span>
-                          <span>{formatCurrency(tier3Discount < 1 ? Math.ceil((buyAvg / tier3Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier3Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                          <span>{formatCurrency(tier3Discount < 1 ? Math.ceil((markupRefPrice / tier3Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier3Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
                         </div>
                       )}
                       {tier4Discount > 0 && (
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
                           <span>Tier 4 (${tier3Max + 1}+ units):</span>
-                          <span>{formatCurrency(tier4Discount < 1 ? Math.ceil((buyAvg / tier4Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier4Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                          <span>{formatCurrency(tier4Discount < 1 ? Math.ceil((markupRefPrice / tier4Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier4Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
                         </div>
                       )}
                     </div>

@@ -21,7 +21,7 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
   const categories   = getCategories();
   const items        = getItems();
   const suppliers    = getSuppliers();
-  const priceEntries = getAllPriceEntries();
+  const priceEntries = getAllPriceEntries().filter(pe => pe.status === 'approved');
   const reviewData   = getMonthlyReviewData(month);
   const tierEnabled  = isTierPricingEnabled(month);
   const scTransportOverrideEnabled = isScTransportOverrideEnabled(month);
@@ -152,7 +152,7 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
         priceEntries={priceEntries}
         role={session.role}
         month={month}
-        salesCatalog={[]}
+        salesCatalog={salesCatalog}
         username={session.displayName}
         initialCategoryId={initialCategoryId}
         initialItemId={initialItemId}

@@ -38,15 +38,29 @@ type SalesRow = {
   other_expenses: number;
 };
 
-/** T10: Compute tier prices from buy_avg ÷ divisor (Phase-1 formula). */
+/** T10: Compute tier prices using unified formula (divisor/percentage markup, including transport & expenses). */
 function calcTierPrices(row: SalesRow) {
-  const base = row.buy_avg ?? 0;
-  function roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+  const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
+  const buyAvg = baseCost;
+  const transport = row.transportation ?? 0;
+  const other = row.other_expenses ?? 0;
+  const sellMin = row.sell_min;
+  const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+
+  function getPriceForDiscount(discount: number) {
+    if (discount <= 0 || buyAvg <= 0) return null;
+    if (discount < 1) {
+      return roundUp5(buyAvg / discount + transport + other);
+    }
+    const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
+    return roundUp5(baseSellMin * (1 - discount / 100) + transport + other);
+  }
+
   return [
-    { label: "B",  range: `1–${row.tier1_max}`,  price: row.tier1_discount > 0 ? roundUp5(base / row.tier1_discount) : null },
-    { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: row.tier2_discount > 0 ? roundUp5(base / row.tier2_discount) : null },
-    { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: row.tier3_discount > 0 ? roundUp5(base / row.tier3_discount) : null },
-    { label: "T4", range: `>${row.tier3_max}`,   price: row.tier4_discount > 0 ? roundUp5(base / row.tier4_discount) : null },
+    { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin ?? getPriceForDiscount(row.tier1_discount) },
+    { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: getPriceForDiscount(row.tier2_discount) },
+    { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: getPriceForDiscount(row.tier3_discount) },
+    { label: "T4", range: `>${row.tier3_max}`,   price: getPriceForDiscount(row.tier4_discount) },
   ].filter(t => t.price !== null);
 }
 

@@ -52,9 +52,11 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
 
   const NAV_BY_ROLE: Record<RoleCode, NavItem[]> = {
     WH: [
+      { href: "/dashboard/notifications",          labelKey: "nav.notifications",   icon: "📨", pendingKey: "ackCount", iconOnly: true },
       { href: "/dashboard",                        labelKey: "nav.overview",        icon: "⊞",  exact: true },
       { href: "/dashboard/purchasing",             labelKey: "nav.priceCollection", icon: "📋", exact: true },
       { href: "/dashboard/purchasing/approvals",   labelKey: "nav.approvals",       icon: "🔔", pendingKey: "whApprovals" },
+      { href: "/dashboard/notifications",          labelKey: "nav.notifications",   icon: "📨", pendingKey: "ackCount" },
       { href: "/dashboard/admin/suppliers",        labelKey: "nav.suppliers",       icon: "🏭" },
       { href: "/dashboard/admin/items",            labelKey: "nav.items",           icon: "📦" },
     ],
@@ -124,7 +126,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 background: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
                 color: "#fff", fontWeight: 800, fontSize: "12px",
                 textDecoration: "none", boxShadow: "0 4px 18px rgba(245,158,11,0.55)",
-                animation: "pulse-ring 2s ease-out infinite",
+                animation: "pulse-ring-danger 1.8s infinite",
                 border: "1.5px solid rgba(255,255,255,0.25)",
                 backdropFilter: "blur(4px)",
                 transition: "transform 150ms, box-shadow 150ms",
@@ -146,6 +148,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
                 color: "#fff", fontWeight: 800, fontSize: "12px",
                 textDecoration: "none", boxShadow: "0 4px 18px rgba(99,102,241,0.5)",
+                animation: "pulse-ring-warning 1.8s infinite",
                 border: "1.5px solid rgba(255,255,255,0.25)",
                 transition: "transform 150ms, box-shadow 150ms",
                 direction: "ltr",
@@ -195,9 +198,10 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
             {navItems.filter(i => i.iconOnly).map(item => {
               const count =
                 item.pendingKey === "scApprovals" ? pendingRequests :
+                item.pendingKey === "whApprovals" ? pendingRequests :
                 item.pendingKey === "ackCount"    ? ackCount : 0;
               const isActive = pathname.startsWith(item.href);
-              const badgeBg  = item.pendingKey === "scApprovals" ? "#ef4444" : "#6366f1";
+              const badgeBg  = item.pendingKey === "scApprovals" || item.pendingKey === "whApprovals" ? "#ef4444" : "#6366f1";
               return (
                 <Link
                   key={item.href}
@@ -228,7 +232,9 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                       color: "#fff", fontSize: "9px", fontWeight: 900,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       border: "2px solid var(--sidebar-bg, #1e1b4b)",
-                      animation: "pulse-ring 2s ease-out infinite",
+                      animation: item.pendingKey === "scApprovals" || item.pendingKey === "whApprovals"
+                        ? "pulse-ring-danger 1.8s infinite"
+                        : "pulse-ring-warning 1.8s infinite",
                     }}>
                       {count > 9 ? "9+" : count}
                     </span>
@@ -312,9 +318,11 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                   <span style={{
                     marginInlineStart: "auto", marginInlineEnd: isActive ? "6px" : "0",
                     fontSize: "9px", fontWeight: 900, lineHeight: 1,
-                    background: "var(--warning)", color: "#fff",
-                    padding: "2px 6px", borderRadius: "99px", flexShrink: 0,
-                    animation: "pulse-ring 2s ease-out infinite",
+                    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    color: "#fff",
+                    padding: "3px 7px", borderRadius: "99px", flexShrink: 0,
+                    animation: "pulse-ring-danger 1.8s infinite",
+                    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.4)",
                   }}>
                     {badgeCount}
                   </span>

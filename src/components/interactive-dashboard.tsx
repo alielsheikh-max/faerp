@@ -7,6 +7,7 @@ import PricingCalculator from "@/components/pricing-calculator";
 import CategoryMarkupPanel from "@/components/category-markup-panel";
 import { useI18n } from "@/lib/i18n-context";
 import type { SellingPriceHistoryRow, ItemPublishedPrice } from "@/lib/db";
+import { ItemCombobox } from "./item-combobox";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Category  = { id: number; name: string; description: string | null };
@@ -16,6 +17,8 @@ type PriceEntry = {
   id: number; item_id: number; supplier_id: number; month: string; price: number;
   recorded_at: string; item_name: string; unit: string; supplier_name: string;
   category_name: string; category_id: number;
+  status?: string;
+  review_note?: string | null;
 };
 type Props = {
   categories: Category[];
@@ -77,12 +80,43 @@ export default function InteractiveDashboard({
     [catId, items]
   );
 
-  // Auto-select first item when category changes or on init
+  // Keep states in sync with URL props from Server Component
   useEffect(() => {
-    if (filteredItems.length === 0) return;
-    const valid = filteredItems.some(i => i.id === itemId);
-    if (!valid || itemId === 0) setItemId(filteredItems[0].id);
-  }, [catId, filteredItems]);
+    if (initialItemId && initialItemId !== itemId) {
+      setItemId(initialItemId);
+    }
+  }, [initialItemId]);
+
+  useEffect(() => {
+    if (initialCategoryId !== undefined && initialCategoryId !== catId) {
+      setCatId(initialCategoryId);
+    }
+  }, [initialCategoryId]);
+
+  const handleItemChange = (newItemId: string) => {
+    const idNum = Number(newItemId);
+    setItemId(idNum);
+    if (!idNum) return;
+    const params = new URLSearchParams(globalThis.window?.location.search || "");
+    if (catId) params.set("categoryId", String(catId));
+    params.set("itemId", String(idNum));
+    router.push(`/dashboard/pricing?${params.toString()}`);
+  };
+
+  const handleCategoryChange = (newCatId: number | "") => {
+    setCatId(newCatId);
+    const params = new URLSearchParams(globalThis.window?.location.search || "");
+    if (newCatId) params.set("categoryId", String(newCatId));
+    else params.delete("categoryId");
+    
+    const itemsInCat = newCatId === "" ? items : items.filter(i => i.category_id === newCatId);
+    const firstItemId = itemsInCat[0]?.id ?? 0;
+    setItemId(firstItemId);
+    if (firstItemId) params.set("itemId", String(firstItemId));
+    else params.delete("itemId");
+    
+    router.push(`/dashboard/pricing?${params.toString()}`);
+  };
 
 
 
@@ -138,7 +172,11 @@ export default function InteractiveDashboard({
         return { strategy: rec.strategy || "avg", markup_type: rec.markup_type || "percent",
           markup_min: rec.markup_min || 0, markup_max: rec.markup_max || 0,
           sell_min: rec.sell_min, sell_max: rec.sell_max, created_at: rec.created_at || "",
-          transportation: rec.transportation || 0, other_expenses: rec.other_expenses || 0 };
+          transportation: rec.transportation || 0, other_expenses: rec.other_expenses || 0,
+          tier1_max: (rec as any).tier1_max, tier1_discount: (rec as any).tier1_discount,
+          tier2_max: (rec as any).tier2_max, tier2_discount: (rec as any).tier2_discount,
+          tier3_max: (rec as any).tier3_max, tier3_discount: (rec as any).tier3_discount,
+          tier4_max: (rec as any).tier4_max, tier4_discount: (rec as any).tier4_discount };
       }
     }
     // Fallback: use itemSellHistory for the current month (pricing page path)
@@ -149,7 +187,11 @@ export default function InteractiveDashboard({
         markup_min: hist.markup_min, markup_max: hist.markup_max,
         sell_min: hist.sell_min, sell_max: hist.sell_max, created_at: hist.created_at,
         transportation: hist.transport_override_enabled ? hist.transport_override_amount : 0,
-        other_expenses: 0 };
+        other_expenses: 0,
+        tier1_max: hist.tier1_max, tier1_discount: hist.tier1_discount,
+        tier2_max: hist.tier2_max, tier2_discount: hist.tier2_discount,
+        tier3_max: hist.tier3_max, tier3_discount: hist.tier3_discount,
+        tier4_max: hist.tier4_max, tier4_discount: hist.tier4_discount };
     }
     return null;
   }, [salesCatalog, itemSellHistory, itemId, month, latestMonth]);
@@ -218,7 +260,7 @@ export default function InteractiveDashboard({
           <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>{t("idash.category")}</span>
           <select
             value={catId}
-            onChange={e => setCatId(e.target.value === "" ? "" : Number(e.target.value))}
+            onChange={e => handleCategoryChange(e.target.value === "" ? "" : Number(e.target.value))}
             style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
           >
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -228,13 +270,46 @@ export default function InteractiveDashboard({
         {/* Item */}
         <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: "3 1 200px", minWidth: "160px" }}>
           <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>{t("idash.item")}</span>
-          <select
-            value={itemId}
-            onChange={e => setItemId(Number(e.target.value))}
-            style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
-          >
-            {filteredItems.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-          </select>
+          <ItemCombobox
+            items={filteredItems.map((item) => {
+              const targetMonth = month ?? latestMonth;
+              const hasWH = priceEntries.some(pe => pe.item_id === item.id && pe.month === targetMonth && pe.status !== 'rejected');
+              const isPub = salesCatalog.some(row => row.item_id === item.id && row.sell_min !== null);
+              const isRej = priceEntries.some(pe => pe.item_id === item.id && pe.month === targetMonth && pe.status === 'rejected');
+
+              let isPublishedOption = true;
+              let badge: string | undefined = undefined;
+              let badgeVariant: "empty" | "partial" | "complete" | "rejected" | undefined = undefined;
+
+              if (isPub) {
+                badge = isAr ? "منشور" : "Published";
+                badgeVariant = "complete";
+              } else if (hasWH) {
+                badge = isAr ? "مستلم من WH" : "WH Submitted";
+                badgeVariant = "partial";
+              } else if (isRej) {
+                badge = isAr ? "مرفوض" : "Rejected";
+                badgeVariant = "rejected";
+                isPublishedOption = false;
+              } else {
+                isPublishedOption = false;
+              }
+
+              return {
+                id: item.id,
+                label: item.name,
+                unit: item.unit,
+                category: categories.find(c => c.id === item.category_id)?.name,
+                isPublished: isPublishedOption,
+                badge,
+                badgeVariant,
+              };
+            })}
+            value={String(itemId)}
+            onChange={handleItemChange}
+            placeholder={isAr ? "— اختر الصنف —" : "— Select an item —"}
+            disabled={filteredItems.length === 0}
+          />
         </div>
 
         {/* Window */}
@@ -256,7 +331,34 @@ export default function InteractiveDashboard({
       </div>
 
       {/* ═══ SECTION 2: SC TWO-COLUMN WORKSTATION / NON-SC GRID ══════ */}
-      {role === "SC" ? (
+      {itemId === 0 ? (
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "80px 24px",
+          background: "var(--bg-surface)",
+          border: "1.5px dashed var(--border-medium)",
+          borderRadius: "var(--radius-lg)",
+          textAlign: "center",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+          marginTop: "8px",
+        }}>
+          <div style={{ fontSize: "48px" }}>📊</div>
+          <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "var(--text-primary)" }}>
+            {isAr ? "الرجاء اختيار صنف للبدء" : "Please Select an Item"}
+          </h3>
+          <p style={{ margin: 0, fontSize: "14px", color: "var(--text-muted)", maxWidth: "420px", lineHeight: 1.6 }}>
+            {isAr 
+              ? "اختر صنفًا من القائمة المنسدلة أعلاه لمشاهدة سجل أسعار البيع، وعروض الأسعار الحالية للموردين، وتعديل استراتيجيات التسعير."
+              : "Choose an item from the dropdown above to inspect sell price history, current supplier quotes, and configure pricing strategies."}
+          </p>
+        </div>
+      ) : (
+        <>
+          {role === "SC" ? (
         <div style={{
           display: "grid",
           gridTemplateColumns: "minmax(280px, 1fr) minmax(380px, 1.5fr)",
@@ -651,7 +753,7 @@ export default function InteractiveDashboard({
             )}
           </div>
         </div>
-      )}
+          )}
 
       {/* ═══ SECTION 3: SUPPLIER × MONTH COMPARISON ══════════════════ */}
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
@@ -763,6 +865,8 @@ export default function InteractiveDashboard({
           </table>
         </div>
       </div>
+        </>
+      )}
 
 
     </div>

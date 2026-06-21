@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth";
-import { getSearchIndex, countPendingRequests, countPendingRequestsByUser, getUnreadPriceAcknowledgmentsCount } from "@/lib/db";
+import { getSearchIndex, countPendingRequests, countPendingRequestsByUser, getUnreadPriceAcknowledgmentsCount, getUnreadRejectedPriceEntriesCountForWH } from "@/lib/db";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const session = requireRole();
@@ -15,7 +15,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     session.role === "WH" ? countPendingRequestsByUser(session.displayName) :
     0;
 
-  const ackCount = session.role === "SC" ? getUnreadPriceAcknowledgmentsCount() : 0;
+  const ackCount =
+    session.role === "SC" ? getUnreadPriceAcknowledgmentsCount() :
+    session.role === "WH" ? getUnreadRejectedPriceEntriesCountForWH(session.displayName) :
+    0;
 
   return (
     <AppShell role={session.role} searchIndex={searchIndex} pendingRequests={pendingRequests} ackCount={ackCount}>

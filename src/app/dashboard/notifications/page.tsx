@@ -1,32 +1,185 @@
 import { SectionIntro } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth";
-import MarkReadClient from "@/components/mark-read-client";
+import MarkReadClient, { MarkWHReadClient } from "@/components/mark-read-client";
 import {
   getRecentPriceUpdates,
   getPriceAcknowledgments,
   getPendingPriceChangeRequests,
   getNegotiatedPriceEntries,
+  getRejectedPriceEntriesForWH,
 } from "@/lib/db";
 import { formatDateTime, formatCurrency, currentMonth, formatMonthLabel } from "@/lib/format";
 import PriceChangeRequests from "@/components/price-change-requests";
 import { getServerT, getServerLocale } from "@/lib/locale-server";
 
 export default function NotificationsPage() {
-  const session = requireRole(["SC", "SA", "AD"]);
+  const session = requireRole(["SC", "SA", "AD", "WH"]);
   const t = getServerT();
   const locale = getServerLocale();
   const isAr = locale === "ar";
   const month = currentMonth();
 
   const isManager = session.role === "SC" || session.role === "AD";
+  const isWH = session.role === "WH";
 
-  const recentUpdates = getRecentPriceUpdates(month, 20);
+  const recentUpdates = (session.role === "SC" || session.role === "SA" || session.role === "AD") ? getRecentPriceUpdates(month, 20) : [];
   const acknowledgments = isManager ? getPriceAcknowledgments(30) : [];
   const pendingChangeRequests = isManager ? getPendingPriceChangeRequests() : [];
   const negotiatedEntries = isManager ? getNegotiatedPriceEntries(month) : [];
+  const rejectedEntries = isWH ? getRejectedPriceEntriesForWH(session.displayName) : [];
 
-  const unreadCount = recentUpdates.filter((u: any) => !u.ack_by).length;
-  const totalActivity = pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length;
+  const unreadCount = isWH
+    ? rejectedEntries.filter((u: any) => !u.read_by_wh).length
+    : recentUpdates.filter((u: any) => !u.ack_by).length;
+
+  const totalActivity = isWH
+    ? rejectedEntries.length
+    : pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length;
+
+  if (isWH) {
+    return (
+      <div className="page-stack">
+        <SectionIntro
+          eyebrow={isAr ? "مركز الإشعارات" : "Notification Center"}
+          title={isAr ? "عروض الأسعار المرفوضة" : "Rejected Quote Notifications"}
+          description={
+            isAr
+              ? "مراجعة عروض الأسعار التي تم رفضها من قبل إدارة سلاسل الإمداد للبدء في إعادة التفاوض."
+              : "Review quotes rejected by the Supply Chain team to start renegotiation."
+          }
+          actions={<span className="badge badge-strong">{formatMonthLabel(month)}</span>}
+        />
+
+        {/* Unread banner for WH */}
+        {unreadCount > 0 && (
+          <div style={{
+            padding: "20px 24px", borderRadius: "16px",
+            background: "linear-gradient(135deg, rgba(239,68,68,0.08), rgba(245,158,11,0.06))",
+            border: "1.5px solid rgba(239,68,68,0.35)",
+            display: "flex", alignItems: "center", gap: "16px",
+            boxShadow: "0 4px 20px rgba(239,68,68,0.12)",
+          }}>
+            <div style={{
+              width: "52px", height: "52px", borderRadius: "14px", flexShrink: 0,
+              background: "linear-gradient(135deg, #ef4444, #f59e0b)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "22px", boxShadow: "0 4px 14px rgba(239,68,68,0.45)",
+              animation: "pulse-ring-danger 1.8s infinite",
+            }}>⚠️</div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: isAr ? "right" : "left" }}>
+              <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#b91c1c", marginBottom: "4px" }}>
+                {isAr ? "مراجعة مطلوبة" : "Review Required"}
+              </div>
+              <div style={{ fontSize: "17px", fontWeight: 900, color: "#991b1b", marginBottom: "3px" }}>
+                {isAr ? `لديك ${unreadCount} عروض أسعار مرفوضة جديدة` : `You have ${unreadCount} new rejected quotes`}
+              </div>
+              <div style={{ fontSize: "12px", color: "#b91c1c" }}>
+                {isAr ? "يرجى مراجعة ملاحظات الرفض وتعديل الأسعار" : "Please review the rejection notes and renegotiate pricing."}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* All clear state */}
+        {totalActivity === 0 && (
+          <div style={{
+            padding: "48px", borderRadius: "20px", textAlign: "center",
+            background: "linear-gradient(135deg, rgba(16,185,129,0.06), rgba(5,150,105,0.04))",
+            border: "1.5px solid rgba(16,185,129,0.25)",
+          }}>
+            <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
+            <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>
+              {isAr ? "لا توجد أسعار مرفوضة" : "No Rejected Quotes"}
+            </div>
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              {isAr ? "كل شيء على ما يرام! لم يتم رفض أي من أسعارك هذا الشهر." : "Everything is caught up! None of your price submissions are currently rejected."}
+            </div>
+          </div>
+        )}
+
+        {/* Rejected entries list */}
+        {totalActivity > 0 && (
+          <section className="panel animate-fade-in">
+            <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
+              <div>
+                <p className="eyebrow">{isAr ? "تغذية الإشعارات" : "Notification Feed"}</p>
+                <h2>{isAr ? `قائمة المرفوضات (${rejectedEntries.length})` : `Rejected Quotes Log (${rejectedEntries.length})`}</h2>
+              </div>
+              {unreadCount > 0 && (
+                <span className="badge badge-danger" style={{ background: "var(--danger)", color: "#fff", animation: "pulse-ring-danger 1.8s infinite" }}>
+                  {unreadCount} {isAr ? "جديد" : "new"}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {rejectedEntries.map((pe) => {
+                const isUnread = !pe.read_by_wh;
+                return (
+                  <div key={pe.quote_id} style={{
+                    display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                    gap: "16px", alignItems: "center",
+                    padding: "14px 16px", borderRadius: "12px",
+                    background: isUnread ? "rgba(239,68,68,0.04)" : "var(--bg-surface)",
+                    border: `1.5px solid ${isUnread ? "rgba(239,68,68,0.25)" : "var(--border-light)"}`,
+                    borderLeft: isAr ? "none" : (isUnread ? "4px solid #ef4444" : "4px solid var(--border-light)"),
+                    borderRight: isAr ? (isUnread ? "4px solid #ef4444" : "4px solid var(--border-light)") : "none",
+                    direction: isAr ? "rtl" : "ltr",
+                  }}>
+                    <div style={{ textAlign: isAr ? "right" : "left" }}>
+                      <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)" }}>{pe.item_name}</div>
+                      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>
+                        {isAr ? "المورد:" : "Supplier:"} <strong>{pe.supplier_name}</strong>
+                      </div>
+                      {pe.review_note && (
+                        <div style={{
+                          fontSize: "12px", color: "#b91c1c", background: "rgba(239,68,68,0.06)",
+                          padding: "8px 12px", borderRadius: "8px", border: "1px dashed rgba(239,68,68,0.2)",
+                          marginTop: "6px", fontStyle: "italic"
+                        }}>
+                          <strong>{isAr ? "سبب الرفض:" : "Rejection Reason:"}</strong> {pe.review_note}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{isAr ? "السعر المرفوض" : "Rejected Price"}</div>
+                      <div style={{ fontWeight: 800, color: "var(--danger)", fontSize: "14px" }}>
+                        {formatCurrency(pe.price)}
+                      </div>
+                      <span className="badge" style={{ fontSize: "9px", marginTop: "2px" }}>{pe.month}</span>
+                    </div>
+
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{isAr ? "تمت المراجعة بواسطة" : "Reviewed By"}</div>
+                      <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)" }}>{pe.reviewed_by || "SC Manager"}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>{pe.reviewed_at ? formatDateTime(pe.reviewed_at) : ""}</div>
+                    </div>
+
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      {isUnread ? (
+                        <span style={{
+                          fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                          background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.3)",
+                        }}>{isAr ? "غير مقروء" : "New"}</span>
+                      ) : (
+                        <span style={{
+                          fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                          background: "var(--bg-subtle)", color: "var(--text-muted)", border: "1px solid var(--border)",
+                        }}>{isAr ? "تم الاطلاع" : "Seen"}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <MarkWHReadClient />
+      </div>
+    );
+  }
 
   return (
     <div className="page-stack">

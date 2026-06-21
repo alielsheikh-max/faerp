@@ -244,6 +244,20 @@ function initializeSchema(db: Db) {
     "ALTER TABLE price_change_requests ADD COLUMN new_transport REAL",
     "ALTER TABLE price_entries ADD COLUMN negotiated_price REAL",
     "ALTER TABLE price_entries ADD COLUMN negotiated_notes TEXT",
+    "ALTER TABLE price_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'approved' CHECK(status IN ('pending','approved','rejected'))",
+    "ALTER TABLE price_entries ADD COLUMN review_note TEXT",
+    "ALTER TABLE price_entries ADD COLUMN reviewed_by TEXT",
+    "ALTER TABLE price_entries ADD COLUMN reviewed_at TEXT",
+    "ALTER TABLE price_entries ADD COLUMN read_by_wh INTEGER NOT NULL DEFAULT 0",
+    // Custom volume tier overrides
+    "ALTER TABLE selling_prices ADD COLUMN tier1_max INTEGER",
+    "ALTER TABLE selling_prices ADD COLUMN tier1_discount REAL",
+    "ALTER TABLE selling_prices ADD COLUMN tier2_max INTEGER",
+    "ALTER TABLE selling_prices ADD COLUMN tier2_discount REAL",
+    "ALTER TABLE selling_prices ADD COLUMN tier3_max INTEGER",
+    "ALTER TABLE selling_prices ADD COLUMN tier3_discount REAL",
+    "ALTER TABLE selling_prices ADD COLUMN tier4_max INTEGER",
+    "ALTER TABLE selling_prices ADD COLUMN tier4_discount REAL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -435,9 +449,9 @@ function seedDatabase(db: Db) {
   );
   const insertPrice = db.prepare(`
     INSERT INTO price_entries (
-      item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at
+      item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, status
     ) VALUES (
-      @item_id, @supplier_id, @month, @price, @currency, @collected_by, @collected_role, @notes, @recorded_at
+      @item_id, @supplier_id, @month, @price, @currency, @collected_by, @collected_role, @notes, @recorded_at, 'approved'
     )
   `);
   const insertSelling = db.prepare(`
@@ -1229,6 +1243,8 @@ export function getRecentPriceEntries(limit = 10) {
         pe.negotiated_price,
         pe.negotiated_notes,
         pe.actual_transport,
+        pe.status,
+        pe.review_note,
         i.name as item_name,
         i.id as item_id,
         c.name as category_name,
@@ -1252,6 +1268,8 @@ export function getRecentPriceEntries(limit = 10) {
       negotiated_price: number | null;
       negotiated_notes: string | null;
       actual_transport: number | null;
+      status: string;
+      review_note: string | null;
       item_name: string;
       item_id: number;
       category_name: string;
@@ -1291,9 +1309,9 @@ export function addPriceEntry(input: {
   database()
     .prepare(`
       INSERT INTO price_entries (
-        item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport
+        item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport, status
       ) VALUES (
-        @item_id, @supplier_id, @month, @price, 'EGP', @collected_by, @collected_role, @notes, @recorded_at, @actual_transport
+        @item_id, @supplier_id, @month, @price, 'EGP', @collected_by, @collected_role, @notes, @recorded_at, @actual_transport, @status
       )
     `)
     .run({
@@ -1306,6 +1324,7 @@ export function addPriceEntry(input: {
       notes: input.notes,
       recorded_at: new Date().toISOString(),
       actual_transport: input.actualTransport ?? null,
+      status: input.collectedRole === "WH" ? "pending" : "approved",
     });
 }
 
@@ -1628,6 +1647,13 @@ export function saveSellingPrice(input: {
   internalNote?: string;
   /** T17: SA notification message (visible in price update alerts) */
   saNote?: string;
+  tier1Max?: number | null;
+  tier1Discount?: number | null;
+  tier2Max?: number | null;
+  tier2Discount?: number | null;
+  tier3Max?: number | null;
+  tier3Discount?: number | null;
+  tier4Discount?: number | null;
 }) {
   const db = database();
   const recommendation = getRecommendation(input.month, input.itemId);
@@ -1787,13 +1813,21 @@ export function saveSellingPrice(input: {
         sell_min, sell_max, created_by, created_at,
         transportation, other_expenses, tier_pricing_enabled,
         transport_override_enabled, transport_override_amount,
-        internal_note, sa_note
+        internal_note, sa_note,
+        tier1_max, tier1_discount,
+        tier2_max, tier2_discount,
+        tier3_max, tier3_discount,
+        tier4_max, tier4_discount
       ) VALUES (
         @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max,
         @sell_min, @sell_max, @created_by, @created_at,
         @transportation, @other_expenses, @tier_pricing_enabled,
         @transport_override_enabled, @transport_override_amount,
-        @internal_note, @sa_note
+        @internal_note, @sa_note,
+        @tier1_max, @tier1_discount,
+        @tier2_max, @tier2_discount,
+        @tier3_max, @tier3_discount,
+        @tier4_max, @tier4_discount
       )
       ON CONFLICT(item_id, month) DO UPDATE SET
         strategy = excluded.strategy,
@@ -1813,7 +1847,15 @@ export function saveSellingPrice(input: {
         transport_override_enabled = excluded.transport_override_enabled,
         transport_override_amount = excluded.transport_override_amount,
         internal_note = excluded.internal_note,
-        sa_note = excluded.sa_note
+        sa_note = excluded.sa_note,
+        tier1_max = excluded.tier1_max,
+        tier1_discount = excluded.tier1_discount,
+        tier2_max = excluded.tier2_max,
+        tier2_discount = excluded.tier2_discount,
+        tier3_max = excluded.tier3_max,
+        tier3_discount = excluded.tier3_discount,
+        tier4_max = excluded.tier4_max,
+        tier4_discount = excluded.tier4_discount
     `)
     .run({
       item_id: input.itemId,
@@ -1836,6 +1878,14 @@ export function saveSellingPrice(input: {
       transport_override_amount: (input.transportOverride != null && input.transportOverride >= 0) ? input.transportOverride : 0,
       internal_note: input.internalNote ?? null,
       sa_note: input.saNote ?? null,
+      tier1_max: (input.tierPricingEnabled && input.tier1Max !== undefined && input.tier1Max !== null) ? input.tier1Max : null,
+      tier1_discount: (input.tierPricingEnabled && input.tier1Discount !== undefined && input.tier1Discount !== null) ? input.tier1Discount : null,
+      tier2_max: (input.tierPricingEnabled && input.tier2Max !== undefined && input.tier2Max !== null) ? input.tier2Max : null,
+      tier2_discount: (input.tierPricingEnabled && input.tier2Discount !== undefined && input.tier2Discount !== null) ? input.tier2Discount : null,
+      tier3_max: (input.tierPricingEnabled && input.tier3Max !== undefined && input.tier3Max !== null) ? input.tier3Max : null,
+      tier3_discount: (input.tierPricingEnabled && input.tier3Discount !== undefined && input.tier3Discount !== null) ? input.tier3Discount : null,
+      tier4_max: 0,
+      tier4_discount: (input.tierPricingEnabled && input.tier4Discount !== undefined && input.tier4Discount !== null) ? input.tier4Discount : null,
     });
 }
 
@@ -1867,14 +1917,14 @@ export function getSalesCatalog(month: string, categoryId?: number) {
         sp.created_at,
         IFNULL(sp.tier_pricing_enabled, 0) as tier_pricing_enabled,
         IFNULL(it.is_tiered, 0) as is_tiered,
-        IFNULL(it.tier1_max, 100) as tier1_max,
-        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
-        IFNULL(it.tier2_max, 200) as tier2_max,
-        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
-        IFNULL(it.tier3_max, 300) as tier3_max,
-        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
-        IFNULL(it.tier4_max, 0) as tier4_max,
-        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
+        COALESCE(sp.tier1_max, it.tier1_max, 100) as tier1_max,
+        COALESCE(sp.tier1_discount, it.tier1_discount, 0.0) as tier1_discount,
+        COALESCE(sp.tier2_max, it.tier2_max, 200) as tier2_max,
+        COALESCE(sp.tier2_discount, it.tier2_discount, 5.0) as tier2_discount,
+        COALESCE(sp.tier3_max, it.tier3_max, 300) as tier3_max,
+        COALESCE(sp.tier3_discount, it.tier3_discount, 10.0) as tier3_discount,
+        COALESCE(sp.tier4_max, it.tier4_max, 0) as tier4_max,
+        COALESCE(sp.tier4_discount, it.tier4_discount, 0.0) as tier4_discount,
         IFNULL(sp.transportation, 0.0) as transportation,
         IFNULL(sp.other_expenses, 0.0) as other_expenses,
         i.transportation_per_unit,
@@ -2097,21 +2147,30 @@ export function getWHCollectionOverview(month: string): {
     supplier_id: number;
     item_id: number;
     prev_price: number | null;
+    status: string | null;
+    review_note: string | null;
   }>;
 } {
   const db = database();
 
-  // Per-category: number of possible quotes (item × supplier combos) vs submitted
+  // Per-category: number of possible quotes (item × supplier combos) vs submitted (approved/pending)
   const byCategory = db.prepare(`
     SELECT
       c.name AS category_name,
       COUNT(DISTINCT i.id || '_' || sc.supplier_id) AS possible,
-      COUNT(DISTINCT pe.item_id || '_' || pe.supplier_id) AS submitted
+      COUNT(DISTINCT le.item_id || '_' || le.supplier_id) AS submitted
     FROM categories c
     JOIN items i ON i.category_id = c.id
     JOIN supplier_categories sc ON sc.category_id = c.id
-    LEFT JOIN price_entries pe
-      ON pe.item_id = i.id AND pe.supplier_id = sc.supplier_id AND pe.month = ?
+    LEFT JOIN (
+      SELECT item_id, supplier_id
+      FROM (
+        SELECT item_id, supplier_id, status,
+               ROW_NUMBER() OVER (PARTITION BY item_id, supplier_id ORDER BY recorded_at DESC, id DESC) as rn
+        FROM price_entries
+        WHERE month = ?
+      ) WHERE rn = 1 AND status IN ('pending', 'approved')
+    ) le ON le.item_id = i.id AND le.supplier_id = sc.supplier_id
     GROUP BY c.id, c.name
     ORDER BY c.name
   `).all(month) as Array<{ category_name: string; possible: number; submitted: number }>;
@@ -2127,7 +2186,7 @@ export function getWHCollectionOverview(month: string): {
     categories: categoriesWithPct.length,
   };
 
-  // Missing quotes: item × supplier combos with no entry this month
+  // Missing quotes: item × supplier combos with no entry this month, OR rejected entries
   const prevMonth = (() => {
     const [y, m] = month.split("-").map(Number);
     const d = new Date(y, m - 2, 1);
@@ -2141,19 +2200,30 @@ export function getWHCollectionOverview(month: string): {
       i.name AS item_name, i.unit,
       COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
       s.id AS supplier_id, i.id AS item_id,
-      prev.price AS prev_price
+      prev.price AS prev_price,
+      le.status,
+      le.review_note
     FROM items i
     JOIN categories c ON c.id = i.category_id
     JOIN supplier_categories sc ON sc.category_id = i.category_id
     JOIN suppliers s ON s.id = sc.supplier_id
-    LEFT JOIN price_entries pe ON pe.item_id = i.id AND pe.supplier_id = s.id AND pe.month = ?
-    LEFT JOIN price_entries prev ON prev.item_id = i.id AND prev.supplier_id = s.id AND prev.month = ?
-    WHERE pe.id IS NULL AND i.active = 1
+    LEFT JOIN (
+      SELECT item_id, supplier_id, status, review_note
+      FROM (
+        SELECT item_id, supplier_id, status, review_note,
+               ROW_NUMBER() OVER (PARTITION BY item_id, supplier_id ORDER BY recorded_at DESC, id DESC) as rn
+        FROM price_entries
+        WHERE month = ?
+      ) WHERE rn = 1
+    ) le ON le.item_id = i.id AND le.supplier_id = s.id
+    LEFT JOIN price_entries prev ON prev.item_id = i.id AND prev.supplier_id = s.id AND prev.month = ? AND prev.status = 'approved'
+    WHERE (le.status IS NULL OR le.status = 'rejected') AND i.active = 1
     ORDER BY c.name, i.name, s.name
     LIMIT 80
   `).all(month, prevMonth) as Array<{
     category_name: string; category_id: number; item_name: string; unit: string;
     supplier_name: string; supplier_id: number; item_id: number; prev_price: number | null;
+    status: string | null; review_note: string | null;
   }>;
 
   return { totals, byCategory: categoriesWithPct, missing };
@@ -2355,6 +2425,8 @@ export function getAllPriceEntries() {
       pe.recorded_at,
       pe.negotiated_price,
       pe.negotiated_notes,
+      pe.status,
+      pe.review_note,
       i.name as item_name,
       i.unit,
       s.name as supplier_name,
@@ -2374,6 +2446,8 @@ export function getAllPriceEntries() {
     recorded_at: string;
     negotiated_price: number | null;
     negotiated_notes: string | null;
+    status: string;
+    review_note: string | null;
     item_name: string;
     unit: string;
     supplier_name: string;
@@ -2394,10 +2468,15 @@ export function getMonthlyReviewData(month: string) {
   const rows = db.prepare(`
     WITH ranked AS (
       SELECT
+        pe.id         AS quote_id,
         pe.item_id,
         pe.supplier_id,
         pe.price,
         pe.recorded_at,
+        pe.status,
+        pe.review_note,
+        pe.notes,
+        pe.actual_transport,
         i.name        AS item_name,
         i.unit,
         i.category_id,
@@ -2406,14 +2485,14 @@ export function getMonthlyReviewData(month: string) {
         i.transportation_per_unit,
         i.moq,
         IFNULL(it.is_tiered, 0) as is_tiered,
-        IFNULL(it.tier1_max, 100) as tier1_max,
-        IFNULL(it.tier1_discount, 0.0) as tier1_discount,
-        IFNULL(it.tier2_max, 200) as tier2_max,
-        IFNULL(it.tier2_discount, 5.0) as tier2_discount,
-        IFNULL(it.tier3_max, 300) as tier3_max,
-        IFNULL(it.tier3_discount, 10.0) as tier3_discount,
-        IFNULL(it.tier4_max, 0) as tier4_max,
-        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
+        COALESCE(sp.tier1_max, it.tier1_max, 100) as tier1_max,
+        COALESCE(sp.tier1_discount, it.tier1_discount, 0.0) as tier1_discount,
+        COALESCE(sp.tier2_max, it.tier2_max, 200) as tier2_max,
+        COALESCE(sp.tier2_discount, it.tier2_discount, 5.0) as tier2_discount,
+        COALESCE(sp.tier3_max, it.tier3_max, 300) as tier3_max,
+        COALESCE(sp.tier3_discount, it.tier3_discount, 10.0) as tier3_discount,
+        COALESCE(sp.tier4_max, it.tier4_max, 0) as tier4_max,
+        COALESCE(sp.tier4_discount, it.tier4_discount, 0.0) as tier4_discount,
         ROW_NUMBER() OVER (
           PARTITION BY pe.item_id, pe.supplier_id
           ORDER BY pe.recorded_at DESC, pe.id DESC
@@ -2423,10 +2502,11 @@ export function getMonthlyReviewData(month: string) {
       JOIN categories c ON c.id = i.category_id
       JOIN suppliers  s ON s.id = pe.supplier_id
       LEFT JOIN item_tiers it ON it.item_id = i.id
+      LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = pe.month
       WHERE pe.month = ?
     )
     SELECT
-      item_id, supplier_id, price, recorded_at,
+      quote_id, item_id, supplier_id, price, recorded_at, status, review_note, notes, actual_transport,
       item_name, unit, category_id, category_name, supplier_name,
       transportation_per_unit, moq, is_tiered,
       tier1_max, tier1_discount, tier2_max, tier2_discount,
@@ -2435,10 +2515,15 @@ export function getMonthlyReviewData(month: string) {
     WHERE rn = 1
     ORDER BY category_name, item_name, supplier_name
   `).all(month) as Array<{
+    quote_id: number;
     item_id: number;
     supplier_id: number;
     price: number;
     recorded_at: string;
+    status: string;
+    review_note: string | null;
+    notes: string | null;
+    actual_transport: number | null;
     item_name: string;
     unit: string;
     category_id: number;
@@ -2529,8 +2614,113 @@ export function getMonthlyReviewData(month: string) {
     historyByItem.get(h.item_id)!.push(h);
   }
 
+  // Bulk-fetch selling price history - last 9 months
+  type SellingHistoryRow = {
+    item_id: number;
+    month: string;
+    sell_min: number;
+    sell_max: number;
+    strategy: string;
+  };
+  let sellingHistoryRows: SellingHistoryRow[] = [];
+
+  type LastConfirmedBuyingRow = {
+    item_id: number;
+    price: number;
+    month: string;
+    supplier_name: string;
+    recorded_at: string;
+  };
+  let lastConfirmedBuyingRows: LastConfirmedBuyingRow[] = [];
+
+  type LastConfirmedSellingRow = {
+    item_id: number;
+    sell_min: number;
+    sell_max: number;
+    month: string;
+    strategy: string;
+    created_at: string;
+    created_by: string;
+  };
+  let lastConfirmedSellingRows: LastConfirmedSellingRow[] = [];
+
+  if (itemIds.length > 0) {
+    const histMonths: string[] = [];
+    for (let i = 1; i <= 9; i++) histMonths.push(shiftMonth(month, -i));
+    const itemPlaceholders = itemIds.map(() => "?").join(", ");
+    const monthPlaceholders = histMonths.map(() => "?").join(", ");
+
+    sellingHistoryRows = db.prepare(`
+      SELECT item_id, month, sell_min, sell_max, strategy
+      FROM selling_prices
+      WHERE item_id IN (${itemPlaceholders})
+        AND month IN (${monthPlaceholders})
+      ORDER BY item_id, month DESC
+    `).all(...itemIds, ...histMonths) as SellingHistoryRow[];
+
+    lastConfirmedBuyingRows = db.prepare(`
+      WITH ranked AS (
+        SELECT
+          pe.item_id,
+          pe.price,
+          pe.month,
+          COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
+          pe.recorded_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY pe.item_id
+            ORDER BY pe.month DESC, pe.recorded_at DESC, pe.id DESC
+          ) AS rn
+        FROM price_entries pe
+        JOIN suppliers s ON s.id = pe.supplier_id
+        WHERE pe.item_id IN (${itemPlaceholders})
+          AND pe.status = 'approved'
+          AND pe.month < ?
+      )
+      SELECT item_id, price, month, supplier_name, recorded_at
+      FROM ranked
+      WHERE rn = 1
+    `).all(...itemIds, month) as LastConfirmedBuyingRow[];
+
+    lastConfirmedSellingRows = db.prepare(`
+      WITH ranked AS (
+        SELECT
+          item_id, sell_min, sell_max, month, strategy, created_at, created_by,
+          ROW_NUMBER() OVER (
+            PARTITION BY item_id
+            ORDER BY month DESC
+          ) AS rn
+        FROM selling_prices
+        WHERE item_id IN (${itemPlaceholders})
+          AND month < ?
+      )
+      SELECT item_id, sell_min, sell_max, month, strategy, created_at, created_by
+      FROM ranked
+      WHERE rn = 1
+    `).all(...itemIds, month) as LastConfirmedSellingRow[];
+  }
+
+  // Group selling history by item_id
+  const sellingHistoryByItem = new Map<number, SellingHistoryRow[]>();
+  for (const h of sellingHistoryRows) {
+    if (!sellingHistoryByItem.has(h.item_id)) sellingHistoryByItem.set(h.item_id, []);
+    sellingHistoryByItem.get(h.item_id)!.push(h);
+  }
+
+  const lastConfirmedBuyingMap = new Map(lastConfirmedBuyingRows.map(r => [r.item_id, r]));
+  const lastConfirmedSellingMap = new Map(lastConfirmedSellingRows.map(r => [r.item_id, r]));
+
   // Group by category → item
-  type SupplierQuote = { supplierId: number; supplierName: string; price: number; recordedAt: string };
+  type SupplierQuote = {
+    quoteId: number;
+    supplierId: number;
+    supplierName: string;
+    price: number;
+    recordedAt: string;
+    status: string;
+    reviewNote: string | null;
+    notes: string | null;
+    actualTransport: number | null;
+  };
   type ReviewItem = {
     itemId: number;
     itemName: string;
@@ -2543,6 +2733,9 @@ export function getMonthlyReviewData(month: string) {
     avgPrice: number;
     existingSell: typeof sellingRows[0] | null;
     history: HistoryRow[];
+    sellingHistory: SellingHistoryRow[];
+    lastConfirmedBuying: LastConfirmedBuyingRow | null;
+    lastConfirmedSelling: LastConfirmedSellingRow | null;
     transportation_per_unit: number;
     moq: number;
     is_tiered: number;
@@ -2572,6 +2765,9 @@ export function getMonthlyReviewData(month: string) {
         avgPrice: 0,
         existingSell: sellingMap.get(row.item_id) ?? null,
         history: historyByItem.get(row.item_id) ?? [],
+        sellingHistory: sellingHistoryByItem.get(row.item_id) ?? [],
+        lastConfirmedBuying: lastConfirmedBuyingMap.get(row.item_id) ?? null,
+        lastConfirmedSelling: lastConfirmedSellingMap.get(row.item_id) ?? null,
         transportation_per_unit: row.transportation_per_unit,
         moq: row.moq,
         is_tiered: row.is_tiered,
@@ -2587,10 +2783,15 @@ export function getMonthlyReviewData(month: string) {
     }
     const item = itemMap.get(row.item_id)!;
     item.suppliers.push({
+      quoteId: row.quote_id,
       supplierId: row.supplier_id,
       supplierName: row.supplier_name,
       price: row.price,
       recordedAt: row.recorded_at,
+      status: row.status,
+      reviewNote: row.review_note,
+      notes: row.notes,
+      actualTransport: row.actual_transport,
     });
     if (row.price < item.minPrice) item.minPrice = row.price;
     if (row.price > item.maxPrice) item.maxPrice = row.price;
@@ -2908,6 +3109,14 @@ export type ItemPublishedPrice = {
   transport_override_enabled: number;
   transport_override_amount: number;
   created_at: string;
+  tier1_max?: number | null;
+  tier1_discount?: number | null;
+  tier2_max?: number | null;
+  tier2_discount?: number | null;
+  tier3_max?: number | null;
+  tier3_discount?: number | null;
+  tier4_max?: number | null;
+  tier4_discount?: number | null;
 };
 
 export function getItemPublishedPriceHistory(itemId: number, limit = 3): ItemPublishedPrice[] {
@@ -2915,7 +3124,11 @@ export function getItemPublishedPriceHistory(itemId: number, limit = 3): ItemPub
     .prepare(`
       SELECT month, sell_min, sell_max, strategy, markup_type,
              markup_min, markup_max,
-             transport_override_enabled, transport_override_amount, created_at
+             transport_override_enabled, transport_override_amount, created_at,
+             tier1_max, tier1_discount,
+             tier2_max, tier2_discount,
+             tier3_max, tier3_discount,
+             tier4_max, tier4_discount
       FROM selling_prices
       WHERE item_id = ?
       ORDER BY month DESC
@@ -3270,8 +3483,8 @@ export function approvePriceChangeRequest(input: {
     // Write the new price as a new price_entry (latest wins via ROW_NUMBER)
     db.prepare(`
       INSERT INTO price_entries
-        (item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport)
-      VALUES (?, ?, ?, ?, 'EGP', ?, 'WH', ?, ?, ?)
+        (item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport, status)
+      VALUES (?, ?, ?, ?, 'EGP', ?, 'WH', ?, ?, ?, 'approved')
     `).run(
       req.item_id, req.supplier_id, req.month, req.new_price,
       req.requested_by,
@@ -3307,7 +3520,7 @@ export function rejectPriceChangeRequest(input: {
 export function hasConfirmedPrice(itemId: number, supplierId: number, month: string): boolean {
   const row = database().prepare(`
     SELECT COUNT(*) as cnt FROM price_entries
-    WHERE item_id = ? AND supplier_id = ? AND month = ? AND collected_role = 'WH'
+    WHERE item_id = ? AND supplier_id = ? AND month = ? AND status = 'approved'
   `).get(itemId, supplierId, month) as { cnt: number };
   return row.cnt > 0;
 }
@@ -3631,4 +3844,186 @@ export function countActivityLog(opts: { role?: string; eventType?: string; acto
     .prepare(`SELECT COUNT(*) as n FROM activity_log ${where}`)
     .get(...params) as { n: number };
   return row.n;
+}
+
+export function getPendingPriceEntries(month?: string) {
+  const db = database();
+  const query = `
+    SELECT
+      pe.id,
+      pe.item_id,
+      pe.supplier_id,
+      pe.month,
+      pe.price,
+      pe.recorded_at,
+      pe.notes,
+      pe.actual_transport,
+      pe.status,
+      pe.review_note,
+      i.name as item_name,
+      i.unit,
+      c.name as category_name,
+      i.category_id,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
+      pe.collected_by
+    FROM price_entries pe
+    JOIN items i ON i.id = pe.item_id
+    JOIN categories c ON c.id = i.category_id
+    JOIN suppliers s ON s.id = pe.supplier_id
+    WHERE pe.status = 'pending' ${month ? "AND pe.month = ?" : ""}
+    ORDER BY pe.recorded_at DESC
+  `;
+  const stmt = db.prepare(query);
+  return (month ? stmt.all(month) : stmt.all()) as Array<{
+    id: number;
+    item_id: number;
+    supplier_id: number;
+    month: string;
+    price: number;
+    recorded_at: string;
+    notes: string | null;
+    actual_transport: number | null;
+    status: string;
+    review_note: string | null;
+    item_name: string;
+    unit: string;
+    category_name: string;
+    category_id: number;
+    supplier_name: string;
+    collected_by: string;
+  }>;
+}
+
+export function getItemSupplierPurchasingHistory(itemId: number, supplierId: number, limit = 5) {
+  return database().prepare(`
+    SELECT price, month, recorded_at, status, notes
+    FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND status = 'approved'
+    ORDER BY month DESC, recorded_at DESC
+    LIMIT ?
+  `).all(itemId, supplierId, limit) as Array<{
+    price: number;
+    month: string;
+    recorded_at: string;
+    status: string;
+    notes: string | null;
+  }>;
+}
+
+export function getItemSellingPriceHistory(itemId: number, limit = 5) {
+  return database().prepare(`
+    SELECT sell_min, sell_max, buy_avg, strategy, month, created_at
+    FROM selling_prices
+    WHERE item_id = ?
+    ORDER BY month DESC, created_at DESC
+    LIMIT ?
+  `).all(itemId, limit) as Array<{
+    sell_min: number;
+    sell_max: number;
+    buy_avg: number;
+    strategy: string;
+    month: string;
+    created_at: string;
+  }>;
+}
+
+export function getPreviousApprovedPrice(itemId: number, supplierId: number, currentMonthStr: string): number | null {
+  const db = database();
+  const prevMonthStr = shiftMonth(currentMonthStr, -1);
+  const row = db.prepare(`
+    SELECT price FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND month = ? AND status = 'approved'
+    ORDER BY recorded_at DESC, id DESC
+    LIMIT 1
+  `).get(itemId, supplierId, prevMonthStr) as { price: number } | undefined;
+  if (row) return row.price;
+
+  const fallbackRow = db.prepare(`
+    SELECT price FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND month < ? AND status = 'approved'
+    ORDER BY month DESC, recorded_at DESC, id DESC
+    LIMIT 1
+  `).get(itemId, supplierId, currentMonthStr) as { price: number } | undefined;
+  return fallbackRow ? fallbackRow.price : null;
+}
+
+export function countPendingQuotes(month?: string): number {
+  const db = database();
+  const query = `SELECT COUNT(*) as count FROM price_entries WHERE status = 'pending' ${month ? "AND month = ?" : ""}`;
+  const row = (month ? db.prepare(query).get(month) : db.prepare(query).get()) as { count: number };
+  return row.count;
+}
+
+export function approvePriceEntry(entryId: number, reviewedBy: string, note?: string) {
+  const now = new Date().toISOString();
+  database().prepare(`
+    UPDATE price_entries
+    SET status = 'approved', reviewed_by = ?, reviewed_at = ?, review_note = ?
+    WHERE id = ?
+  `).run(reviewedBy, now, note ?? null, entryId);
+}
+
+export function rejectPriceEntry(entryId: number, reviewedBy: string, note?: string) {
+  const now = new Date().toISOString();
+  database().prepare(`
+    UPDATE price_entries
+    SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_note = ?, read_by_wh = 0
+    WHERE id = ?
+  `).run(reviewedBy, now, note ?? null, entryId);
+}
+
+export function getRejectedPriceEntriesForWH(username: string) {
+  return database().prepare(`
+    SELECT
+      pe.id AS quote_id,
+      pe.item_id,
+      pe.supplier_id,
+      pe.price,
+      pe.month,
+      pe.recorded_at,
+      pe.review_note,
+      pe.reviewed_by,
+      pe.reviewed_at,
+      pe.read_by_wh,
+      i.name AS item_name,
+      c.name AS category_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name
+    FROM price_entries pe
+    JOIN items i ON i.id = pe.item_id
+    JOIN categories c ON c.id = i.category_id
+    JOIN suppliers s ON s.id = pe.supplier_id
+    WHERE pe.status = 'rejected' AND pe.collected_by = ?
+    ORDER BY pe.reviewed_at DESC
+  `).all(username) as Array<{
+    quote_id: number;
+    item_id: number;
+    supplier_id: number;
+    price: number;
+    month: string;
+    recorded_at: string;
+    review_note: string | null;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    read_by_wh: number;
+    item_name: string;
+    category_name: string;
+    supplier_name: string;
+  }>;
+}
+
+export function getUnreadRejectedPriceEntriesCountForWH(username: string): number {
+  const row = database().prepare(`
+    SELECT COUNT(*) as cnt
+    FROM price_entries
+    WHERE status = 'rejected' AND collected_by = ? AND read_by_wh = 0
+  `).get(username) as { cnt: number };
+  return row.cnt;
+}
+
+export function markRejectedPriceEntriesAsReadForWH(username: string) {
+  database().prepare(`
+    UPDATE price_entries
+    SET read_by_wh = 1
+    WHERE status = 'rejected' AND collected_by = ? AND read_by_wh = 0
+  `).run(username);
 }

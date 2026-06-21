@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { acknowledgePrice, markPriceAcknowledgmentsAsRead } from "@/lib/db";
+import { acknowledgePrice, markPriceAcknowledgmentsAsRead, markRejectedPriceEntriesAsReadForWH } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { asNumber, asString } from "@/lib/format";
 
@@ -33,6 +33,18 @@ export async function markAcknowledgmentsReadAction(): Promise<{ ok: boolean }> 
   try {
     requireRole(["SC", "AD"]);
     markPriceAcknowledgmentsAsRead();
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
+export async function markWHNotificationsReadAction(): Promise<{ ok: boolean }> {
+  try {
+    const session = requireRole(["WH", "AD"]);
+    markRejectedPriceEntriesAsReadForWH(session.displayName);
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/notifications");
     return { ok: true };

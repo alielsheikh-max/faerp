@@ -16,6 +16,8 @@ type MissingQuote = {
   supplier_id: number;
   item_id: number;
   prev_price: number | null;
+  status: string | null;
+  review_note: string | null;
 };
 
 type Supplier = {
@@ -214,12 +216,29 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
                       <span className="badge" style={{ fontSize: "10px" }}>{m.category_name}</span>
                     </td>
                     <td>
-                      <span
-                        onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: m.item_id } }))}
-                        className="clickable-detail-trigger"
-                      >
-                        {m.item_name}
-                      </span>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span
+                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: m.item_id } }))}
+                          className="clickable-detail-trigger"
+                          style={{ fontWeight: 600 }}
+                        >
+                          {m.item_name}
+                        </span>
+                        {m.status === 'rejected' && (
+                          <div style={{
+                            fontSize: "11px",
+                            color: "var(--danger)",
+                            marginTop: "4px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}>
+                            <span>⚠️ {isAr ? "يحتاج مراجعة (مرفوض):" : "Needs Revision (Rejected):"}</span>
+                            <span style={{ fontWeight: 400, fontStyle: "italic" }}>{m.review_note || "—"}</span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td>{m.unit}</td>
                     <td>
