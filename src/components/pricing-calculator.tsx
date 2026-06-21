@@ -1035,10 +1035,11 @@ export default function PricingCalculator({
                           {usesTierStrategy ? (locale === "ar" ? "الهامش" : "Markup") : (locale === "ar" ? "هامش الأدنى" : "Min Markup")}
                         </span>
                         <input
-                          type="number" step="any" min="0"
+                          type="number" step="0.01" min="0"
                           value={markupMinVal}
                           onChange={e => setMarkupMinVal(e.target.value)}
-                          placeholder={markupType === "pct" ? "e.g. 10" : markupType === "div" ? "e.g. 0.77" : "e.g. 5.00"}
+                          onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMarkupMinVal(v.toFixed(2)); }}
+                          placeholder={markupType === "pct" ? "e.g. 10.00" : markupType === "div" ? "e.g. 0.77" : "e.g. 5.00"}
                           style={{ padding: "7px 10px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontSize: "13px", fontWeight: 700 }}
                         />
                       </div>
@@ -1048,10 +1049,11 @@ export default function PricingCalculator({
                             {locale === "ar" ? "هامش الأقصى" : "Max Markup"}
                           </span>
                           <input
-                            type="number" step="any" min="0"
+                            type="number" step="0.01" min="0"
                             value={markupMaxVal}
                             onChange={e => setMarkupMaxVal(e.target.value)}
-                            placeholder={markupType === "pct" ? "e.g. 15" : "e.g. 10.00"}
+                            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMarkupMaxVal(v.toFixed(2)); }}
+                            placeholder={markupType === "pct" ? "e.g. 15.00" : "e.g. 10.00"}
                             style={{ padding: "7px 10px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontSize: "13px", fontWeight: 700 }}
                           />
                         </div>
@@ -1284,6 +1286,7 @@ export default function PricingCalculator({
             {/* Top Right: Cost references & Warnings */}
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", position: "sticky", top: "0" }}>
               {/* ── Base Price Card ─────────────────────────────────── */}
+              {buyMin > 0 || buyMax > 0 || buyAvg > 0 ? (
               <div className="summary-card accent-card" style={{ padding: "14px 16px" }}>
                 <span className="eyebrow" style={{ fontSize: "10px" }}>
                   {locale === "ar" ? "سعر التكلفة الأساسي (شامل جميع التكاليف)" : "Base Cost Price (Incl. all costs)"}
@@ -1325,6 +1328,21 @@ export default function PricingCalculator({
                   </div>
                 )}
               </div>
+              ) : (
+              <div style={{
+                padding: "20px 16px", borderRadius: "10px",
+                background: "var(--bg-elevated)", border: "1px dashed var(--border-medium)",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", textAlign: "center"
+              }}>
+                <span style={{ fontSize: "24px" }}>📭</span>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                  {locale === "ar" ? "لا توجد أسعار موردين لهذا الشهر" : "No supplier quotes for this month"}
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  {locale === "ar" ? "لا يمكن حساب التسعير بدون عروض أسعار من الموردين." : "Pricing cannot be calculated without supplier quotes."}
+                </span>
+              </div>
+              )}
 
               {/* ── Floor Violation Banner ── */}
               {floorViolated && (
@@ -1636,15 +1654,26 @@ export default function PricingCalculator({
 
             {/* Submit Action Button */}
             <div style={{ marginTop: "4px" }}>
+              {(buyMin === 0 && buyMax === 0 && buyAvg === 0) && (
+                <div style={{
+                  padding: "10px 14px", marginBottom: "10px",
+                  background: "var(--bg-elevated)", border: "1.5px dashed var(--border-medium)",
+                  borderRadius: "8px", fontSize: "12px", color: "var(--text-muted)",
+                  display: "flex", alignItems: "center", gap: "8px", fontWeight: 600,
+                }}>
+                  <span>📭</span>
+                  <span>{locale === "ar" ? "لا يمكن نشر الأسعار — لا توجد عروض أسعار موردين لهذا الشهر." : "Cannot publish — no supplier quotes exist for this month."}</span>
+                </div>
+              )}
               <button
                 type="submit"
-                disabled={floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))}
+                disabled={floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim())) || (buyMin === 0 && buyMax === 0 && buyAvg === 0)}
                 className="button button-primary button-block"
                 style={{
-                  padding: "10px", fontSize: "13px", cursor: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))) ? "not-allowed" : "pointer",
-                  opacity: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim()))) ? 0.5 : 1,
+                  padding: "10px", fontSize: "13px", cursor: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim())) || (buyMin === 0 && buyMax === 0 && buyAvg === 0)) ? "not-allowed" : "pointer",
+                  opacity: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim())) || (buyMin === 0 && buyMax === 0 && buyAvg === 0)) ? 0.5 : 1,
                 }}
-                title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : maxViolated ? "Cannot save: max markup is less than min markup" : undefined}
+                title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : maxViolated ? "Cannot save: max markup is less than min markup" : (buyMin === 0 && buyMax === 0 && buyAvg === 0) ? "No supplier quotes — cannot publish" : undefined}
               >
                 {isPending ? "Publishing..." : isUpdate ? "Update Selling Prices" : "Publish Selling Prices to Sales"}
               </button>

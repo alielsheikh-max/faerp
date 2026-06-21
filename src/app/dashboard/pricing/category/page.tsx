@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { getCategories, getItems } from "@/lib/db";
+import { getCategories, getItems, getSalesCatalog, getSuppliers, getAllPriceEntries } from "@/lib/db";
 import { currentMonth, formatMonthLabel } from "@/lib/format";
 import { SectionIntro } from "@/components/app-shell";
 import CategoryMarkupPanel from "@/components/category-markup-panel";
@@ -14,6 +14,20 @@ export default function CategoryPricingPage({ searchParams }: { searchParams?: S
   const items      = getItems();
 
   const initialCategoryId = searchParams?.categoryId ? String(searchParams.categoryId) : undefined;
+  const catIdNum = initialCategoryId ? parseInt(initialCategoryId, 10) : undefined;
+
+  // Helper to subtract 1 month
+  const getPrevMonth = (m: string) => {
+    const [y, mon] = m.split("-").map(Number);
+    if (mon === 1) return `${y - 1}-12`;
+    return `${y}-${String(mon - 1).padStart(2, "0")}`;
+  };
+  const prevMonth = getPrevMonth(month);
+
+  const salesCatalog = getSalesCatalog(month, catIdNum);
+  const prevCatalog = getSalesCatalog(prevMonth, catIdNum);
+  const suppliers = getSuppliers();
+  const priceEntries = getAllPriceEntries();
 
   return (
     <div className="page-stack">
@@ -120,6 +134,10 @@ export default function CategoryPricingPage({ searchParams }: { searchParams?: S
             month={month}
             username={session.displayName}
             defaultCategoryId={initialCategoryId}
+            salesCatalog={salesCatalog}
+            prevCatalog={prevCatalog}
+            suppliers={suppliers}
+            priceEntries={priceEntries}
           />
         </div>
       </section>

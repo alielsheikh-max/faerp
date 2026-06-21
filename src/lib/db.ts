@@ -3327,6 +3327,15 @@ export function applyCategoryMarkup(input: {
   markupMax: number;
   createdBy: string;
   tierPricingEnabled?: number;
+  itemsData?: Array<{
+    itemId: number;
+    checked: boolean;
+    transportation: number;
+    tier1Discount: number;
+    tier2Discount: number;
+    tier3Discount: number;
+    tier4Discount: number;
+  }>;
 }): { applied: number; skipped: number; errors: string[] } {
   const db = database();
 
@@ -3348,24 +3357,54 @@ export function applyCategoryMarkup(input: {
           skipped++;
           continue;
         }
+
+        const state = input.itemsData?.find(s => s.itemId === item.id);
+
+        // If itemsData was passed, and this item is NOT checked (excluded), we skip it!
+        if (input.itemsData && (!state || !state.checked)) {
+          skipped++;
+          continue;
+        }
+
         const existingSp = db.prepare("SELECT other_expenses FROM selling_prices WHERE item_id = ? AND month = ?").get(item.id, input.month) as { other_expenses: number } | undefined;
         const otherExpenses = existingSp?.other_expenses ?? 0;
 
         // Auto-detect if item is tiered from the database
-        const itemTierRow = db.prepare("SELECT is_tiered FROM item_tiers WHERE item_id = ?").get(item.id) as { is_tiered: number } | undefined;
+        const itemTierRow = db.prepare("SELECT is_tiered, tier1_max, tier2_max, tier3_max FROM item_tiers WHERE item_id = ?").get(item.id) as { is_tiered: number, tier1_max: number, tier2_max: number, tier3_max: number } | undefined;
         const isTiered = itemTierRow?.is_tiered === 1;
+
+        let transportOverride: number | null = null;
+        if (state !== undefined) {
+          transportOverride = state.transportation;
+        }
+
+        // Custom divisors
+        const t1Disc = state !== undefined ? state.tier1Discount : (isTiered ? input.markupMin : null);
+        const t2Disc = state !== undefined ? state.tier2Discount : null;
+        const t3Disc = state !== undefined ? state.tier3Discount : null;
+        const t4Disc = state !== undefined ? state.tier4Discount : null;
 
         saveSellingPrice({
           itemId: item.id,
           month: input.month,
           strategy: input.strategy,
           markupType: input.markupType,
-          markupMin: input.markupMin,
-          markupMax: isTiered ? input.markupMin : input.markupMax,
+          markupMin: input.markupType === "divisor" && t1Disc !== null ? t1Disc : input.markupMin,
+          markupMax: isTiered 
+            ? (input.markupType === "divisor" && t1Disc !== null ? t1Disc : input.markupMin) 
+            : input.markupMax,
           createdBy: input.createdBy,
           changeReason: `Bulk category markup applied by ${input.createdBy}`,
           otherExpenses,
           tierPricingEnabled: isTiered ? 1 : 0,
+          transportOverride,
+          tier1Max: itemTierRow?.tier1_max,
+          tier1Discount: t1Disc,
+          tier2Max: itemTierRow?.tier2_max,
+          tier2Discount: t2Disc,
+          tier3Max: itemTierRow?.tier3_max,
+          tier3Discount: t3Disc,
+          tier4Discount: t4Disc,
         });
         applied++;
       } catch (err) {

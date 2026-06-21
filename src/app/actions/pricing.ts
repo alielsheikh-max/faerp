@@ -386,15 +386,26 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     const markupMin   = asNumber(formData.get("markupMin")) ?? 8;
     const markupMax   = asNumber(formData.get("markupMax")) ?? 14;
     const createdBy   = asString(formData.get("createdBy")) || "SC Manager";
+    const itemsDataRaw = asString(formData.get("itemsData"));
 
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
 
     if (!categoryId || !month) return { ok: false, error: "Category and month are required." };
     if (markupMax < markupMin) return { ok: false, error: "Max markup must be ≥ min markup." };
 
+    let itemsDataParsed: any[] | undefined = undefined;
+    if (itemsDataRaw) {
+      try {
+        itemsDataParsed = JSON.parse(itemsDataRaw);
+      } catch (err) {
+        console.error("Failed to parse itemsData:", err);
+      }
+    }
+
     const result = applyCategoryMarkup({
       categoryId, month, strategy, markupType, markupMin, markupMax, createdBy,
       tierPricingEnabled,
+      itemsData: itemsDataParsed,
     });
 
     revalidatePath("/dashboard");
