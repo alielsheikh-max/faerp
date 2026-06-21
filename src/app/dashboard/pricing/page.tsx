@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import {
   getCategories, getItems, getSuppliers, getAllPriceEntries,
-  getMonthlyReviewData, getEffectiveFloorForItem, getSellingPriceHistory,
+  getMonthlyReviewData, getEffectiveFloorForItem, getSellingPriceHistoryForMonths,
   isTierPricingEnabled, isScTransportOverrideEnabled,
   getItemPublishedPriceHistory, getSalesCatalog,
 } from "@/lib/db";
@@ -35,8 +35,21 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
       ? items.find(i => i.category_id === initialCategoryId)?.id
       : items[0]?.id);
 
+  // Get last 3 months in chronological order descending relative to selected month
+  const last3Months = (() => {
+    const [year, monthVal] = month.split("-").map(Number);
+    const result: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const date = new Date(year, monthVal - 1 - i, 1);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      result.push(`${y}-${m}`);
+    }
+    return result;
+  })();
+
   const floorPct      = resolvedItemId ? getEffectiveFloorForItem(resolvedItemId) : null;
-  const priceHistory  = resolvedItemId ? getSellingPriceHistory(resolvedItemId, month) : [];
+  const priceHistory  = resolvedItemId ? getSellingPriceHistoryForMonths(resolvedItemId, last3Months) : [];
   const itemSellHistory = resolvedItemId ? getItemPublishedPriceHistory(resolvedItemId, 3) : [];
 
   return (

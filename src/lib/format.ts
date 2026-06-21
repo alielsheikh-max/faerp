@@ -39,10 +39,58 @@ export function formatCurrency(value: number | null | undefined) {
   }).format(value);
 }
 
-export function formatMonthLabel(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(year, monthNumber - 1, 1);
+function getLocale(): "en" | "ar" {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("faerp-locale");
+      if (stored === "ar" || stored === "en") return stored;
+    } catch {}
+    try {
+      const match = document.cookie.match(/faerp-locale=([^;]+)/);
+      if (match && (match[1] === "ar" || match[1] === "en")) {
+        return match[1] as "en" | "ar";
+      }
+    } catch {}
+  } else {
+    try {
+      const { cookies } = require("next/headers");
+      const val = cookies().get("faerp-locale")?.value;
+      if (val === "ar" || val === "en") return val;
+    } catch {}
+  }
+  return "en";
+}
 
+const ARABIC_MONTHS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر"
+];
+
+export function formatMonthLabel(month: string) {
+  if (!month) return "—";
+  const parts = month.split("-");
+  if (parts.length < 2) return month;
+  const [year, monthNumber] = parts.map(Number);
+  if (Number.isNaN(year) || Number.isNaN(monthNumber)) return month;
+  
+  const locale = getLocale();
+
+  if (locale === "ar") {
+    const arMonth = ARABIC_MONTHS[monthNumber - 1] || "";
+    return `${arMonth} ${year}`;
+  }
+
+  const date = new Date(year, monthNumber - 1, 1);
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric"

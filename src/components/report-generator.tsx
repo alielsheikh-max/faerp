@@ -104,23 +104,23 @@ const PRESETS: ReportPreset[] = [
 ];
 
 // ── PDF generation helpers ────────────────────────────────────────────────────
-function printWindow(html: string, title: string) {
+function printWindow(html: string, title: string, isRTL?: boolean) {
   const win = window.open("", "_blank", "width=900,height=700");
   if (!win) { alert("Please allow popups to generate PDF reports."); return; }
-  win.document.write(`<!DOCTYPE html><html><head>
+  win.document.write(`<!DOCTYPE html><html dir="${isRTL ? "rtl" : "ltr"}"><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:ltr}
-      body.rtl{direction:rtl;font-family:'Readex Pro',sans-serif;text-align:right}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:${isRTL ? "rtl" : "ltr"};text-align:${isRTL ? "right" : "left"}}
+      body.rtl{direction:rtl;text-align:right}
       .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
       .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
-      .report-meta{text-align:right}
+      .report-meta{text-align:${isRTL ? "left" : "right"}}
       .report-meta .title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .report-meta .subtitle{font-size:11px;color:#6b7280}
       .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe}
@@ -131,17 +131,22 @@ function printWindow(html: string, title: string) {
       .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#1e3a8a;margin:20px 0 10px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}
       th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
+      body.rtl th{text-align:right}
+      th.num{text-align:right}
+      body.rtl th.num{text-align:left}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
       .best{color:#0284c7;font-weight:800}
       .danger{color:#dc2626;font-weight:700}
       .muted{color:#9ca3af}
       .num{text-align:right;font-variant-numeric:tabular-nums}
+      body.rtl .num{text-align:left}
       .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
       .stat-box{padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}
       .stat-box .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:4px}
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
-      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:12px 0 6px}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-inline-start:3px solid #1e3a8a;margin:12px 0 6px;border-radius:0 4px 4px 0}
+      html[dir="rtl"] .cat-header{border-radius: 4px 0 0 4px}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
       .highlight-row td{background:#f0f9ff}
       .pending-row td{background:#fffbeb}
@@ -243,7 +248,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         startMonth,
         { [isAr ? "الأصناف المنشورة" : "Published Items"]: catalog.length }
       )}${catHtml}${footer(username)}</body>`;
-      printWindow(html, `Published Prices - ${startMonth}_to_${endMonth}`);
+      printWindow(html, `Published Prices - ${startMonth}_to_${endMonth}`, isAr);
       break;
     }
     case "market_overview": {
@@ -275,7 +280,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
       )}<div class="section-title">${isAr ? "مقارنة أسعار الموردين" : "Supplier Price Comparison"}</div>
       <table><thead><tr><th>${isAr ? "الفئة" : "Category"}</th><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th>${supplierCols}<th class="num">${isAr ? "المتوسط" : "Market Avg"}</th></tr></thead><tbody>${rows}</tbody></table>
       ${footer(username)}</body>`;
-      printWindow(html, `Market Overview - ${month}`);
+      printWindow(html, `Market Overview - ${month}`, isAr);
       break;
     }
 
@@ -312,7 +317,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         month,
         statsObj
       )}${catHtml}${footer(username)}</body>`;
-      printWindow(html, `Selling Prices - ${month}`);
+      printWindow(html, `Selling Prices - ${month}`, isAr);
       break;
     }
 
@@ -340,7 +345,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
       )}<div class="section-title">${isAr ? "★ = الأرخص للصنف" : "★ = cheapest for item"}</div>
       <table><thead><tr><th>${isAr ? "الفئة" : "Category"}</th><th>${isAr ? "الصنف" : "Item"}</th>${supplierCols}<th class="num">${isAr ? "الفارق" : "Spread"}</th></tr></thead><tbody>${rows}</tbody></table>
       ${footer(username)}</body>`;
-      printWindow(html, `Supplier Comparison - ${month}`);
+      printWindow(html, `Supplier Comparison - ${month}`, isAr);
       break;
     }
 
@@ -367,14 +372,14 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         <th>${isAr ? "آخر تغيير" : "Last Change"}</th>
       </tr></thead><tbody>${rows}</tbody></table>`}
       ${footer(username)}</body>`;
-      printWindow(html, `Volatility Alert - ${month}`);
+      printWindow(html, `Volatility Alert - ${month}`, isAr);
       break;
     }
 
     case "collection_log": {
       const { recentEntries } = data;
       const rows = recentEntries.map((e: any) => `<tr>
-        <td><span class="badge">${e.month}</span></td>
+        <td><span class="badge">${formatMonthLabel(e.month)}</span></td>
         <td>${e.category_name}</td><td style="max-width:200px">${e.item_name}</td>
         <td>${e.supplier_name}</td>
         <td class="num best">${formatCurrency(e.price)}</td>
@@ -391,7 +396,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         <th class="num">${isAr ? "السعر" : "Price"}</th><th>${isAr ? "وقت التسجيل" : "Recorded At"}</th>
       </tr></thead><tbody>${rows}</tbody></table>
       ${footer(username)}</body>`;
-      printWindow(html, `Collection Log - ${month}`);
+      printWindow(html, `Collection Log - ${month}`, isAr);
       break;
     }
 
@@ -425,7 +430,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         <th>${isAr ? "الوحدة" : "Unit"}</th><th>${isAr ? "الحالة" : "Status"}</th>
       </tr></thead><tbody>${rows}</tbody></table>
       ${footer(username)}</body>`;
-      printWindow(html, `WH Summary - ${month}`);
+      printWindow(html, `WH Summary - ${month}`, isAr);
       break;
     }
 
@@ -467,7 +472,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         statsObj
       )}<p style="color:#6b7280;font-size:11px;margin-bottom:16px">${isAr ? "جميع الأسعار بالجنيه المصري · للاستخدام الداخلي فقط" : "All prices in EGP · For internal use only"}</p>
       ${catHtml}${footer(username)}</body>`;
-      printWindow(html, `Sales Catalog - ${month}`);
+      printWindow(html, `Sales Catalog - ${month}`, isAr);
       break;
     }
   }
@@ -626,7 +631,7 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           isAr ? "وقت التسجيل" : "Recorded At"
         ];
         rows = recentEntries.map((e: any) => [
-          e.month,
+          formatMonthLabel(e.month),
           e.category_name,
           e.item_name,
           e.supplier_name,

@@ -164,6 +164,13 @@ function AdminToast() {
 
 export default function AdminPanel({ users, categories, suppliers, items, showOnly, role }: AdminPanelProps) {
   const { t, isRTL } = useI18n();
+  const filterDesc = (desc: string | null | undefined) => {
+    if (!desc) return "";
+    if (desc === "Imported via CSV template" && role !== "AD") {
+      return "";
+    }
+    return desc;
+  };
   const [userQuery, setUserQuery] = useState("");
   const [categoryQuery, setCategoryQuery] = useState("");
   const [supplierQuery, setSupplierQuery] = useState("");
@@ -231,7 +238,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
     const categoriesHtml = filteredCategories.map((c, i) => `
       <tr style="background-color: ${i % 2 === 0 ? "#ffffff" : "#f9fafb"}; border-bottom: 1px solid #e5e7eb;">
         <td style="padding: 8px 10px; font-weight: bold; color: #111827;">${c.name}</td>
-        <td style="padding: 8px 10px; color: #4b5563;">${c.description || "—"}</td>
+        <td style="padding: 8px 10px; color: #4b5563;">${filterDesc(c.description) || "—"}</td>
         <td style="padding: 8px 10px; font-weight: bold; color: #2563eb; text-align: center;">${c.item_count}</td>
       </tr>
     `).join("");
@@ -241,7 +248,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
         <td style="padding: 8px 10px; font-weight: bold; color: #1e3a8a;">${item.category_name}</td>
         <td style="padding: 8px 10px; font-weight: 600; color: #111827;">${item.name}</td>
         <td style="padding: 8px 10px; color: #4b5563;">${item.unit}</td>
-        <td style="padding: 8px 10px; color: #4b5563;">${item.description || "—"}</td>
+        <td style="padding: 8px 10px; color: #4b5563;">${filterDesc(item.description) || "—"}</td>
         <td style="padding: 8px 10px; text-align: center;">
           <span style="padding: 2px 6px; font-size: 10px; font-weight: bold; border-radius: 4px; ${item.active === 1 ? "background-color: #d1fae5; color: #065f46;" : "background-color: #fee2e2; color: #991b1b;"}">
             ${item.active === 1 ? (isRTL ? "نشط" : "Active") : (isRTL ? "غير نشط" : "Inactive")}
@@ -564,7 +571,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                       borderRadius: "8px", border: "1px solid var(--border-light)", marginBottom: "8px" }}>
                     <div>
                       <div style={{ fontWeight: "700", color: "var(--text-primary)" }}>{category.name}</div>
-                      <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>{category.description || "—"}</div>
+                      <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>{filterDesc(category.description) || "—"}</div>
                     </div>
                     <span className="badge badge-strong" style={{ fontSize: "11px" }}>{category.item_count} {t("admin.itemCount")}</span>
                   </div>
@@ -760,7 +767,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         {item.name}
                       </div>
                       <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                        {item.description || "—"}
+                        {filterDesc(item.description) || "—"}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "16px", flexShrink: 0 }}>

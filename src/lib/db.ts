@@ -27,6 +27,7 @@ function openDatabase() {
   db.pragma("journal_mode = WAL");
   initializeSchema(db);
   migrateItemTiers(db);
+  migratePriceAcknowledgments(db);
   seedDatabase(db);
   return db;
 }
@@ -356,6 +357,7 @@ function initializeSchema(db: Db) {
       history_id     INTEGER NOT NULL,
       acknowledged_by TEXT   NOT NULL,
       acknowledged_at TEXT   NOT NULL DEFAULT (datetime('now')),
+      read_by_sc     INTEGER NOT NULL DEFAULT 0,
       UNIQUE(history_id),
       FOREIGN KEY (history_id) REFERENCES selling_price_history(id)
     );
@@ -383,6 +385,14 @@ function migrateItemTiers(db: Db) {
     db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_max INTEGER NOT NULL DEFAULT 0").run();
   if (!cols.includes("tier4_discount"))
     db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_discount REAL NOT NULL DEFAULT 0.0").run();
+}
+
+function migratePriceAcknowledgments(db: Db) {
+  const cols = (db.prepare("PRAGMA table_info(price_acknowledgments)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!cols.includes("read_by_sc")) {
+    db.prepare("ALTER TABLE price_acknowledgments ADD COLUMN read_by_sc INTEGER NOT NULL DEFAULT 0").run();
+  }
 }
 
 function seedDatabase(db: Db) {
@@ -2343,6 +2353,8 @@ export function getAllPriceEntries() {
       pe.month,
       pe.price,
       pe.recorded_at,
+      pe.negotiated_price,
+      pe.negotiated_notes,
       i.name as item_name,
       i.unit,
       s.name as supplier_name,
@@ -2360,6 +2372,8 @@ export function getAllPriceEntries() {
     month: string;
     price: number;
     recorded_at: string;
+    negotiated_price: number | null;
+    negotiated_notes: string | null;
     item_name: string;
     unit: string;
     supplier_name: string;
@@ -2859,6 +2873,18 @@ export function getSellingPriceHistory(itemId: number, month: string): SellingPr
     .all(itemId, month) as SellingPriceHistoryRow[];
 }
 
+export function getSellingPriceHistoryForMonths(itemId: number, months: string[]): SellingPriceHistoryRow[] {
+  if (months.length === 0) return [];
+  const placeholders = months.map(() => '?').join(',');
+  return database()
+    .prepare(`
+      SELECT * FROM selling_price_history
+      WHERE item_id = ? AND month IN (${placeholders})
+      ORDER BY changed_at DESC, id DESC
+    `)
+    .all(itemId, ...months) as SellingPriceHistoryRow[];
+}
+
 export function getSellingPriceHistoryForItem(itemId: number, limit = 20): SellingPriceHistoryRow[] {
   return database()
     .prepare(`
@@ -2960,6 +2986,23 @@ export function getUnacknowledgedCount(month: string): number {
     WHERE h.month = ? AND h.is_update = 1 AND pa.id IS NULL
   `).get(month) as { cnt: number };
   return row?.cnt ?? 0;
+}
+
+export function getUnreadPriceAcknowledgmentsCount(): number {
+  const row = database().prepare(`
+    SELECT COUNT(*) as cnt
+    FROM price_acknowledgments
+    WHERE read_by_sc = 0
+  `).get() as { cnt: number };
+  return row?.cnt ?? 0;
+}
+
+export function markPriceAcknowledgmentsAsRead() {
+  database().prepare(`
+    UPDATE price_acknowledgments
+    SET read_by_sc = 1
+    WHERE read_by_sc = 0
+  `).run();
 }
 
 

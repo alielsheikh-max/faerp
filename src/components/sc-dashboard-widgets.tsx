@@ -32,9 +32,28 @@ type SidebarProps = {
 
 // ── Helper ─────────────────────────────────────────────────────────────────
 
-function formatShortDate(iso: string) {
+const ARABIC_MONTHS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر"
+];
+
+function formatShortDate(iso: string, isAr: boolean) {
   try {
     const d = new Date(iso);
+    if (isAr) {
+      const arMonth = ARABIC_MONTHS[d.getMonth()] || "";
+      return `${d.getDate()} ${arMonth}`;
+    }
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch { return ""; }
 }
@@ -224,7 +243,7 @@ export function ScInsightsSidebar({ month, categoryStats, supplierStats, recentC
                       </span>
                     </div>
                   </div>
-                  <span style={{ fontSize: "9px", color: "var(--text-dim)", flexShrink: 0 }}>{formatShortDate(rc.changed_at)}</span>
+                  <span style={{ fontSize: "9px", color: "var(--text-dim)", flexShrink: 0 }}>{formatShortDate(rc.changed_at, isAr)}</span>
                 </div>
               );
             })}

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233b4bdb'/%3E%3Crect x='4' y='13' width='10' height='10' rx='2' fill='white' opacity='0.95'/%3E%3Crect x='18' y='13' width='10' height='10' rx='2' fill='white' opacity='0.6'/%3E%3Crect x='11' y='5' width='10' height='10' rx='2' fill='white' opacity='0.8'/%3E%3Crect x='6' y='25' width='20' height='3' rx='1.5' fill='white' opacity='0.45'/%3E%3C/svg%3E",
+        url: "/faerp logo.svg",
         type: "image/svg+xml",
       },
     ],

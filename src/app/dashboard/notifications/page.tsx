@@ -1,16 +1,21 @@
 import { SectionIntro } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth";
+import MarkReadClient from "@/components/mark-read-client";
 import {
   getRecentPriceUpdates,
   getPriceAcknowledgments,
   getPendingPriceChangeRequests,
   getNegotiatedPriceEntries,
 } from "@/lib/db";
-import { formatDateTime, formatCurrency, currentMonth } from "@/lib/format";
+import { formatDateTime, formatCurrency, currentMonth, formatMonthLabel } from "@/lib/format";
 import PriceChangeRequests from "@/components/price-change-requests";
+import { getServerT, getServerLocale } from "@/lib/locale-server";
 
 export default function NotificationsPage() {
   const session = requireRole(["SC", "SA", "AD"]);
+  const t = getServerT();
+  const locale = getServerLocale();
+  const isAr = locale === "ar";
   const month = currentMonth();
 
   const isManager = session.role === "SC" || session.role === "AD";
@@ -26,14 +31,14 @@ export default function NotificationsPage() {
   return (
     <div className="page-stack">
       <SectionIntro
-        eyebrow="Activity Center"
-        title="Notifications"
+        eyebrow={t("notif.eyebrow")}
+        title={t("notif.title")}
         description={
           isManager
-            ? "Track price update acknowledgments, pending approvals, and team activity."
-            : "View price change alerts for the current month and acknowledge them."
+            ? t("notif.descManager")
+            : t("notif.descSA")
         }
-        actions={<span className="badge badge-strong">{month}</span>}
+        actions={<span className="badge badge-strong">{formatMonthLabel(month)}</span>}
       />
 
       {/* ── Unread / Pending Alert Banner ─────────────────────────────────── */}
@@ -60,15 +65,15 @@ export default function NotificationsPage() {
                 fontSize: "22px", boxShadow: "0 4px 14px rgba(245,158,11,0.5)",
                 animation: "pulse-ring 2.5s ease-out infinite",
               }}>🔔</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, textAlign: isAr ? "right" : "left" }}>
                 <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#b45309", marginBottom: "4px" }}>
-                  Action Required
+                  {t("notif.actionRequired")}
                 </div>
                 <div style={{ fontSize: "17px", fontWeight: 900, color: "#92400e", marginBottom: "3px" }}>
-                  {pendingChangeRequests.length} Price Change Request{pendingChangeRequests.length > 1 ? "s" : ""}
+                  {t("notif.priceChangeRequests").replace("{count}", String(pendingChangeRequests.length))}
                 </div>
                 <div style={{ fontSize: "12px", color: "#b45309" }}>
-                  Waiting for your review and decision
+                  {t("notif.waitingDecision")}
                 </div>
               </div>
               <div style={{
@@ -76,7 +81,7 @@ export default function NotificationsPage() {
                 background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)",
                 color: "#b45309", fontWeight: 800, fontSize: "13px",
               }}>
-                ↓ Review below
+                {t("notif.reviewBelow")}
               </div>
             </div>
           )}
@@ -96,15 +101,15 @@ export default function NotificationsPage() {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: "22px", boxShadow: "0 4px 14px rgba(99,102,241,0.45)",
               }}>📨</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, textAlign: isAr ? "right" : "left" }}>
                 <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#4338ca", marginBottom: "4px" }}>
-                  Unacknowledged
+                  {t("notif.unacknowledged")}
                 </div>
                 <div style={{ fontSize: "17px", fontWeight: 900, color: "#3730a3", marginBottom: "3px" }}>
-                  {unreadCount} Price Update{unreadCount > 1 ? "s" : ""} Not Seen
+                  {t("notif.priceUpdatesNotSeen").replace("{count}", String(unreadCount))}
                 </div>
                 <div style={{ fontSize: "12px", color: "#4338ca" }}>
-                  SA team hasn&apos;t confirmed these changes yet
+                  {t("notif.saNotConfirmed")}
                 </div>
               </div>
               <div style={{
@@ -112,7 +117,7 @@ export default function NotificationsPage() {
                 background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)",
                 color: "#4338ca", fontWeight: 800, fontSize: "13px", flexShrink: 0,
               }}>
-                ↓ Scroll to see
+                {t("notif.scrollToSee")}
               </div>
             </div>
           )}
@@ -127,24 +132,24 @@ export default function NotificationsPage() {
           border: "1.5px solid rgba(16,185,129,0.25)",
         }}>
           <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
-          <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>All caught up!</div>
-          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>No pending actions or unread notifications.</div>
+          <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>{t("notif.allCaughtUp")}</div>
+          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{t("notif.allCaughtUpDesc")}</div>
         </div>
       )}
 
       {/* ── SA view: price update alerts ──────────────────────────────────── */}
       {!isManager && recentUpdates.length > 0 && (
         <section className="panel animate-fade-in">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
             <div>
-              <p className="eyebrow">Price Alerts</p>
-              <h2>Current Month Updates ({recentUpdates.length})</h2>
+              <p className="eyebrow">{t("notif.priceAlerts")}</p>
+              <h2>{t("notif.currentMonthUpdates").replace("{count}", String(recentUpdates.length))}</h2>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                Unread items are highlighted — acknowledge them to clear the counter
+                {t("notif.unreadHighlighted")}
               </p>
             </div>
             {unreadCount > 0 && (
-              <span className="badge badge-warning">{unreadCount} Unacknowledged</span>
+              <span className="badge badge-warning">{unreadCount} {t("notif.unacknowledged")}</span>
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -157,41 +162,43 @@ export default function NotificationsPage() {
                   padding: "14px 16px", borderRadius: "12px",
                   background: isUnread ? "rgba(245,158,11,0.06)" : "var(--bg-surface)",
                   border: `1.5px solid ${isUnread ? "rgba(245,158,11,0.3)" : "var(--border-light)"}`,
-                  borderLeft: isUnread ? "4px solid #f59e0b" : "4px solid var(--border-light)",
+                  borderLeft: isAr ? "none" : (isUnread ? "4px solid #f59e0b" : "4px solid var(--border-light)"),
+                  borderRight: isAr ? (isUnread ? "4px solid #f59e0b" : "4px solid var(--border-light)") : "none",
                   transition: "background 200ms",
+                  direction: isAr ? "rtl" : "ltr",
                 }}>
-                  <div>
+                  <div style={{ textAlign: isAr ? "right" : "left" }}>
                     <div style={{ fontWeight: 700, fontSize: "13px" }}>{u.item_name}</div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{u.category_name}</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>New Range</div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.newRange")}</div>
                     <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
                       {formatCurrency(u.new_sell_min)} – {formatCurrency(u.new_sell_max)}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Was</div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.was")}</div>
                     <div style={{ fontSize: "12px", color: "var(--text-muted)", textDecoration: u.prev_sell_min ? "line-through" : "none" }}>
                       {u.prev_sell_min != null ? `${formatCurrency(u.prev_sell_min)} – ${formatCurrency(u.prev_sell_max)}` : "—"}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Updated</div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.updated")}</div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{formatDateTime(u.changed_at)}</div>
                   </div>
-                  <div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
                     {u.ack_by ? (
                       <span style={{
                         fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
                         background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
-                      }}>✓ Seen by {u.ack_by}</span>
+                      }}>{t("notif.seenBy").replace("{user}", u.ack_by)}</span>
                     ) : (
                       <span style={{
                         fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
                         background: "rgba(245,158,11,0.12)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)",
                         animation: "pulse-ring 2.5s ease-out infinite",
-                      }}>⚠ Pending</span>
+                      }}>{t("notif.pending")}</span>
                     )}
                   </div>
                 </div>
@@ -204,16 +211,16 @@ export default function NotificationsPage() {
       {/* ── SC/AD: Pending change requests ────────────────────────────────── */}
       {isManager && pendingChangeRequests.length > 0 && (
         <section className="panel animate-fade-in">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
             <div>
-              <p className="eyebrow">Action Required</p>
-              <h2>Pending Price Change Requests ({pendingChangeRequests.length})</h2>
+              <p className="eyebrow">{t("notif.actionRequired")}</p>
+              <h2>{t("notif.pendingPriceChangeRequests").replace("{count}", String(pendingChangeRequests.length))}</h2>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                Approve or reject each request — the price updates immediately on approval
+                {t("notif.approveRejectDesc")}
               </p>
             </div>
             <span className="badge badge-warning" style={{ animation: "pulse-ring 2s ease-out infinite" }}>
-              {pendingChangeRequests.length} Pending
+              {pendingChangeRequests.length} {t("gen.pending")}
             </span>
           </div>
           <PriceChangeRequests requests={pendingChangeRequests} username={session.displayName} />
@@ -223,23 +230,23 @@ export default function NotificationsPage() {
       {/* ── SC/AD: Negotiated Prices Log ─────────────────────────────────── */}
       {isManager && (
         <section className="panel animate-fade-in">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
             <div>
-              <p className="eyebrow" style={{ color: "#8b5cf6" }}>Negotiation Feed</p>
-              <h2>Negotiated Prices Log</h2>
+              <p className="eyebrow" style={{ color: "#8b5cf6" }}>{t("notif.negotiationFeed")}</p>
+              <h2>{t("notif.negotiatedPricesLog")}</h2>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                Prices negotiated directly by WH (not overriding original price, for information only)
+                {t("notif.negotiatedDesc")}
               </p>
             </div>
             <span className="badge" style={{ background: "rgba(139,92,246,0.12)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.35)", fontWeight: 700 }}>
-              {negotiatedEntries.length} Negotiated
+              {t("notif.negotiatedCount").replace("{count}", String(negotiatedEntries.length))}
             </span>
           </div>
           {negotiatedEntries.length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
               <div style={{ fontSize: "36px", marginBottom: "10px" }}>🤝</div>
-              <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>No negotiated prices logged</div>
-              <div style={{ fontSize: "12px" }}>Negotiations logged by WH this month will appear here</div>
+              <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>{t("notif.noNegotiatedPrices")}</div>
+              <div style={{ fontSize: "12px" }}>{t("notif.noNegotiatedPricesDesc")}</div>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -254,25 +261,27 @@ export default function NotificationsPage() {
                     gap: "16px", alignItems: "center",
                     padding: "12px 16px", borderRadius: "10px",
                     background: "var(--bg-surface)", border: "1px solid var(--border-light)",
-                    borderLeft: "4px solid #8b5cf6",
+                    borderLeft: isAr ? "none" : "4px solid #8b5cf6",
+                    borderRight: isAr ? "4px solid #8b5cf6" : "none",
+                    direction: isAr ? "rtl" : "ltr",
                   }}>
-                    <div>
+                    <div style={{ textAlign: isAr ? "right" : "left" }}>
                       <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
                       <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{a.supplier_name}</div>
                       {a.negotiated_notes && (
                         <div style={{ fontSize: "11px", color: "#8b5cf6", fontStyle: "italic", marginTop: "3px" }}>
-                          Notes: {a.negotiated_notes}
+                          {isAr ? "ملاحظات:" : "Notes:"} {a.negotiated_notes}
                         </div>
                       )}
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Original</div>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.original")}</div>
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)", textDecoration: "line-through" }}>
                         {formatCurrency(a.original_price)}
                       </div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Negotiated</div>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.negotiated")}</div>
                       <div style={{ fontWeight: 800, color: "var(--success)", fontSize: "13px" }}>
                         {formatCurrency(a.negotiated_price)}
                       </div>
@@ -280,11 +289,11 @@ export default function NotificationsPage() {
                         {isSaving ? "▼" : "▲"} {Math.abs(diffPct).toFixed(1)}%
                       </span>
                     </div>
-                    <div style={{ textAlign: "right" }}>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
                       <span style={{
                         fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
                         background: "rgba(139,92,246,0.12)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.25)",
-                      }}>Logged by {a.collected_by}</span>
+                      }}>{t("notif.loggedBy").replace("{user}", a.collected_by)}</span>
                       <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.recorded_at)}</div>
                     </div>
                   </div>
@@ -298,21 +307,21 @@ export default function NotificationsPage() {
       {/* ── SC/AD: SA Acknowledgment feed ─────────────────────────────────── */}
       {isManager && (
         <section className="panel animate-fade-in">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
             <div>
-              <p className="eyebrow">Team Activity</p>
-              <h2>SA Price Acknowledgments</h2>
+              <p className="eyebrow">{t("notif.teamActivity")}</p>
+              <h2>{t("notif.saPriceAcks")}</h2>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                Sales agents confirming they received updated prices
+                {t("notif.saConfirmingUpdates")}
               </p>
             </div>
-            <span className="badge badge-strong">{acknowledgments.length} total</span>
+            <span className="badge badge-strong">{acknowledgments.length} {isAr ? "إجمالي" : "total"}</span>
           </div>
           {acknowledgments.length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
               <div style={{ fontSize: "36px", marginBottom: "10px" }}>⏳</div>
-              <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>No acknowledgments yet</div>
-              <div style={{ fontSize: "12px" }}>SA team will confirm price updates here once you publish prices</div>
+              <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>{t("notif.noAcksYet")}</div>
+              <div style={{ fontSize: "12px" }}>{t("notif.noAcksYetDesc")}</div>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -322,23 +331,25 @@ export default function NotificationsPage() {
                   gap: "12px", alignItems: "center",
                   padding: "12px 16px", borderRadius: "10px",
                   background: "var(--bg-surface)", border: "1px solid var(--border-light)",
-                  borderLeft: "4px solid var(--success)",
+                  borderLeft: isAr ? "none" : "4px solid var(--success)",
+                  borderRight: isAr ? "4px solid var(--success)" : "none",
+                  direction: isAr ? "rtl" : "ltr",
                 }}>
-                  <div>
+                  <div style={{ textAlign: isAr ? "right" : "left" }}>
                     <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
                   </div>
-                  <span className="badge">{a.month}</span>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>Price Range</div>
+                  <span className="badge">{formatMonthLabel(a.month)}</span>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.priceRange")}</div>
                     <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
                       {formatCurrency(a.new_sell_min)} – {formatCurrency(a.new_sell_max)}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
                     <span style={{
                       fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
                       background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
-                    }}>✓ {a.acknowledged_by}</span>
+                    }}>{t("notif.seenBy").replace("{user}", a.acknowledged_by)}</span>
                     <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.acknowledged_at)}</div>
                   </div>
                 </div>
@@ -351,16 +362,16 @@ export default function NotificationsPage() {
       {/* ── All price updates this month ─────────────────────────────────── */}
       {isManager && recentUpdates.length > 0 && (
         <section className="panel animate-fade-in">
-          <div className="panel-header" style={{ marginBottom: "14px" }}>
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
             <div>
-              <p className="eyebrow">Price History</p>
-              <h2>All Price Updates — {month} ({recentUpdates.length})</h2>
+              <p className="eyebrow">{t("notif.priceHistory")}</p>
+              <h2>{t("notif.allPriceUpdates").replace("{month}", formatMonthLabel(month)).replace("{count}", String(recentUpdates.length))}</h2>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                Orange left border = SA hasn&apos;t acknowledged yet
+                {t("notif.orangeBorderHint")}
               </p>
             </div>
             {unreadCount > 0 && (
-              <span className="badge badge-warning">{unreadCount} Unacknowledged</span>
+              <span className="badge badge-warning">{unreadCount} {t("notif.unacknowledged")}</span>
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -373,46 +384,48 @@ export default function NotificationsPage() {
                   padding: "12px 16px", borderRadius: "10px",
                   background: isUnread ? "rgba(245,158,11,0.04)" : "var(--bg-surface)",
                   border: `1px solid ${isUnread ? "rgba(245,158,11,0.25)" : "var(--border-light)"}`,
-                  borderLeft: isUnread ? "4px solid #f59e0b" : "4px solid var(--success)",
+                  borderLeft: isAr ? "none" : (isUnread ? "4px solid #f59e0b" : "4px solid var(--success)"),
+                  borderRight: isAr ? (isUnread ? "4px solid #f59e0b" : "4px solid var(--success)") : "none",
+                  direction: isAr ? "rtl" : "ltr",
                 }}>
-                  <div>
+                  <div style={{ textAlign: isAr ? "right" : "left" }}>
                     <div style={{ fontWeight: 700, fontSize: "13px" }}>{u.item_name}</div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{u.category_name}</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>New Range</div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.newRange")}</div>
                     <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
                       {formatCurrency(u.new_sell_min)} – {formatCurrency(u.new_sell_max)}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>SC Note</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-secondary)", maxWidth: "140px", textAlign: "right" }}>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.scNote")}</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-secondary)", maxWidth: "140px", textAlign: isAr ? "left" : "right" }}>
                       {u.sa_note || "—"}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>By</div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.by")}</div>
                     <div style={{ fontSize: "12px", fontWeight: 600 }}>{u.changed_by}</div>
                     <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{formatDateTime(u.changed_at)}</div>
                   </div>
-                  <div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
                     {u.ack_by ? (
                       <div>
                         <span style={{
                           fontSize: "10px", fontWeight: 800, padding: "3px 10px", borderRadius: "99px",
                           background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
                           display: "block",
-                        }}>✓ Seen</span>
+                        }}>{t("notif.seen")}</span>
                         <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block", marginTop: "3px", textAlign: "center" }}>
-                          by {u.ack_by}
+                          {t("notif.seenBy").replace("{user}", u.ack_by)}
                         </span>
                       </div>
                     ) : (
                       <span style={{
                         fontSize: "10px", fontWeight: 800, padding: "3px 10px", borderRadius: "99px",
                         background: "rgba(245,158,11,0.12)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)",
-                      }}>⚠ Awaiting SA</span>
+                      }}>{t("notif.awaitingSA")}</span>
                     )}
                   </div>
                 </div>
@@ -430,10 +443,12 @@ export default function NotificationsPage() {
           border: "1.5px solid rgba(16,185,129,0.2)",
         }}>
           <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
-          <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>All clear for {month}</div>
-          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>No price changes or pending requests this month.</div>
+          <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>{t("notif.allClearForMonth").replace("{month}", formatMonthLabel(month))}</div>
+          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{t("notif.noPriceChanges")}</div>
         </div>
       )}
+      {/* Mark acknowledgments as read when manager views the notifications page */}
+      {isManager && <MarkReadClient />}
     </div>
   );
 }

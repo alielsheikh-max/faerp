@@ -537,7 +537,7 @@ function ItemRow({
                         <th
                           style={{
                             padding: "7px 12px",
-                            textAlign: "left",
+                            textAlign: locale === "ar" ? "right" : "left",
                             fontWeight: 700,
                             fontSize: "10px",
                             textTransform: "uppercase",
@@ -546,12 +546,12 @@ function ItemRow({
                             borderBottom: "1px solid var(--border-light)",
                             whiteSpace: "nowrap",
                             position: "sticky",
-                            left: 0,
+                            [locale === "ar" ? "right" : "left"]: 0,
                             background: "var(--bg-subtle)",
                             zIndex: 1,
                           }}
                         >
-                          Supplier
+                          {locale === "ar" ? "المورد" : "Supplier"}
                         </th>
                         {allHistMonths.map((m) => (
                           <th
@@ -581,7 +581,7 @@ function ItemRow({
                             whiteSpace: "nowrap",
                           }}
                         >
-                          Trend
+                          {locale === "ar" ? "الاتجاه" : "Trend"}
                         </th>
                       </tr>
                     </thead>
@@ -603,7 +603,7 @@ function ItemRow({
                           const pct = ((last - first) / first) * 100;
                           if (pct > 1) { trendIcon = `↑ ${pct.toFixed(1)}%`; trendColor = "var(--danger)"; }
                           else if (pct < -1) { trendIcon = `↓ ${Math.abs(pct).toFixed(1)}%`; trendColor = "var(--success)"; }
-                          else { trendIcon = "≈ stable"; trendColor = "var(--text-muted)"; }
+                          else { trendIcon = locale === "ar" ? "≈ مستقر" : "≈ stable"; trendColor = "var(--text-muted)"; }
                         }
 
                         return (
@@ -622,7 +622,7 @@ function ItemRow({
                                 fontWeight: 700,
                                 whiteSpace: "nowrap",
                                 position: "sticky",
-                                left: 0,
+                                [locale === "ar" ? "right" : "left"]: 0,
                                 background: "var(--bg-elevated)",
                                 zIndex: 1,
                               }}
@@ -709,11 +709,11 @@ function ItemRow({
                             letterSpacing: "0.07em",
                             whiteSpace: "nowrap",
                             position: "sticky",
-                            left: 0,
+                            [locale === "ar" ? "right" : "left"]: 0,
                             background: "var(--bg-subtle)",
                           }}
                         >
-                          Avg / month
+                          {locale === "ar" ? "المتوسط / شهر" : "Avg / month"}
                         </td>
                         {allHistMonths.map((m) => {
                           const monthPrices = histSuppliers

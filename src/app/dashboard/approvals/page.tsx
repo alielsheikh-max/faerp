@@ -2,9 +2,11 @@ import { requireRole } from "@/lib/auth";
 import { getPendingPriceChangeRequests, getAllPriceChangeRequests } from "@/lib/db";
 import { SectionIntro, StatCard } from "@/components/app-shell";
 import ApprovalsHistory from "@/components/approvals-history";
+import { getServerT } from "@/lib/locale-server";
 
 export default function SCApprovalsPage() {
   const session = requireRole(["SC"]);
+  const t = getServerT();
 
   const pending = getPendingPriceChangeRequests();
   const all     = getAllPriceChangeRequests(200);
@@ -16,43 +18,43 @@ export default function SCApprovalsPage() {
   return (
     <div className="page-stack">
       <SectionIntro
-        eyebrow="WH → SC Workflow"
-        title="Price Change Approvals"
-        description="Review incoming price change requests from WH. Approve to update the market data, reject with a note to inform WH."
+        eyebrow={t("scapp.eyebrow")}
+        title={t("scapp.title")}
+        description={t("scapp.desc")}
         actions={
           pending.length > 0 ? (
             <span className="badge badge-warning" style={{ fontSize: "12px", padding: "5px 12px", animation: "pulse-ring 2s ease-out infinite" }}>
-              ⏳ {pending.length} pending
+              ⏳ {t("scapp.pendingCount").replace("{count}", String(pending.length))}
             </span>
           ) : (
-            <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>✓ All clear</span>
+            <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>{t("scapp.allClear")}</span>
           )
         }
       />
 
       {/* KPI strip */}
       <section className="stat-grid">
-        <StatCard label="Pending Review"  value={pending.length}   note="Awaiting SC decision"   accent="amber" />
-        <StatCard label="Approved"        value={approvedCount}    note="Prices updated"          accent="green" />
-        <StatCard label="Rejected"        value={rejectedCount}    note="Returned to WH"          accent="red" />
-        <StatCard label="Total Requests"  value={all.length}       note="All time"                accent="indigo" />
+        <StatCard label={t("scapp.pendingReview")}  value={pending.length}   note={t("scapp.awaitingScDecision")}   accent="amber" />
+        <StatCard label={t("gen.approved")}        value={approvedCount}    note={t("scapp.pricesUpdated")}          accent="green" />
+        <StatCard label={t("gen.rejected")}        value={rejectedCount}    note={t("scapp.returnedToWh")}          accent="red" />
+        <StatCard label={t("scapp.totalRequests")}  value={all.length}       note={t("scapp.allTime")}                accent="indigo" />
       </section>
 
       {/* ── Pending Queue — now handled in Notifications ── */}
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow" style={{ fontSize: "10px" }}>Action Required</p>
-            <h2>Pending Requests</h2>
+            <p className="eyebrow" style={{ fontSize: "10px" }}>{t("scapp.actionRequired")}</p>
+            <h2>{t("scapp.pendingRequests")}</h2>
           </div>
           {pending.length > 0 && (
-            <span className="badge badge-warning">{pending.length} awaiting review</span>
+            <span className="badge badge-warning">{t("scapp.awaitingReview").replace("{count}", String(pending.length))}</span>
           )}
         </div>
         {pending.length === 0 ? (
           <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--text-muted)", fontSize: "13px" }}>
             <span style={{ fontSize: "32px", display: "block", marginBottom: "10px" }}>✅</span>
-            No pending requests. All clear.
+            {t("scapp.noPendingRequests")}
           </div>
         ) : (
           <div style={{
@@ -63,10 +65,10 @@ export default function SCApprovalsPage() {
             <span style={{ fontSize: "32px" }}>🔔</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "4px" }}>
-                {pending.length} pending request{pending.length > 1 ? "s" : ""} — review them in Notifications
+                {t("scapp.pendingRequestBannerTitle").replace("{count}", String(pending.length))}
               </div>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                Price change requests are now reviewed inline in the Notifications page with approve/reject buttons.
+                {t("scapp.pendingRequestBannerDesc")}
               </div>
             </div>
             <a href="/dashboard/notifications" style={{
@@ -75,7 +77,7 @@ export default function SCApprovalsPage() {
               color: "#fff", fontWeight: 800, fontSize: "13px",
               textDecoration: "none", whiteSpace: "nowrap",
             }}>
-              Go to Notifications →
+              {t("scapp.goToNotifications")}
             </a>
           </div>
         )}
@@ -85,10 +87,10 @@ export default function SCApprovalsPage() {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow" style={{ fontSize: "10px" }}>Audit Log</p>
-            <h2>Review History</h2>
+            <p className="eyebrow" style={{ fontSize: "10px" }}>{t("scapp.auditLog")}</p>
+            <h2>{t("scapp.reviewHistory")}</h2>
           </div>
-          <span className="badge">{history.length} resolved</span>
+          <span className="badge">{t("scapp.resolved").replace("{count}", String(history.length))}</span>
         </div>
         <ApprovalsHistory requests={history} mode="sc" />
       </section>

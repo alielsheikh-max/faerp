@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import * as XLSX from "xlsx-js-style";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
 type CatalogRow = {
@@ -18,22 +18,22 @@ type CatalogRow = {
 type Props = { catalog: CatalogRow[]; month: string; username: string };
 
 /* ── Shared PDF helpers (mirrors report-generator.tsx) ────────────────── */
-function printWindow(html: string, title: string) {
+function printWindow(html: string, title: string, isRTL?: boolean) {
   const win = window.open("", "_blank", "width=900,height=700");
   if (!win) { alert("Please allow popups to generate PDF reports."); return; }
-  win.document.write(`<!DOCTYPE html><html><head>
+  win.document.write(`<!DOCTYPE html><html dir="${isRTL ? "rtl" : "ltr"}"><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:${isRTL ? "rtl" : "ltr"};text-align:${isRTL ? "right" : "left"}}
       .report-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
       .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
-      .report-meta{text-align:right}
+      .report-meta{text-align:${isRTL ? "left" : "right"}}
       .report-meta .title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .report-meta .subtitle{font-size:11px;color:#6b7280}
       .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
@@ -42,13 +42,14 @@ function printWindow(html: string, title: string) {
       .stat-box .val{font-size:20px;font-weight:800;color:#111827}
       .stat-box .sub{font-size:9px;color:#9ca3af;margin-top:2px}
       .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.10em;color:#1e3a8a;margin:20px 0 10px}
-      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:12px 0 6px}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-inline-start:3px solid #1e3a8a;margin:12px 0 6px;border-radius:0 4px 4px 0}
+      html[dir="rtl"] .cat-header{border-radius: 4px 0 0 4px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}
-      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
-      th.num{text-align:right}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:start}
+      th.num{text-align:end}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
-      .num{text-align:right;font-variant-numeric:tabular-nums}
+      .num{text-align:end;font-variant-numeric:tabular-nums}
       .usd-min{color:#0284c7;font-weight:800}
       .usd-max{color:#1e3a8a;font-weight:800}
       .muted{color:#9ca3af}
@@ -60,9 +61,6 @@ function printWindow(html: string, title: string) {
   win.document.close();
 }
 
-// formatDate() imported from @/lib/format — returns dd-mm-yyyy
-
-/* ────────────────────────────────────────────────────────────────────── */
 export default function UsdPricePanel({ catalog, month, username }: Props) {
   const { locale } = useI18n();
   const [open, setOpen]           = useState(false);
@@ -105,21 +103,23 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
   /* ── PDF Export — opens print window matching report-generator style ── */
   const exportPDF = useCallback(() => {
     if (!rate) return;
+    const isAr = locale === "ar";
+    const monthLabel = formatMonthLabel(month);
 
     const statsHtml = `<div class="stat-row">
-      <div class="stat-box"><div class="lbl">Exchange Rate</div><div class="val">1 USD = ${rate.toFixed(4)}</div><div class="sub">EGP${rateInfo ? ` · ${rateInfo}` : ""}</div></div>
-      <div class="stat-box"><div class="lbl">Published Items</div><div class="val">${published.length}</div><div class="sub">with selling prices</div></div>
-      <div class="stat-box"><div class="lbl">Categories</div><div class="val">${Object.keys(grouped).length}</div><div class="sub">product categories</div></div>
+      <div class="stat-box"><div class="lbl">${lbl("Exchange Rate", "سعر الصرف")}</div><div class="val">1 USD = ${rate.toFixed(4)}</div><div class="sub">${isAr ? "جنيه" : "EGP"}${rateInfo ? ` · ${rateInfo}` : ""}</div></div>
+      <div class="stat-box"><div class="lbl">${lbl("Published Items", "الأصناف المنشورة")}</div><div class="val">${published.length}</div><div class="sub">${isAr ? "مع أسعار البيع" : "with selling prices"}</div></div>
+      <div class="stat-box"><div class="lbl">${lbl("Categories", "الفئات")}</div><div class="val">${Object.keys(grouped).length}</div><div class="sub">${isAr ? "أقسام المنتجات" : "product categories"}</div></div>
     </div>`;
 
     const headerHtml = `<div class="report-header">
       <div class="brand">
         <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
-        <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
+        <div><div class="brand-name">FAERP</div><div class="brand-sub">${isAr ? "نظام تخطيط موارد المؤسسات · تشغيل محلي" : "Enterprise ERP · On-Premises"}</div></div>
       </div>
       <div class="report-meta">
-        <div class="title">Published Selling Prices — USD</div>
-        <div class="subtitle">${month} · Generated ${formatDate()}</div>
+        <div class="title">${isAr ? "أسعار البيع المنشورة بالدولار" : "Published Selling Prices — USD"}</div>
+        <div class="subtitle">${monthLabel} · ${isAr ? `تاريخ الإنشاء: ${formatDate()}` : `Generated ${formatDate()}`}</div>
       </div>
     </div>${statsHtml}`;
 
@@ -133,19 +133,19 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       </tr>`).join("");
       return `<div class="cat-header">${cat}</div>
         <table><thead><tr>
-          <th>Product</th><th>Unit</th><th class="num">MOQ</th>
-          <th class="num">Min (USD $)</th><th class="num">Max (USD $)</th>
+          <th>${isAr ? "المنتج" : "Product"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "الحد الأدنى" : "MOQ"}</th>
+          <th class="num">${isAr ? "أدنى ($)" : "Min (USD $)"}</th><th class="num">${isAr ? "أقصى ($)" : "Max (USD $)"}</th>
         </tr></thead><tbody>${rowsHtml}</tbody></table>`;
     }).join("");
 
     const footerHtml = `<div class="footer">
-      <span>FAERP · Confidential · 1 USD = ${rate.toFixed(4)} EGP</span>
-      <span>Prepared by ${username}</span>
+      <span>${isAr ? `FAERP · سري · ١ دولار = ${rate.toFixed(4)} جنيه` : `FAERP · Confidential · 1 USD = ${rate.toFixed(4)} EGP`}</span>
+      <span>${isAr ? `أعدت بواسطة ${username}` : `Prepared by ${username}`}</span>
       <span>${formatDate(new Date())}</span>
     </div>`;
 
-    printWindow(`${headerHtml}${tablesHtml}${footerHtml}`, `USD Prices - ${month}`);
-  }, [rate, rateInfo, published, grouped, month, username]);
+    printWindow(`${headerHtml}${tablesHtml}${footerHtml}`, `${isAr ? "أسعار الدولار" : "USD Prices"} - ${monthLabel}`, isAr);
+  }, [rate, rateInfo, published, grouped, month, username, locale]);
 
   /* ── XLSX Export — mirrors report-generator.tsx styling exactly ─────── */
   const exportXLSX = useCallback(async () => {
@@ -177,7 +177,10 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
       }
 
       const sheetData: unknown[][] = [
-        [`Published Selling Prices in USD — ${month}  |  1 USD = ${rate.toFixed(4)} EGP  |  Generated by: ${username}`],
+        [isAr
+          ? `أسعار البيع المنشورة بالدولار — ${formatMonthLabel(month)}  |  ١ دولار = ${rate.toFixed(4)} جنيه  |  أعدت بواسطة: ${username}`
+          : `Published Selling Prices in USD — ${month}  |  1 USD = ${rate.toFixed(4)} EGP  |  Generated by: ${username}`
+        ],
         [],
         headers,
         ...dataRows,
@@ -277,7 +280,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, `USD Prices ${month}`);
-      XLSX.writeFile(workbook, `FAERP_USD_Prices_${month}.xlsx`);
+      XLSX.writeFile(workbook, isAr ? `أسعار_بالدولار_${month}.xlsx` : `FAERP_USD_Prices_${month}.xlsx`);
     } catch (e) {
       console.error("XLSX export failed:", e);
     } finally {
@@ -296,14 +299,14 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
           border: "1.5px solid rgba(6,182,212,0.35)",
           background: "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)",
           cursor: "pointer", transition: "all 220ms ease",
-          textAlign: "left", position: "relative", overflow: "hidden",
+          textAlign: locale === "ar" ? "right" : "left", position: "relative", overflow: "hidden",
           boxShadow: "0 2px 8px rgba(6,182,212,0.12)",
         }}
         onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(6,182,212,0.25)"; }}
         onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 8px rgba(6,182,212,0.12)"; }}
       >
         {/* Decorative orb */}
-        <span style={{ position: "absolute", top: "-20px", right: "-20px", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(6,182,212,0.08)", pointerEvents: "none" }} />
+        <span style={{ position: "absolute", top: "-20px", right: locale === "ar" ? "unset" : "-20px", left: locale === "ar" ? "-20px" : "unset", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(6,182,212,0.08)", pointerEvents: "none" }} />
         {/* Icon */}
         <div style={{
           width: "46px", height: "46px", borderRadius: "12px", flexShrink: 0,
@@ -312,7 +315,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
           boxShadow: "0 4px 12px rgba(6,182,212,0.4)", fontSize: "20px",
         }}>💵</div>
         {/* Text */}
-        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+        <div style={{ flex: 1, minWidth: 0, textAlign: locale === "ar" ? "right" : "left" }}>
           <div style={{ fontSize: "15px", fontWeight: 800, letterSpacing: "-0.01em", color: "#164e63", marginBottom: "3px" }}>
             {lbl("Show Prices in USD", "عرض الأسعار بالدولار")}
           </div>
@@ -320,7 +323,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
             {lbl("Convert & export published prices", "تحويل وتصدير الأسعار المنشورة")}
           </div>
         </div>
-        <span style={{ fontSize: "16px", color: "#0891b2", flexShrink: 0 }}>→</span>
+        <span style={{ fontSize: "16px", color: "#0891b2", flexShrink: 0, transform: locale === "ar" ? "rotate(180deg)" : "none" }}>→</span>
       </button>
     );
   }
@@ -362,7 +365,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: `1px solid ${R.border}`, background: R.white, borderRadius: "var(--radius-lg) var(--radius-lg) 0 0", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>💵</div>
-              <div>
+              <div style={{ textAlign: locale === "ar" ? "right" : "left" }}>
                 <p style={{ margin: 0, fontSize: "10px", color: R.navySoft, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>FAERP · {lbl("Price Report", "تقرير الأسعار")}</p>
                 <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: R.navy }}>{lbl("Published Selling Prices in USD", "قائمة الأسعار المعتمدة بالدولار")}</h2>
               </div>
@@ -372,11 +375,11 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
                 <>
                   <button type="button" onClick={exportXLSX} disabled={exporting}
                     style={{ padding: "7px 14px", fontSize: "12px", fontWeight: 700, borderRadius: "8px", border: `1px solid ${R.border}`, background: R.bg, color: R.navy, cursor: exporting ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px", opacity: exporting ? 0.6 : 1 }}>
-                    {exporting ? "⏳" : "📊"} {lbl("Excel / XLSX", "إكسل")}
+                    {exporting ? "⏳" : "📊"} {exporting ? (locale === "ar" ? "جاري التصدير…" : "Exporting…") : (locale === "ar" ? "إكسل" : "Excel / XLSX")}
                   </button>
                   <button type="button" onClick={exportPDF}
                     style={{ padding: "7px 14px", fontSize: "12px", fontWeight: 700, borderRadius: "8px", border: "1px solid #6366f1", background: "#6366f1", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-                    🖨️ {lbl("Print / PDF", "طباعة PDF")}
+                    🖨️ {locale === "ar" ? "طباعة PDF" : "Print / PDF"}
                   </button>
                 </>
               )}
@@ -405,9 +408,9 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
                 {/* Rate info strip */}
                 <div style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
                   {[
-                    { label: "Exchange Rate", value: `1 USD = ${rate.toFixed(4)} EGP`, sub: rateInfo ?? "" },
-                    { label: "Published Items", value: published.length, sub: "with selling prices" },
-                    { label: "Categories", value: Object.keys(grouped).length, sub: "product categories" },
+                    { label: lbl("Exchange Rate", "سعر الصرف"), value: `1 USD = ${rate.toFixed(4)} EGP`, sub: rateInfo ?? "" },
+                    { label: lbl("Published Items", "الأصناف المنشورة"), value: published.length, sub: lbl("with selling prices", "مع أسعار البيع") },
+                    { label: lbl("Categories", "الفئات"), value: Object.keys(grouped).length, sub: lbl("product categories", "أقسام المنتجات") },
                   ].map(({ label, value, sub }) => (
                     <div key={label} style={{ flex: "1 1 140px", border: `1px solid ${R.border}`, borderRadius: "10px", padding: "12px 16px", background: R.bg }}>
                       <div style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: R.navySoft, marginBottom: "4px" }}>{label}</div>
@@ -428,22 +431,22 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
                       <thead>
                         <tr>
                           {COL_HEADERS.map((h, i) => (
-                            <th key={h} style={{ textAlign: i >= 3 ? "right" : "left", borderBottom: `2px solid ${R.border}`, padding: "8px 10px", color: R.navySoft, fontWeight: 700, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.07em", background: R.bg, whiteSpace: "nowrap" }}>{h}</th>
+                            <th key={h} style={{ textAlign: i >= 3 ? (locale === "ar" ? "left" : "right") : (locale === "ar" ? "right" : "left"), borderBottom: `2px solid ${R.border}`, padding: "8px 10px", color: R.navySoft, fontWeight: 700, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.07em", background: R.bg, whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {rows.map((r, i) => (
                           <tr key={r.item_id} style={{ borderBottom: `1px solid ${R.rowBorder}`, background: i % 2 === 0 ? R.white : R.bg }}>
-                            <td style={{ padding: "9px 10px", fontWeight: 600, color: R.navy, maxWidth: "220px" }}>
+                            <td style={{ padding: "9px 10px", fontWeight: 600, color: R.navy, maxWidth: "220px", textAlign: locale === "ar" ? "right" : "left" }}>
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }} title={r.item_name}>{r.item_name}</span>
                             </td>
-                            <td style={{ padding: "9px 10px", color: R.navySoft }}>{r.unit}</td>
+                            <td style={{ padding: "9px 10px", color: R.navySoft, textAlign: locale === "ar" ? "right" : "left" }}>{r.unit}</td>
                             <td style={{ padding: "9px 10px", color: R.navySoft, textAlign: "center" }}>{r.moq ? r.moq.toLocaleString() : "—"}</td>
-                            <td style={{ padding: "9px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                            <td style={{ padding: "9px 10px", textAlign: locale === "ar" ? "left" : "right", whiteSpace: "nowrap" }}>
                               <span style={{ fontWeight: 800, color: "#0284c7", fontSize: "13px" }}>{fmtUSD(toUSD(r.sell_min))}</span>
                             </td>
-                            <td style={{ padding: "9px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                            <td style={{ padding: "9px 10px", textAlign: locale === "ar" ? "left" : "right", whiteSpace: "nowrap" }}>
                               <span style={{ fontWeight: 800, color: "#6366f1", fontSize: "13px" }}>{fmtUSD(toUSD(r.sell_max))}</span>
                             </td>
                           </tr>
@@ -465,30 +468,30 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #1e3a8a", paddingBottom: "16px", marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div style={{ width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center" }}><img src="/faerp logo.svg" style={{ width: "36px", height: "36px", objectFit: "contain" }} alt="Logo" /></div>
-                <div><div style={{ fontSize: "18px", fontWeight: 800 }}>FAERP</div><div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em" }}>Enterprise ERP · On-Premises</div></div>
+                <div><div style={{ fontSize: "18px", fontWeight: 800 }}>FAERP</div><div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{lbl("Enterprise ERP · On-Premises", "نظام تخطيط موارد المؤسسات · تشغيل محلي")}</div></div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "4px" }}>Published Selling Prices — USD</div>
-                <div style={{ fontSize: "11px", color: "#6b7280" }}>{month} · 1 USD = {rate.toFixed(4)} EGP · Prepared by {username}</div>
+              <div style={{ textAlign: locale === "ar" ? "left" : "right" }}>
+                <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "4px" }}>{lbl("Published Selling Prices — USD", "أسعار البيع المنشورة بالدولار")}</div>
+                <div style={{ fontSize: "11px", color: "#6b7280" }}>{formatMonthLabel(month)} · {lbl(`1 USD = ${rate.toFixed(4)} EGP`, `١ دولار = ${rate.toFixed(4)} جنيه`)} · {lbl(`Prepared by ${username}`, `أعدت بواسطة ${username}`)}</div>
               </div>
             </div>
             {Object.entries(grouped).map(([cat, rows]) => (
               <div key={cat}>
-                <div style={{ background: "#eff6ff", padding: "8px 12px", fontWeight: 800, fontSize: "12px", color: "#1e3a8a", borderLeft: "3px solid #1e3a8a", margin: "12px 0 6px" }}>{cat}</div>
+                <div style={{ background: "#eff6ff", padding: "8px 12px", fontWeight: 800, fontSize: "12px", color: "#1e3a8a", borderInlineStart: "3px solid #1e3a8a", margin: "12px 0 6px" }}>{cat}</div>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>
-                    {["Product", "Unit", "MOQ", "Min (USD $)", "Max (USD $)"].map((h, i) => (
-                      <th key={h} style={{ background: "#1e3a8a", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#ffffff", padding: "8px 10px", borderBottom: "2px solid #1b357f", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
+                    {COL_HEADERS.map((h, i) => (
+                      <th key={h} style={{ background: "#1e3a8a", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#ffffff", padding: "8px 10px", borderBottom: "2px solid #1b357f", textAlign: i >= 3 ? (locale === "ar" ? "left" : "right") : (locale === "ar" ? "right" : "left") }}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.item_id} style={{ background: "#f0f9ff" }}>
-                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px" }}>{r.item_name}</td>
-                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", color: "#9ca3af" }}>{r.unit}</td>
+                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: locale === "ar" ? "right" : "left" }}>{r.item_name}</td>
+                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", color: "#9ca3af", textAlign: locale === "ar" ? "right" : "left" }}>{r.unit}</td>
                         <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "center", color: "#9ca3af" }}>{r.moq ?? "—"}</td>
-                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "right", color: "#0284c7", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_min))}</td>
-                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: "right", color: "#1e3a8a", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_max))}</td>
+                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: locale === "ar" ? "left" : "right", color: "#0284c7", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_min))}</td>
+                        <td style={{ padding: "7px 10px", borderBottom: "1px solid #f3f4f6", fontSize: "11px", textAlign: locale === "ar" ? "left" : "right", color: "#1e3a8a", fontWeight: 800 }}>{fmtUSD(toUSD(r.sell_max))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -496,7 +499,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
               </div>
             ))}
             <div style={{ marginTop: "32px", paddingTop: "12px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#9ca3af" }}>
-              <span>FAERP · Confidential</span><span>Prepared by {username}</span><span>{formatDate()}</span>
+              <span>{lbl("FAERP · Confidential", "FAERP · سري")}</span><span>{lbl(`Prepared by ${username}`, `أعدت بواسطة ${username}`)}</span><span>{formatDate()}</span>
             </div>
           </div>
         </div>

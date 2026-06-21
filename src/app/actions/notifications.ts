@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { acknowledgePrice } from "@/lib/db";
+import { acknowledgePrice, markPriceAcknowledgmentsAsRead } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { asNumber, asString } from "@/lib/format";
 
@@ -19,8 +19,24 @@ export async function acknowledgeAlertAction(formData: FormData): Promise<{ ok: 
 
     revalidatePath("/dashboard/sales");
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/notifications");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+/**
+ * SC marks all SA price acknowledgments as read/seen.
+ */
+export async function markAcknowledgmentsReadAction(): Promise<{ ok: boolean }> {
+  try {
+    requireRole(["SC", "AD"]);
+    markPriceAcknowledgmentsAsRead();
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false };
   }
 }

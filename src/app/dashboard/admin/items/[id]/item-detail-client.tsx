@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import Link from "next/link";
+import { useI18n } from "@/lib/i18n-context";
 
 type Props = {
   item: {
@@ -61,6 +62,7 @@ export default function ItemDetailClient({
   sellingRows,
   role,
 }: Props) {
+  const { locale } = useI18n();
   const [windowSize, setWindowSize] = useState<6 | 12 | "all">(6);
   const visibleMonths = useMemo(() => {
     return windowSize === "all" ? months : months.slice(0, windowSize);
@@ -104,12 +106,12 @@ export default function ItemDetailClient({
             </div>
             <div>
               <div style={{ fontSize: "18px", fontWeight: 800 }}>FAERP</div>
-              <div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em" }}>Enterprise ERP · On-Premises</div>
+              <div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{locale === "ar" ? "نظام تسعير المنتجات" : "Enterprise ERP · On-Premises"}</div>
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "4px", color: "#111827" }}>Item Profile Details</div>
-            <div style={{ fontSize: "11px", color: "#6b7280" }}>Generated {new Date().toLocaleDateString()}</div>
+            <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "4px", color: "#111827" }}>{locale === "ar" ? "تفاصيل ملف الصنف" : "Item Profile Details"}</div>
+            <div style={{ fontSize: "11px", color: "#6b7280" }}>{locale === "ar" ? `تم الإنشاء في ${new Date().toLocaleDateString("ar-EG")}` : `Generated ${new Date().toLocaleDateString()}`}</div>
           </div>
         </div>
       </div>
@@ -117,7 +119,7 @@ export default function ItemDetailClient({
       {/* Page Header */}
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Link href="/dashboard/admin/items" className="button button-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-          ← Back to Catalog
+          {locale === "ar" ? "← العودة إلى الكتالوج" : "← Back to Catalog"}
         </Link>
         <button
           type="button"
@@ -125,7 +127,7 @@ export default function ItemDetailClient({
           className="button button-primary"
           style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          🖨️ Print Details
+          🖨️ {locale === "ar" ? "طباعة التفاصيل" : "Print Details"}
         </button>
       </div>
 
@@ -150,14 +152,18 @@ export default function ItemDetailClient({
               {item.category_name}
             </div>
             <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)" }}>{item.name}</h1>
-            <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "var(--text-muted)" }}>{item.description || "No description provided."}</p>
+            <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "var(--text-muted)" }}>
+              {role !== "AD" && item.description && item.description.toLowerCase().includes("imported via csv template")
+                ? (locale === "ar" ? "لا يوجد وصف." : "No description provided.")
+                : (item.description || (locale === "ar" ? "لا يوجد وصف." : "No description provided."))}
+            </p>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <span className="badge badge-strong" style={{ fontSize: "12px", padding: "4px 10px" }}>{item.unit}</span>
           <span className={`badge ${item.active ? "badge-success" : "badge-danger"}`} style={{ fontSize: "12px", padding: "4px 10px" }}>
-            {item.active ? "Active" : "Inactive"}
+            {item.active ? (locale === "ar" ? "نشط" : "Active") : (locale === "ar" ? "غير نشط" : "Inactive")}
           </span>
         </div>
       </div>
@@ -167,55 +173,57 @@ export default function ItemDetailClient({
         {role !== "SA" ? (
           <>
             <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Best Price Supplier</div>
+              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "المورد صاحب أفضل سعر" : "Best Price Supplier"}</div>
               <strong style={{ fontSize: "20px", color: "var(--success)" }}>
                 {bestSupplier ? bestSupplier.name : "—"}
               </strong>
               <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-                {bestSupplier?.latestPrice ? `Latest: ${formatCurrency(bestSupplier.latestPrice)}` : "No quotes available"}
+                {bestSupplier?.latestPrice 
+                  ? (locale === "ar" ? `الأحدث: ${formatCurrency(bestSupplier.latestPrice)}` : `Latest: ${formatCurrency(bestSupplier.latestPrice)}`) 
+                  : (locale === "ar" ? "لا توجد عروض أسعار" : "No quotes available")}
               </div>
             </div>
 
             <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Active Suppliers</div>
+              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الموردون النشطون" : "Active Suppliers"}</div>
               <strong style={{ fontSize: "24px", color: "var(--primary)" }}>{supplierStats.length}</strong>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Configured in catalog</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{locale === "ar" ? "تم تكوينه في الكتالوج" : "Configured in catalog"}</div>
             </div>
           </>
         ) : (
           <>
             <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Approved Min Selling Price</div>
+              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "أقل سعر بيع معتمد" : "Approved Min Selling Price"}</div>
               <strong style={{ fontSize: "24px", color: "var(--success)" }}>
                 {sellingRows[0] ? formatCurrency(sellingRows[0].sell_min) : "—"}
               </strong>
               <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-                Active for {sellingRows[0] ? formatMonthLabel(sellingRows[0].month) : "current month"}
+                {locale === "ar" ? "نشط لشهر " : "Active for "}{sellingRows[0] ? formatMonthLabel(sellingRows[0].month) : (locale === "ar" ? "الشهر الحالي" : "current month")}
               </div>
             </div>
 
             <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Approved Max Selling Price</div>
+              <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "أقصى سعر بيع معتمد" : "Approved Max Selling Price"}</div>
               <strong style={{ fontSize: "24px", color: "var(--primary)" }}>
                 {sellingRows[0] ? formatCurrency(sellingRows[0].sell_max) : "—"}
               </strong>
               <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-                Active for {sellingRows[0] ? formatMonthLabel(sellingRows[0].month) : "current month"}
+                {locale === "ar" ? "نشط لشهر " : "Active for "}{sellingRows[0] ? formatMonthLabel(sellingRows[0].month) : (locale === "ar" ? "الشهر الحالي" : "current month")}
               </div>
             </div>
           </>
         )}
 
         <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-          <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Standard Logistics</div>
+          <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الخدمات اللوجستية القياسية" : "Standard Logistics"}</div>
           <strong style={{ fontSize: "20px", color: "var(--text-primary)" }}>{formatCurrency(item.transportation_per_unit)}</strong>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Est. transport cost per unit</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{locale === "ar" ? "تكلفة النقل المقدرة لكل وحدة" : "Est. transport cost per unit"}</div>
         </div>
 
         <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-          <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>Minimum Order Qty</div>
+          <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الحد الأدنى لكمية الطلب (MOQ)" : "Minimum Order Qty"}</div>
           <strong style={{ fontSize: "24px", color: "var(--text-primary)" }}>{item.moq}</strong>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Standard pack units</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{locale === "ar" ? "وحدات التعبئة القياسية" : "Standard pack units"}</div>
         </div>
       </div>
 
@@ -225,16 +233,16 @@ export default function ItemDetailClient({
           {sellingRows.length > 0 ? (
             <div className="panel" style={{ padding: "24px" }}>
               <h3 style={{ fontSize: "15px", fontWeight: 700, margin: "0 0 20px 0", textTransform: "uppercase", color: "var(--text-secondary)" }}>
-                💰 Approved Selling Price History
+                {locale === "ar" ? "💰 سجل أسعار البيع المعتمدة" : "💰 Approved Selling Price History"}
               </h3>
               <div className="table-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-elevated)", borderBottom: "1.5px solid var(--border-medium)" }}>
-                      <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, color: "var(--text-muted)" }}>Month</th>
-                      <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, color: "var(--text-muted)" }}>Strategy</th>
-                      <th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "var(--success)" }}>Minimum Price</th>
-                      <th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "var(--primary)" }}>Maximum Price</th>
+                      <th style={{ padding: "12px 16px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, color: "var(--text-muted)" }}>{locale === "ar" ? "الشهر" : "Month"}</th>
+                      <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, color: "var(--text-muted)" }}>{locale === "ar" ? "الاستراتيجية" : "Strategy"}</th>
+                      <th style={{ padding: "12px 16px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, color: "var(--success)" }}>{locale === "ar" ? "الحد الأدنى للسعر" : "Minimum Price"}</th>
+                      <th style={{ padding: "12px 16px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, color: "var(--primary)" }}>{locale === "ar" ? "الحد الأقصى للسعر" : "Maximum Price"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -244,10 +252,10 @@ export default function ItemDetailClient({
                         <td style={{ padding: "12px 16px", textAlign: "center" }}>
                           <span className="badge badge-strong">{row.strategy.toUpperCase()}</span>
                         </td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "var(--success)" }}>
+                        <td style={{ padding: "12px 16px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, color: "var(--success)" }}>
                           {formatCurrency(row.sell_min)}
                         </td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "var(--primary)" }}>
+                        <td style={{ padding: "12px 16px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, color: "var(--primary)" }}>
                           {formatCurrency(row.sell_max)}
                         </td>
                       </tr>
@@ -258,7 +266,7 @@ export default function ItemDetailClient({
             </div>
           ) : (
             <div className="panel" style={{ padding: "48px", textAlign: "center", color: "var(--text-muted)" }}>
-              <h3>No selling prices published yet for this item.</h3>
+              <h3>{locale === "ar" ? "لم يتم نشر أسعار بيع لهذا الصنف بعد." : "No selling prices published yet for this item."}</h3>
             </div>
           )}
         </div>
@@ -271,7 +279,7 @@ export default function ItemDetailClient({
             {chartData && (
               <div className="panel" style={{ padding: "20px" }}>
                 <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0", textTransform: "uppercase", color: "var(--text-secondary)" }}>
-                  📈 Average Market Price Trend
+                  {locale === "ar" ? "📈 متوسط اتجاه سعر السوق" : "📈 Average Market Price Trend"}
                 </h3>
                 <div style={{ position: "relative", width: "100%", overflowX: "auto" }}>
                   <svg width={chartData.W} height={chartData.H} viewBox={`0 0 ${chartData.W} ${chartData.H}`} style={{ display: "block", margin: "0 auto" }}>
@@ -313,7 +321,7 @@ export default function ItemDetailClient({
             <div className="panel" style={{ padding: "20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
                 <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, textTransform: "uppercase", color: "var(--text-secondary)" }}>
-                  📊 Historical Price Matrix
+                  {locale === "ar" ? "📊 مصفوفة الأسعار التاريخية" : "📊 Historical Price Matrix"}
                 </h3>
                 <div className="no-print" style={{ display: "flex", gap: "4px", background: "var(--bg-muted)", padding: "3px", borderRadius: "6px" }}>
                   {([6, 12, "all"] as const).map((w) => (
@@ -333,7 +341,7 @@ export default function ItemDetailClient({
                         transition: "all 150ms"
                       }}
                     >
-                      {w === "all" ? "All" : `${w}M`}
+                      {w === "all" ? (locale === "ar" ? "الكل" : "All") : `${w}M`}
                     </button>
                   ))}
                 </div>
@@ -343,7 +351,7 @@ export default function ItemDetailClient({
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
-                      <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "var(--text-muted)" }}>Month</th>
+                      <th style={{ padding: "10px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, color: "var(--text-muted)" }}>{locale === "ar" ? "الشهر" : "Month"}</th>
                       {supplierNames.map((s, idx) => (
                         <th key={s} style={{ padding: "10px 12px", textAlign: "center", color: COLORS[idx % COLORS.length], fontWeight: 700 }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -352,7 +360,7 @@ export default function ItemDetailClient({
                           </span>
                         </th>
                       ))}
-                      <th style={{ padding: "10px 12px", textAlign: "center", color: "var(--primary)", fontWeight: 700 }}>Avg</th>
+                      <th style={{ padding: "10px 12px", textAlign: "center", color: "var(--primary)", fontWeight: 700 }}>{locale === "ar" ? "المتوسط" : "Avg"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -367,7 +375,7 @@ export default function ItemDetailClient({
                         <tr key={m} style={{ borderBottom: "1px solid var(--border-light)", background: isLatest ? "rgba(99,102,241,0.03)" : "transparent" }}>
                           <td style={{ padding: "10px 12px", fontWeight: isLatest ? 700 : 500 }}>
                             {formatMonthLabel(m)}
-                            {isLatest && <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--primary)", marginLeft: "6px" }}>LATEST</span>}
+                            {isLatest && <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--primary)", marginLeft: "6px", marginRight: "6px" }}>{locale === "ar" ? "الأحدث" : "LATEST"}</span>}
                           </td>
                           {supplierNames.map((s) => {
                             const entry = monthRow?.[s];
@@ -397,7 +405,7 @@ export default function ItemDetailClient({
             {/* Supplier rankings */}
             <div className="panel" style={{ padding: "20px" }}>
               <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0", textTransform: "uppercase", color: "var(--text-secondary)" }}>
-                🏬 Supplier Rankings
+                {locale === "ar" ? "🏬 تصنيف الموردين" : "🏬 Supplier Rankings"}
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {supplierStats.map((s, idx) => {
@@ -412,7 +420,7 @@ export default function ItemDetailClient({
                           {s.name}
                         </div>
                         <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                          {s.quoteCount} quotes · Avg {formatCurrency(s.avg)}
+                          {locale === "ar" ? `${s.quoteCount} عروض · المتوسط ${formatCurrency(s.avg)}` : `${s.quoteCount} quotes · Avg ${formatCurrency(s.avg)}`}
                         </div>
                       </div>
                     </div>
@@ -425,7 +433,7 @@ export default function ItemDetailClient({
             {(role === "SC" || role === "SA") && sellingRows.length > 0 && (
               <div className="panel" style={{ padding: "20px" }}>
                 <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0", textTransform: "uppercase", color: "var(--text-secondary)" }}>
-                  💰 Published Price Rules
+                  {locale === "ar" ? "💰 قواعد الأسعار المنشورة" : "💰 Published Price Rules"}
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {sellingRows.slice(0, 5).map((row) => (
@@ -444,7 +452,6 @@ export default function ItemDetailClient({
                 </div>
               </div>
             )}
-
           </div>
         </div>
       )}

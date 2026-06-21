@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth";
 import { getCategories, getMonthlyReport } from "@/lib/db";
 import { currentMonth, formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
+import ClickableDetailTrigger from "@/components/clickable-detail-trigger";
 
 export default function ReportsPage({ searchParams }: { searchParams?: { month?: string; categoryId?: string } }) {
   const session = requireRole(["SC"]);
@@ -37,8 +38,8 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
             <h2>{formatMonthLabel(month)}</h2>
           </div>
           <div className="button-row">
-            <a href={printHref} className="button button-secondary" target="_blank">📄 Download PDF</a>
-            <a href={exportHref} className="button button-primary">📊 Download XLSX</a>
+            <a href={printHref} className="button button-secondary" target="_blank">{t("rep.downloadPDF")}</a>
+            <a href={exportHref} className="button button-primary">{t("rep.downloadXLSX")}</a>
           </div>
         </div>
         <form method="GET" className="inline-form">
@@ -83,25 +84,27 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
                   <tr key={row.itemId}>
                     <td>{row.categoryName}</td>
                     <td>
-                      <span
-                        onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.itemId } }))}
+                      <ClickableDetailTrigger
+                        type="item"
+                        id={row.itemId}
                         className="clickable-detail-trigger"
                       >
                         {row.itemName}
-                      </span>
+                      </ClickableDetailTrigger>
                     </td>
                     <td>{row.unit}</td>
                     <td>
                       <div className="report-chip-wrap">
                         {Object.entries(row.quotes).map(([supId, q]) => (
-                          <span
+                          <ClickableDetailTrigger
                             key={`${row.itemId}-${supId}`}
-                            onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: Number(supId) } }))}
+                            type="supplier"
+                            id={Number(supId)}
                             style={{ cursor: "pointer" }}
                             className="report-chip"
                           >
                             {q.supplierName}: {formatCurrency(q.price)}
-                          </span>
+                          </ClickableDetailTrigger>
                         ))}
                       </div>
                     </td>
@@ -134,12 +137,13 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
                 {report.monthlySellingPrices.map((row) => (
                   <tr key={row.item_id}>
                     <td>
-                      <span
-                        onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                      <ClickableDetailTrigger
+                        type="item"
+                        id={row.item_id}
                         className="clickable-detail-trigger"
                       >
                         {row.item_name}
-                      </span>
+                      </ClickableDetailTrigger>
                     </td>
                     <td>{row.strategy?.toUpperCase()}</td>
                     <td>{formatCurrency(row.sell_min)}</td>
@@ -176,20 +180,22 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
               {report.volatilityRows.map((row, i) => (
                 <tr key={`${row.item_name}-${row.supplier_name}-${i}`}>
                   <td>
-                    <span
-                      onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                    <ClickableDetailTrigger
+                      type="item"
+                      id={row.item_id}
                       className="clickable-detail-trigger"
                     >
                       {row.item_name}
-                    </span>
+                    </ClickableDetailTrigger>
                   </td>
                   <td>
-                    <span
-                      onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier_id } }))}
+                    <ClickableDetailTrigger
+                      type="supplier"
+                      id={row.supplier_id}
                       className="clickable-detail-trigger"
                     >
                       {row.supplier_name}
-                    </span>
+                    </ClickableDetailTrigger>
                   </td>
                   <td>{row.updates}</td>
                   <td>{formatCurrency(row.low_price)}</td>

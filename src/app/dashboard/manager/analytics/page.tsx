@@ -16,6 +16,7 @@ import AnalyticsChart from "@/components/analytics-chart";
 import AnalyticsFilters from "@/components/analytics-filters";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
 import Link from "next/link";
+import { getServerT, getServerLocale } from "@/lib/locale-server";
 
 type SearchParams = {
   viewMode?: string;
@@ -54,6 +55,9 @@ const SUPPLIER_COLORS = [
 
 export default function AnalyticsPage({ searchParams }: { searchParams?: SearchParams }) {
   const session = requireRole(["SC"]);
+  const t = getServerT();
+  const locale = getServerLocale();
+  const isAr = locale === "ar";
 
   const viewMode = searchParams?.viewMode === "category" ? "category" : "single";
 
@@ -104,10 +108,10 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
   const stdDev = calculateStdDev(prices, avgPrice);
   const fluctuationPct = minPrice > 0 ? ((maxPrice - minPrice) / minPrice) * 100 : 0;
 
-  let volatilityLevel = "Low";
+  let volatilityLevel = isAr ? "منخفض" : "Low";
   let volatilityAccent = "cyan";
-  if (fluctuationPct > 15) { volatilityLevel = "High"; volatilityAccent = "red"; }
-  else if (fluctuationPct > 5) { volatilityLevel = "Moderate"; volatilityAccent = "amber"; }
+  if (fluctuationPct > 15) { volatilityLevel = isAr ? "مرتفع" : "High"; volatilityAccent = "red"; }
+  else if (fluctuationPct > 5) { volatilityLevel = isAr ? "متوسط" : "Moderate"; volatilityAccent = "amber"; }
 
   // Item stats (category mode)
   const itemsStats = items.map((item) => {
@@ -117,9 +121,9 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
     const iMax = itemPrices.length > 0 ? Math.max(...itemPrices) : 0;
     const iAvg = calculateMean(itemPrices);
     const iSpreadPct = iMin > 0 ? ((iMax - iMin) / iMin) * 100 : 0;
-    let iVol = "Low";
-    if (iSpreadPct > 15) iVol = "High";
-    else if (iSpreadPct > 5) iVol = "Moderate";
+    let iVol = isAr ? "منخفض" : "Low";
+    if (iSpreadPct > 15) iVol = isAr ? "مرتفع" : "High";
+    else if (iSpreadPct > 5) iVol = isAr ? "متوسط" : "Moderate";
     return { itemId: item.id, itemName: item.name, unit: item.unit, quotesCount: itemData.length, min: iMin, avg: iAvg, max: iMax, spreadPct: iSpreadPct, volatility: iVol };
   }).filter((stat) => stat.quotesCount > 0);
 
@@ -166,15 +170,15 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
 
   // Strategy recommendation
   const activeVolatility = viewMode === "category" ? (mostVolatileItem?.spreadPct || 0) : fluctuationPct;
-  let strategyTitle = "Tight Competitive Strategy";
+  let strategyTitle = isAr ? "استراتيجية تنافسية ضيقة" : "Tight Competitive Strategy";
   let strategyMarkup = "5% – 8%";
   let strategyBadgeClass = "badge-success";
   if (activeVolatility > 15) {
-    strategyTitle = "Hedged High-Margin Strategy";
+    strategyTitle = isAr ? "استراتيجية التحوط بهامش مرتفع" : "Hedged High-Margin Strategy";
     strategyMarkup = "15% – 25%";
     strategyBadgeClass = "badge-danger";
   } else if (activeVolatility > 5) {
-    strategyTitle = "Standard Resilient Margin";
+    strategyTitle = isAr ? "هامش مرن قياسي" : "Standard Resilient Margin";
     strategyMarkup = "10% – 15%";
     strategyBadgeClass = "badge-warning";
   }
@@ -189,27 +193,37 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
       const chg = ((last.avg - first.avg) / first.avg) * 100;
       insights.push({
         icon: chg > 0 ? "📈" : "📉",
-        label: "Price Trend",
-        text: `${selectedItem.name} ${chg > 0 ? "up" : "down"} ${Math.abs(chg).toFixed(1)}% since ${formatMonthLabel(first.month)}`
+        label: isAr ? "اتجاه السعر" : "Price Trend",
+        text: isAr
+          ? `${selectedItem.name} ${chg > 0 ? "ارتفع" : "انخفض"} بنسبة ${Math.abs(chg).toFixed(1)}% منذ ${formatMonthLabel(first.month)}`
+          : `${selectedItem.name} ${chg > 0 ? "up" : "down"} ${Math.abs(chg).toFixed(1)}% since ${formatMonthLabel(first.month)}`
       });
     }
   }
   if (costLeader) {
     insights.push({
       icon: "🏆",
-      label: "Cost Leader",
-      text: `${costLeader.name} quotes ${Math.abs(costLeader.avgDeviation).toFixed(1)}% ${costLeader.avgDeviation < 0 ? "below" : "above"} market avg`
+      label: isAr ? "قائد التكلفة" : "Cost Leader",
+      text: isAr
+        ? `عروض ${costLeader.name} تقل بنسبة ${Math.abs(costLeader.avgDeviation).toFixed(1)}% ${costLeader.avgDeviation < 0 ? "أقل من" : "أعلى من"} متوسط السوق`
+        : `${costLeader.name} quotes ${Math.abs(costLeader.avgDeviation).toFixed(1)}% ${costLeader.avgDeviation < 0 ? "below" : "above"} market avg`
     });
   }
   if (fluctuationPct > 0) {
     insights.push({
       icon: fluctuationPct > 15 ? "⚠️" : fluctuationPct > 5 ? "🔔" : "✅",
-      label: "Volatility",
-      text: `${volatilityLevel} market volatility (${fluctuationPct.toFixed(1)}% spread). Recommended markup: ${strategyMarkup}`
+      label: isAr ? "التقلب" : "Volatility",
+      text: isAr
+        ? `تقلبات السوق ${volatilityLevel} (الفارق ${fluctuationPct.toFixed(1)}%). الهامش المقترح: ${strategyMarkup}`
+        : `${volatilityLevel} market volatility (${fluctuationPct.toFixed(1)}% spread). Recommended markup: ${strategyMarkup}`
     });
   }
   if (insights.length === 0) {
-    insights.push({ icon: "ℹ️", label: "Info", text: "Adjust filters and select a product to generate insights." });
+    insights.push({ 
+      icon: "ℹ️", 
+      label: isAr ? "معلومات" : "Info", 
+      text: isAr ? "اضبط الفلاتر وحدد منتجًا لإنشاء رؤى." : "Adjust filters and select a product to generate insights." 
+    });
   }
 
   // Find max deviation for bar scaling
@@ -240,9 +254,9 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
   return (
     <div className="page-stack">
       <SectionIntro
-        eyebrow="Market Intelligence"
-        title="Insights & Analytics"
-        description="Track supplier competitiveness, price trends, and market volatility to make smarter purchasing decisions."
+        eyebrow={t("an.eyebrow")}
+        title={t("an.title")}
+        description={t("an.desc")}
         actions={<span className="badge">{session.displayName}</span>}
       />
 
@@ -253,14 +267,14 @@ export default function AnalyticsPage({ searchParams }: { searchParams?: SearchP
           className={`button ${viewMode === "single" ? "button-primary" : "button-secondary"}`}
           style={{ padding: "9px 18px", borderRadius: "7px", fontSize: "13px" }}
         >
-          🔍 Single Item
+          {t("an.singleItem")}
         </Link>
         <Link
           href={getFilterUrl({ viewMode: "category" })}
           className={`button ${viewMode === "category" ? "button-primary" : "button-secondary"}`}
           style={{ padding: "9px 18px", borderRadius: "7px", fontSize: "13px" }}
         >
-          📊 Category View
+          {t("an.categoryView")}
         </Link>
       </div>
 

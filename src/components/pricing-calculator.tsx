@@ -15,6 +15,8 @@ type PriceEntry = {
   price: number;
   recorded_at: string;
   supplier_name: string;
+  negotiated_price?: number | null;
+  negotiated_notes?: string | null;
 };
 
 type Supplier = {
@@ -119,6 +121,87 @@ export default function PricingCalculator({
   const [markupType, setMarkupType]     = useState<"pct" | "fixed" | "div">("pct");
   const [markupMinVal, setMarkupMinVal] = useState<string>("");
   const [markupMaxVal, setMarkupMaxVal] = useState<string>("");
+
+  const [showRecommendationModal, setShowRecommendationModal] = useState(false);
+
+  // ── Egypt B2B Pricing Recommendation Engine ───────────────────────
+  const recommendationData = useMemo(() => {
+    // 1. Find negotiated prices for this month
+    const currentMonthNegotiations = priceEntries.filter(
+      pe => pe.item_id === itemId && pe.month === month && pe.negotiated_price !== null && pe.negotiated_price !== undefined && pe.negotiated_price > 0
+    );
+    const minNegotiatedPrice = currentMonthNegotiations.length > 0 
+      ? Math.min(...currentMonthNegotiations.map(pe => pe.negotiated_price!)) 
+      : null;
+
+    // 2. Base Cost is the cheapest supplier quote or negotiated price
+    const baseCost = minNegotiatedPrice !== null ? Math.min(buyMin, minNegotiatedPrice) : buyMin;
+
+    // 3. Recommended Strategy
+    const recStrategy = (tierEnabled && isTiered) ? "tier" : "fixed";
+
+    // 4. Recommended Markup / Price
+    const minFloor = floorPct ?? 5;
+    
+    let recMarkup = Math.max(minFloor + 5, 10); // Start at floor + 5% or 10%
+
+    // In Egypt, B2B wholesale pricing operates on lean margins but must respect the floor.
+    // If it's Tiered, we must check that after discounts are applied, net markup does not violate minFloor.
+    if (recStrategy === "tier") {
+      const checkViolations = (m: number) => {
+        const baseSell = baseCost * (1 + m / 100);
+        // Tier 1 net markup
+        if (m < minFloor) return true;
+        // Tier 2
+        if (tier2Discount > 0) {
+          const t2Price = baseSell * (1 - tier2Discount / 100);
+          const t2Markup = ((t2Price / baseCost) - 1) * 100;
+          if (t2Markup < minFloor) return true;
+        }
+        // Tier 3
+        if (tier3Discount > 0) {
+          const t3Price = baseSell * (1 - tier3Discount / 100);
+          const t3Markup = ((t3Price / baseCost) - 1) * 100;
+          if (t3Markup < minFloor) return true;
+        }
+        // Tier 4
+        if (tier4Discount > 0) {
+          const t4Price = baseSell * (1 - tier4Discount / 100);
+          const t4Markup = ((t4Price / baseCost) - 1) * 100;
+          if (t4Markup < minFloor) return true;
+        }
+        return false;
+      };
+
+      while (checkViolations(recMarkup) && recMarkup < 100) {
+        recMarkup += 1;
+      }
+    }
+
+    const finalTransport = transportOverrideEnabled ? (parseFloat(transportOverrideAmount) || transportation) : transportation;
+
+    // Calculate final recommended prices rounded up to nearest 5 EGP
+    const recBaseSell = Math.ceil((baseCost * (1 + recMarkup / 100)) / 5) * 5;
+    const recMinMarkup = Math.max(minFloor + 2, 7);
+    const recMinSell = Math.ceil((baseCost * (1 + recMinMarkup / 100)) / 5) * 5;
+    const recMaxMarkup = Math.max(minFloor + 12, 15);
+    const recMaxSell = Math.ceil((baseCost * (1 + recMaxMarkup / 100)) / 5) * 5;
+
+    return {
+      minNegotiatedPrice,
+      currentMonthNegotiations,
+      baseCost,
+      recStrategy,
+      recMarkup,
+      recBaseSell,
+      recMinMarkup,
+      recMinSell,
+      recMaxMarkup,
+      recMaxSell,
+      finalTransport,
+      minFloor
+    };
+  }, [priceEntries, itemId, month, buyMin, tierEnabled, isTiered, floorPct, tier2Discount, tier3Discount, tier4Discount, transportOverrideEnabled, transportOverrideAmount, transportation, otherExpenses]);
 
   const { locale } = useI18n();
   const router = useRouter();
@@ -605,6 +688,28 @@ export default function PricingCalculator({
                   )}
                 </div>
 
+                {/* ── B2B Recommendation Trigger ── */}
+                <div style={{ marginTop: "4px", marginBottom: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecommendationModal(true)}
+                    style={{
+                      width: "100%",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                      padding: "10px 14px", borderRadius: "10px", fontSize: "12.5px", fontWeight: 800,
+                      background: "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)",
+                      color: "#fff", border: "none", cursor: "pointer",
+                      boxShadow: "0 2px 10px rgba(99,102,241,0.25)",
+                      transition: "all 150ms",
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(99,102,241,0.35)"; }}
+                    onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(99,102,241,0.25)"; }}
+                  >
+                    <span>✨</span>
+                    <span>{locale === "ar" ? "توصية تسعير B2B الذكي" : "Get B2B Price Recommendation"}</span>
+                  </button>
+                </div>
+
                 {/* ── Selling Price Inputs ── */}
                 {usesTierStrategy ? (
                   /* Tiered item: single Base Selling Price */
@@ -778,7 +883,7 @@ export default function PricingCalculator({
                       </div>
                     </div>
                     <div style={{ fontSize: "18px", fontWeight: 900, color: "var(--primary)", whiteSpace: "nowrap" }}>
-                      {moq.toLocaleString()} <span style={{ fontSize: "11px", fontWeight: 600 }}>units</span>
+                      {moq.toLocaleString()} <span style={{ fontSize: "11px", fontWeight: 600 }}>{locale === "ar" ? "وحدة" : "units"}</span>
                     </div>
                   </div>
                 )}
@@ -1203,106 +1308,115 @@ export default function PricingCalculator({
                     return Math.ceil(raw / 5) * 5;
                   };
 
+                  // Find negotiated prices for this item in month `m`
+                  const monthNegotiated = priceEntries.filter(
+                    pe => pe.item_id === itemId && pe.month === m && pe.negotiated_price != null && pe.negotiated_price > 0
+                  );
+
                   return (
                     <div key={m} style={{
                       borderRadius: "10px",
-                      border: `1.5px solid ${isFirstPub ? "rgba(16,185,129,0.25)" : "var(--border-light)"}`,
-                      background: isFirstPub ? "rgba(16,185,129,0.03)" : "var(--bg-elevated)",
+                      border: `1.5px solid ${isFirstPub ? "rgba(16,185,129,0.2)" : "var(--border-light)"}`,
+                      background: isFirstPub ? "rgba(16,185,129,0.02)" : "var(--bg-elevated)",
                       overflow: "hidden",
+                      fontSize: "12px"
                     }}>
                       {/* Card header */}
                       <div style={{
-                        padding: "7px 12px",
-                        background: isFirstPub ? "rgba(16,185,129,0.07)" : "var(--bg-subtle)",
-                        borderBottom: `1px solid ${isFirstPub ? "rgba(16,185,129,0.2)" : "var(--border-light)"}`,
+                        padding: "6px 12px",
+                        background: isFirstPub ? "rgba(16,185,129,0.05)" : "var(--bg-subtle)",
+                        borderBottom: `1px solid ${isFirstPub ? "rgba(16,185,129,0.15)" : "var(--border-light)"}`,
                         display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap",
                       }}>
-                        <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--text-primary)" }}>
+                        <span style={{ fontSize: "11.5px", fontWeight: 800, color: "var(--text-primary)" }}>
                           {formatMonthLabel(m)}
                         </span>
                         <span style={{
-                          fontSize: "9px", fontWeight: 800, textTransform: "uppercase",
-                          padding: "2px 6px", borderRadius: "4px",
+                          fontSize: "8.5px", fontWeight: 800, textTransform: "uppercase",
+                          padding: "1px 5px", borderRadius: "3px",
                           background: accentColor, color: "#fff",
                         }}>
                           {isFirstPub ? (locale === "ar" ? "أول نشر" : "First Publish") : (locale === "ar" ? "تحديث" : "Updated")}
                         </span>
                         <span style={{
-                          fontSize: "9px", fontWeight: 800,
-                          padding: "2px 7px", borderRadius: "4px",
+                          fontSize: "8.5px", fontWeight: 800,
+                          padding: "1px 5px", borderRadius: "3px",
                           background: isTierRecord ? "rgba(99,102,241,0.10)" : "rgba(59,130,246,0.08)",
                           color: isTierRecord ? "var(--primary)" : "#0369a1",
                           border: `1px solid ${isTierRecord ? "rgba(99,102,241,0.25)" : "rgba(59,130,246,0.2)"}`,
                         }}>
                           {isTierRecord ? "⚡ TIER" : `📊 ${(h.new_strategy || "").toUpperCase()}`}
                         </span>
-                        <span style={{ marginInlineStart: "auto", fontSize: "9.5px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                        <span style={{ marginInlineStart: "auto", fontSize: "9px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                           {formatDateTime(h.changed_at)} · {h.changed_by}
                         </span>
                       </div>
 
                       {/* Card body */}
-                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "7px" }}>
+                      <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
 
                         {/* Prices */}
                         {isTierRecord ? (
-                          <div>
-                            <div style={{ fontSize: "9px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>
-                              {locale === "ar" ? "أسعار الشرائح" : "Tier Selling Prices"}
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
-                              {([
-                                { label: `T1 (1–${tier1Max})`, price: h.new_sell_min },
-                                { label: `T2 (${tier1Max + 1}–${tier2Max})`, price: histTierPrice(tier2Discount) },
-                                { label: `T3 (${tier2Max + 1}–${tier3Max})`, price: histTierPrice(tier3Discount) },
-                                ...(tier4Discount > 0 ? [{ label: `T4 (${tier3Max + 1}+)`, price: histTierPrice(tier4Discount) }] : []),
-                              ] as { label: string; price: number | null }[]).map((t, i) => (
-                                <div key={i} style={{
-                                  padding: "5px 8px",
-                                  background: i === 0 ? "rgba(99,102,241,0.07)" : "var(--bg-surface)",
-                                  borderRadius: "6px",
-                                  border: `1px solid ${i === 0 ? "rgba(99,102,241,0.2)" : "var(--border-light)"}`,
-                                }}>
-                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{t.label}</div>
-                                  <div style={{ fontSize: "13px", fontWeight: 800, color: i === 0 ? "var(--primary)" : "var(--text-primary)" }}>
-                                    {t.price !== null ? formatCurrency(t.price) : "—"}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                            {([
+                              { label: `T1`, price: h.new_sell_min },
+                              { label: `T2`, price: histTierPrice(tier2Discount) },
+                              { label: `T3`, price: histTierPrice(tier3Discount) },
+                              ...(tier4Discount > 0 ? [{ label: `T4`, price: histTierPrice(tier4Discount) }] : []),
+                            ] as { label: string; price: number | null }[]).map((t, i) => (
+                              <div key={i} style={{
+                                flex: 1, minWidth: "60px", textAlign: "center",
+                                padding: "4px 6px",
+                                background: i === 0 ? "rgba(99,102,241,0.05)" : "var(--bg-surface)",
+                                borderRadius: "6px",
+                                border: `1px solid ${i === 0 ? "rgba(99,102,241,0.15)" : "var(--border-light)"}`,
+                              }}>
+                                <span style={{ fontSize: "8.5px", color: "var(--text-muted)" }}>{t.label}:</span>{" "}
+                                <strong style={{ fontSize: "11px", fontWeight: 800, color: i === 0 ? "var(--primary)" : "var(--text-primary)" }}>
+                                  {t.price !== null ? formatCurrency(t.price) : "—"}
+                                </strong>
+                              </div>
+                            ))}
                           </div>
                         ) : (
-                          <div>
-                            <div style={{ fontSize: "9px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>
-                              {locale === "ar" ? "نطاق سعر البيع" : "Selling Price Range"}
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                              <div style={{ padding: "6px 10px", background: "rgba(16,185,129,0.07)", borderRadius: "6px", border: "1px solid rgba(16,185,129,0.2)" }}>
-                                <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{locale === "ar" ? "الحد الأدنى" : "Min Price"}</div>
-                                <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(h.new_sell_min)}</div>
-                              </div>
-                              <span style={{ color: "var(--text-dim)", fontSize: "16px" }}>→</span>
-                              <div style={{ padding: "6px 10px", background: "rgba(59,130,246,0.07)", borderRadius: "6px", border: "1px solid rgba(59,130,246,0.2)" }}>
-                                <div style={{ fontSize: "9px", color: "var(--text-muted)", marginBottom: "2px" }}>{locale === "ar" ? "الحد الأقصى" : "Max Price"}</div>
-                                <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(h.new_sell_max)}</div>
-                              </div>
-                            </div>
+                          <div style={{
+                            padding: "4px 8px", background: "rgba(16,185,129,0.03)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "6px",
+                            fontSize: "11px", display: "flex", gap: "6px", alignItems: "center"
+                          }}>
+                            <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نطاق البيع:" : "Selling Range:"}</span>
+                            <strong style={{ color: "var(--success)" }}>{formatCurrency(h.new_sell_min)}</strong>
+                            <span style={{ color: "var(--text-dim)" }}>→</span>
+                            <strong style={{ color: "var(--primary)" }}>{formatCurrency(h.new_sell_max)}</strong>
                           </div>
                         )}
 
-                        {/* Cost breakdown */}
+                        {/* Combined Cost details */}
                         <div style={{
-                          display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "10.5px",
-                          padding: "5px 8px", background: "var(--bg-subtle)", borderRadius: "6px",
+                          display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "10px",
+                          padding: "4px 8px", background: "var(--bg-subtle)", borderRadius: "6px",
+                          alignItems: "center"
                         }}>
-                          <span style={{ color: "var(--text-muted)" }}>💰</span>
-                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "متوسط التكلفة:" : "Buy avg:"}</span>
+                          <span>💰</span>
+                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "التكلفة:" : "Buy avg:"}</span>
                           <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(h.new_buy_avg)}</span>
+                          
                           <span style={{ color: "var(--border-medium)" }}>·</span>
                           <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "الهامش:" : "Markup:"}</span>
                           <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
-                            {h.new_markup_min.toFixed(1)}%{!isTierRecord && h.new_markup_min !== h.new_markup_max ? ` – ${h.new_markup_max.toFixed(1)}%` : ""}
+                            {h.new_markup_min.toFixed(1)}%{!isTierRecord && h.new_markup_min !== h.new_markup_max ? `–${h.new_markup_max.toFixed(1)}%` : ""}
                           </span>
+
+                          {histTransport > 0 && (
+                            <>
+                              <span style={{ color: "var(--border-medium)" }}>·</span>
+                              <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نقل:" : "Transport:"}</span>
+                              <span style={{ fontWeight: 700, color: hasOverride ? "#b45309" : "var(--text-primary)" }}>
+                                {formatCurrency(hasOverride ? overrideAmt : histTransport)}
+                              </span>
+                              {hasOverride && <span style={{ fontSize: "7.5px", fontWeight: 800, color: "#b45309", background: "rgba(245,158,11,0.15)", padding: "0px 3px", borderRadius: "2px" }}>O</span>}
+                            </>
+                          )}
+
                           {histOther > 0 && (
                             <>
                               <span style={{ color: "var(--border-medium)" }}>·</span>
@@ -1312,39 +1426,31 @@ export default function PricingCalculator({
                           )}
                         </div>
 
-                        {/* Transport row */}
-                        {histTransport > 0 && (
-                          <div style={{
-                            display: "flex", alignItems: "center", gap: "6px", fontSize: "10.5px",
-                            padding: "5px 8px", borderRadius: "6px",
-                            background: hasOverride ? "rgba(245,158,11,0.07)" : "var(--bg-subtle)",
-                            border: hasOverride ? "1px solid rgba(245,158,11,0.3)" : "1px solid var(--border-light)",
-                          }}>
-                            <span>🚚</span>
-                            <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نقل:" : "Transport:"}</span>
-                            <span style={{ fontWeight: 700, color: hasOverride ? "#b45309" : "var(--text-primary)" }}>
-                              {formatCurrency(hasOverride ? overrideAmt : histTransport)}/unit
+                        {/* Negotiated Prices */}
+                        {monthNegotiated.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+                            <span style={{ fontSize: "9.5px", fontWeight: 700, color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              🤝 {locale === "ar" ? "الأسعار المتفق عليها:" : "Negotiated:"}
                             </span>
-                            {hasOverride && (
-                              <>
-                                <span style={{ color: "var(--text-dim)", fontSize: "9px" }}>(default: {formatCurrency(histTransport)})</span>
-                                <span style={{
-                                  fontSize: "9px", fontWeight: 800, padding: "1px 5px",
-                                  background: "rgba(245,158,11,0.15)", borderRadius: "4px",
-                                  color: "#92400e", border: "1px solid rgba(245,158,11,0.3)",
-                                }}>⚠️ OVERRIDDEN</span>
-                              </>
-                            )}
+                            {monthNegotiated.map((np) => (
+                              <span key={np.id} style={{
+                                fontSize: "9px", fontWeight: 700, padding: "1px 5px",
+                                background: "rgba(139,92,246,0.08)", color: "#7c3aed",
+                                border: "1px solid rgba(139,92,246,0.2)", borderRadius: "4px"
+                              }} title={np.negotiated_notes || undefined}>
+                                {np.supplier_name}: {formatCurrency(np.negotiated_price!)}
+                              </span>
+                            ))}
                           </div>
                         )}
 
                         {/* Change reason */}
                         {h.change_reason && (
                           <div style={{
-                            padding: "5px 10px",
+                            padding: "4px 8px",
                             background: "var(--bg-subtle)", borderRadius: "6px",
-                            fontSize: "10.5px", color: "var(--text-secondary)",
-                            borderInlineStart: "3px solid var(--primary)",
+                            fontSize: "10px", color: "var(--text-secondary)",
+                            borderInlineStart: "2.5px solid var(--primary)",
                           }}>
                             💬 {h.change_reason}
                           </div>
@@ -1358,6 +1464,182 @@ export default function PricingCalculator({
           )}
         </div>
       </div>
+
+      {/* Floating B2B Recommendation Modal */}
+      {showRecommendationModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 3000,
+          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+        }}>
+          <div style={{
+            background: "var(--bg-surface)", border: "1px solid var(--border-medium)",
+            borderRadius: "16px", boxShadow: "var(--shadow-xl)",
+            width: "100%", maxWidth: "560px", padding: "24px",
+            display: "flex", flexDirection: "column", gap: "16px",
+            animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)",
+            textAlign: locale === "ar" ? "right" : "left",
+          }}>
+            <div>
+              <p style={{ fontSize: "10.5px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--primary)", marginBottom: "4px" }}>
+                ✨ {locale === "ar" ? "توصية تسعير B2B الذكي" : "B2B Price Recommendation"}
+              </p>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
+                {locale === "ar" ? "تحليل تسعير السوق المصري" : "Egypt B2B Market Pricing Strategy"}
+              </h3>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "400px", overflowY: "auto", paddingRight: "4px" }}>
+              {/* Cost & Floor section */}
+              <div style={{
+                background: "var(--bg-subtle)", padding: "12px", borderRadius: "10px",
+                border: "1px solid var(--border-light)", fontSize: "12px", display: "flex", flexDirection: "column", gap: "8px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "التكلفة الأساسية المفضلة:" : "Preferred Cost Base:"}</span>
+                  <strong style={{ color: "var(--text-primary)" }}>
+                    {formatCurrency(recommendationData.baseCost)}{" "}
+                    {recommendationData.minNegotiatedPrice !== null && (
+                      <span style={{ fontSize: "9.5px", color: "var(--success)", background: "var(--success-light)", padding: "1px 5px", borderRadius: "4px", marginInlineStart: "5px" }}>
+                        {locale === "ar" ? "سعر متفاوض عليه" : "Negotiated"}
+                      </span>
+                    )}
+                  </strong>
+                </div>
+                {recommendationData.currentMonthNegotiations.length > 0 && (
+                  <div style={{ padding: "6px 10px", background: "var(--bg-elevated)", borderRadius: "6px", fontSize: "11px" }}>
+                    <div style={{ color: "var(--text-secondary)", fontWeight: 700, marginBottom: "4px" }}>
+                      {locale === "ar" ? "الأسعار المتفاوض عليها المكتشفة:" : "Discovered Negotiations:"}
+                    </div>
+                    {recommendationData.currentMonthNegotiations.map((np, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                        <span>• {np.supplier_name}</span>
+                        <strong>{formatCurrency(np.negotiated_price!)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid var(--border-light)", paddingTop: "6px" }}>
+                  <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "تكلفة النقل الفعالة:" : "Effective Transport fee:"}</span>
+                  <strong style={{ color: "var(--text-primary)" }}>{formatCurrency(recommendationData.finalTransport)} / {locale === "ar" ? "وحدة" : "unit"}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "الحد الأدنى لهامش الربح:" : "Admin Min Margin Floor:"}</span>
+                  <strong style={{ color: "var(--danger)" }}>{recommendationData.minFloor}%</strong>
+                </div>
+              </div>
+
+              {/* Egypt Market Context */}
+              <div style={{ fontSize: "11.5px", color: "var(--text-secondary)", lineHeight: "1.5" }}>
+                💡 <strong>{locale === "ar" ? "سياق السوق المصري:" : "Egypt Market Context:"}</strong>{" "}
+                {locale === "ar" 
+                  ? "السوق المصري يتميز بحساسية شديدة للأسعار وتضخم متقلب. المشترون B2B يقارنون أسعار الشرائح للكميات الكبيرة بدقة. نوصي باستعمال تسعير الشرائح لتقديم خصومات مغرية للكميات الكبيرة مع حماية هامش الربح الأساسي للكميات الصغيرة."
+                  : "The Egyptian B2B market is highly price-sensitive and inflation-driven. Wholesale clients heavily analyze unit prices at higher volume tiers. We recommend leveraging the Tier Pricing strategy to structure attractive volume discounts while keeping baseline margins secure."
+                }
+              </div>
+
+              {/* Recommended Action */}
+              <div style={{
+                background: recommendationData.recStrategy === "tier" ? "rgba(99,102,241,0.06)" : "rgba(16,185,129,0.06)",
+                border: `1.5px solid ${recommendationData.recStrategy === "tier" ? "rgba(99,102,241,0.25)" : "rgba(16,185,129,0.25)"}`,
+                padding: "12px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "8px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "16px" }}>{recommendationData.recStrategy === "tier" ? "⚡" : "📊"}</span>
+                  <span style={{ fontWeight: 800, color: recommendationData.recStrategy === "tier" ? "var(--primary)" : "var(--success)" }}>
+                    {recommendationData.recStrategy === "tier" 
+                      ? (locale === "ar" ? "الإستراتيجية الموصى بها: نظام الشرائح" : "Recommended Strategy: VOLUME TIERS")
+                      : (locale === "ar" ? "الإستراتيجية الموصى بها: السعر الثابت" : "Recommended Strategy: FIXED RANGE")
+                    }
+                  </span>
+                </div>
+
+                {recommendationData.recStrategy === "tier" ? (
+                  <div style={{ fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div>
+                      {locale === "ar" ? "الهامش الأساسي المقترح:" : "Recommended Base Markup:"} <strong>{recommendationData.recMarkup}%</strong>
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      {locale === "ar" 
+                        ? `تم حساب الهامش ليكون متوافقاً مع حد الإدارة (${recommendationData.minFloor}%) حتى بعد تطبيق الخصم الأقصى للكميات الكبيرة.`
+                        : `This base markup ensures that net margins remain fully compliant with the admin floor (${recommendationData.minFloor}%) even after volume tier discounts are applied.`
+                      }
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px", padding: "8px", background: "var(--bg-surface)", borderRadius: "6px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                        <span>{locale === "ar" ? "سعر الأساس للبيانات (T1):" : "Recommended Tier Base (T1):"}</span>
+                        <span style={{ color: "var(--success)" }}>{formatCurrency(recommendationData.recBaseSell)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
+                        <span>Tier 2 ({tier1Max + 1}–{tier2Max} units):</span>
+                        <span>{formatCurrency(tier2Discount < 1 ? Math.ceil((buyAvg / tier2Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier2Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                      </div>
+                      {tier3Discount > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
+                          <span>Tier 3 ({tier2Max + 1}–{tier3Max} units):</span>
+                          <span>{formatCurrency(tier3Discount < 1 ? Math.ceil((buyAvg / tier3Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier3Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                        </div>
+                      )}
+                      {tier4Discount > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
+                          <span>Tier 4 ({tier3Max + 1}+ units):</span>
+                          <span>{formatCurrency(tier4Discount < 1 ? Math.ceil((buyAvg / tier4Discount + recommendationData.finalTransport + otherExpenses) / 5) * 5 : Math.ceil((recommendationData.recBaseSell * (1 - tier4Discount / 100) + recommendationData.finalTransport + otherExpenses) / 5) * 5)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{locale === "ar" ? "الحد الأدنى المقترح:" : "Recommended Min Price:"}</span>
+                      <strong>{formatCurrency(recommendationData.recMinSell)} <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>({recommendationData.recMinMarkup}% markup)</span></strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{locale === "ar" ? "الحد الأقصى المقترح:" : "Recommended Max Price:"}</span>
+                      <strong>{formatCurrency(recommendationData.recMaxSell)} <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>({recommendationData.recMaxMarkup}% markup)</span></strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+              <button
+                type="button"
+                className="button button-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setShowRecommendationModal(false)}
+              >
+                {locale === "ar" ? "إغلاق" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                style={{ flex: 2, background: "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)", borderColor: "#6366f1", color: "#fff" }}
+                onClick={() => {
+                  setUsesTierStrategy(recommendationData.recStrategy === "tier");
+                  setUseMarkup(false); // Apply direct prices to form
+                  if (recommendationData.recStrategy === "tier") {
+                    setSellMinStr(recommendationData.recBaseSell.toString());
+                  } else {
+                    setSellMinStr(recommendationData.recMinSell.toString());
+                    setSellMaxStr(recommendationData.recMaxSell.toString());
+                  }
+                  setInternalNote(
+                    recommendationData.minNegotiatedPrice !== null
+                      ? `Applied Egypt B2B recommendation based on negotiated supplier price of ${formatCurrency(recommendationData.minNegotiatedPrice)}.`
+                      : `Applied standard Egypt B2B recommendation.`
+                  );
+                  setShowRecommendationModal(false);
+                }}
+              >
+                {locale === "ar" ? "تطبيق التوصية" : "Apply Recommendation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

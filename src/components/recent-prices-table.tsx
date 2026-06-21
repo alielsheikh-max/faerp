@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import { addPriceEntrySilent } from "@/app/actions/pricing";
 import { ChangeRequestModal } from "./purchasing-form";
@@ -118,8 +118,8 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
   async function saveAdd(group: Group) {
     const supId = parseInt(addSup);
     const p = parseFloat(addPrice);
-    if (!supId) { setErrMsg("Please select a supplier."); return; }
-    if (!p || p <= 0) { setErrMsg("Price must be a positive number."); return; }
+    if (!supId) { setErrMsg(isAr ? "يرجى تحديد المورد." : "Please select a supplier."); return; }
+    if (!p || p <= 0) { setErrMsg(isAr ? "يجب أن يكون السعر رقمًا موجبًا." : "Price must be a positive number."); return; }
     setSaving(true); setErrMsg(null);
     const res = await addPriceEntrySilent({
       itemId: group.item_id,
@@ -131,7 +131,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
     });
     setSaving(false);
     if (res.ok) { setAddingKey(null); router.refresh(); }
-    else setErrMsg(res.error || "Save failed.");
+    else setErrMsg(res.error || (isAr ? "فشل الحفظ." : "Save failed."));
   }
 
   if (groups.length === 0) {
@@ -205,7 +205,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                   <span className="badge badge-strong" style={{ fontSize: "9px", padding: "1px 6px" }}>{group.category_name}</span>
                 </div>
               </div>
-              <span className="badge" style={{ fontSize: "11px", whiteSpace: "nowrap" }}>{group.month}</span>
+              <span className="badge" style={{ fontSize: "11px", whiteSpace: "nowrap" }}>{formatMonthLabel(group.month)}</span>
               <span style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                 {count} {isAr ? "مورد" : count === 1 ? "supplier" : "suppliers"}
               </span>
@@ -213,14 +213,14 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                 {minP === maxP ? (
                   <span style={{ fontSize: "12.5px" }}>
                     <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
-                    <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· avg {formatCurrency(avgP)}</span>
+                    <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· {isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
                   </span>
                 ) : (
                   <span style={{ fontSize: "11.5px" }}>
                     <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
                     <span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span>
                     <strong style={{ color: "var(--danger)" }}>{formatCurrency(maxP)}</strong>
-                    <span style={{ color: "var(--text-muted)", marginLeft: "6px", fontSize: "10px" }}>avg {formatCurrency(avgP)}</span>
+                    <span style={{ color: "var(--text-muted)", marginInlineStart: "6px", fontSize: "10px" }}>{isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
                   </span>
                 )}
               </div>
@@ -251,7 +251,14 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-subtle)" }}>
-                      {["Supplier", "Price", "Notes", "By", "Recorded", ""].map((h, i) => (
+                      {[
+                        isAr ? "المورد" : "Supplier",
+                        isAr ? "السعر" : "Price",
+                        isAr ? "الملاحظات" : "Notes",
+                        isAr ? "بواسطة" : "By",
+                        isAr ? "تاريخ التسجيل" : "Recorded",
+                        ""
+                      ].map((h, i) => (
                         <th key={i} style={{
                           padding: "7px 12px",
                           textAlign: i === 1 ? "right" : (isAr ? "right" : "left"),
@@ -270,7 +277,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                                 padding: "3px 8px",
                               }}
                             >
-                              {isAdding ? "✕ Cancel" : "＋ Add"}
+                              {isAdding ? (isAr ? "✕ إلغاء" : "✕ Cancel") : (isAr ? "＋ إضافة" : "＋ Add")}
                             </button>
                           ) : null)}
                         </th>
@@ -347,7 +354,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                                       });
                                     }
                                   }}
-                                  title="Edit price/transport"
+                                  title={isAr ? "تعديل السعر/النقل" : "Edit price/transport"}
                                   className="button button-warning"
                                   style={{ padding: "3px 6px", fontSize: "11px", height: "auto" }}
                                 >
@@ -372,7 +379,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                                         });
                                       }
                                     }}
-                                    title="Negotiate price"
+                                    title={isAr ? "التفاوض على السعر" : "Negotiate price"}
                                     className="button"
                                     style={{
                                       padding: "3px 6px", fontSize: "11px", height: "auto",
@@ -403,7 +410,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                             style={{ padding: "5px 8px", borderRadius: "6px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "12px", minWidth: "130px" }}
                             autoFocus
                           >
-                            <option value="">— Supplier —</option>
+                            <option value="">— {isAr ? "المورد" : "Supplier"} —</option>
                             {availableSuppliers.map(s => (
                               <option key={s.id} value={s.id}>
                                 {s.fame_name || s.name}
@@ -417,7 +424,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                             type="number" step="any" min="0"
                             value={addPrice}
                             onChange={ev => setAddPrice(ev.target.value)}
-                            placeholder="Price…"
+                            placeholder={isAr ? "السعر…" : "Price…"}
                             style={{ width: "90px", padding: "4px 8px", borderRadius: "6px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "12px", textAlign: "right" }}
                           />
                         </td>
@@ -427,12 +434,12 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                             type="text"
                             value={addNotes}
                             onChange={ev => setAddNotes(ev.target.value)}
-                            placeholder="Notes…"
+                            placeholder={isAr ? "الملاحظات…" : "Notes…"}
                             style={{ width: "100%", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "11.5px" }}
                           />
                         </td>
                         <td colSpan={2} style={{ padding: "8px 12px", color: "var(--text-muted)", fontSize: "11px" }}>
-                          {username} · {group.month}
+                          {username} · {formatMonthLabel(group.month)}
                         </td>
                         {/* Save/Cancel */}
                         <td style={{ padding: "6px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
@@ -442,7 +449,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                               disabled={saving}
                               style={{ ...BTN.base, background: "rgba(16,185,129,0.12)", color: "var(--success)", opacity: saving ? 0.5 : 1 }}
                             >
-                              {saving ? "…" : "✓ Save"}
+                              {saving ? "…" : (isAr ? "✓ حفظ" : "✓ Save")}
                             </button>
                             <button
                               onClick={cancelAdd}

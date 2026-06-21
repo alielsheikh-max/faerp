@@ -12,13 +12,14 @@ import { SectionIntro } from "@/components/app-shell";
 import InteractiveDashboard from "@/components/interactive-dashboard";
 import ReportGenerator from "@/components/report-generator";
 import RequestPricesBanner from "@/components/request-prices-banner";
-import { getServerT } from "@/lib/locale-server";
+import { getServerT, getServerLocale } from "@/lib/locale-server";
 import ClientQuotingSimulator from "@/components/client-quoting-simulator";
 import PriceUpdateAlerts from "@/components/price-update-alerts";
 import UsdPricePanel from "@/components/usd-price-panel";
 import MonthlyReviewModal from "@/components/monthly-review-modal";
 import ScOverviewPanel from "@/components/sc-overview-panel";
 import WhMissingQuotes from "@/components/wh-missing-quotes";
+import ClickableDetailTrigger from "@/components/clickable-detail-trigger";
 
 type SearchParams = { month?: string; categoryId?: string; itemId?: string; saved?: string; error?: string; simulate?: string };
 
@@ -105,7 +106,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                       <th>{t("dash.product")}</th>
                       <th>{t("dash.unit")}</th>
                       <th style={{ textAlign: "center" }}>{t("gen.moq")}</th>
-                      <th style={{ textAlign: "center" }}>Approved Prices</th>
+                      <th style={{ textAlign: "center" }}>{getServerLocale() === "ar" ? "الأسعار المعتمدة" : "Approved Prices"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -119,20 +120,21 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                           borderLeft: "3px solid #f59e0b",
                         } : {}}>
                           <td style={{ fontWeight: 700, maxWidth: "340px" }}>
-                            <span
-                              onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                            <ClickableDetailTrigger
+                              type="item"
+                              id={row.item_id}
                               className="clickable-detail-trigger"
                             >
                               {row.item_name}
-                            </span>
+                            </ClickableDetailTrigger>
                             {isRevised && (
                               <span style={{
-                                display: "inline-block", marginLeft: "8px",
+                                display: "inline-block", marginInlineStart: "8px",
                                 fontSize: "9px", fontWeight: 800, padding: "2px 7px",
                                 borderRadius: "99px", background: "rgba(245,158,11,0.15)",
                                 border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
                                 verticalAlign: "middle",
-                              }}>📝 Revised</span>
+                              }}>{getServerLocale() === "ar" ? "📝 معدل" : "📝 Revised"}</span>
                             )}
                           </td>
                           <td><span className="badge">{row.unit}</span></td>
@@ -166,12 +168,12 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                               /* Standard min / max */
                               <div style={{ display: "flex", gap: "16px", justifyContent: "center", alignItems: "center" }}>
                                 <div style={{ textAlign: "center" }}>
-                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Min</div>
+                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأدنى" : "Min"}</div>
                                   <strong style={{ fontSize: "15px", color: "var(--success)" }}>{formatCurrency(row.sell_min)}</strong>
                                 </div>
                                 <span style={{ color: "var(--text-dim)" }}>—</span>
                                 <div style={{ textAlign: "center" }}>
-                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Max</div>
+                                  <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأقصى" : "Max"}</div>
                                   <strong style={{ fontSize: "15px", color: "var(--primary)" }}>{formatCurrency(row.sell_max)}</strong>
                                 </div>
                               </div>
@@ -289,8 +291,8 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               fontSize: "13px", fontWeight: 700, color: "var(--success)",
             }}>
               <span>✅</span>
-              <span>Prices published successfully for {formatMonthLabel(month)}.</span>
-              <Link href={`/dashboard/pricing?month=${month}`} style={{ marginInlineStart: "auto", fontSize: "12px", color: "var(--primary)", textDecoration: "underline" }}>Go to Pricing →</Link>
+              <span>{getServerLocale() === "ar" ? `تم نشر الأسعار بنجاح لشهر ${formatMonthLabel(month)}.` : `Prices published successfully for ${formatMonthLabel(month)}.`}</span>
+              <Link href={`/dashboard/pricing?month=${month}`} style={{ marginInlineStart: "auto", fontSize: "12px", color: "var(--primary)", textDecoration: "underline" }}>{getServerLocale() === "ar" ? "الذهاب إلى التسعير ←" : "Go to Pricing →"}</Link>
             </div>
           )}
 
@@ -324,7 +326,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
       {/* ── WH Dashboard + Purchasing Tool ─────────────────────────────── */}
       {role === "WH" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", marginBottom: "12px" }}>
-          <RequestPricesBanner categories={categories} items={items} simulate={searchParams?.simulate === "true"} />
+          <RequestPricesBanner categories={categories} items={items} suppliers={suppliers} simulate={searchParams?.simulate === "true"} />
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
           </div>
@@ -337,7 +339,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                 <div className="panel-header" style={{ marginBottom: "16px" }}>
                   <div>
                     <p className="eyebrow">{t("purch.collectionReport")}</p>
-                    <h2>{t("purch.monthlyQuoteProgress").replace("{month}", month)}</h2>
+                    <h2>{t("purch.monthlyQuoteProgress").replace("{month}", formatMonthLabel(month))}</h2>
                   </div>
                   <span className={`badge ${
                     whOverview.totals.possible === 0 ? "" :

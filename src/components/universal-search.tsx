@@ -21,8 +21,8 @@ function fuzzy(query: string, target: string) {
 
 // ── Item Detail ───────────────────────────────────────────────────────────────
 function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; role: string; onClose: () => void }) {
-  const { t } = useI18n();
-  const [window, setWindow] = useState<6|12|"all">(6);
+  const { t, locale } = useI18n();
+  const [window, setWindow] = useState<6 | 12 | "all">(6);
   const { item, supplierStats, monthStats, months, supplierNames, grid, sellingRows } = data;
   const visibleMonths = window === "all" ? months : months.slice(0, window as number);
 
@@ -36,9 +36,9 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
           <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0, lineHeight: 1.3 }}>{item.name}</h2>
           <div style={{ display: "flex", gap: "8px", marginTop: "7px", flexWrap: "wrap" }}>
             <span className="badge badge-strong">{item.unit}</span>
-            <span className={`badge ${item.active ? "badge-success" : "badge-danger"}`}>{item.active ? "Active" : "Inactive"}</span>
-            <span className="badge">{supplierStats.length} suppliers</span>
-            <span className="badge">{months.length} months</span>
+            <span className={`badge ${item.active ? "badge-success" : "badge-danger"}`}>{item.active ? t("search.active") : t("search.inactive")}</span>
+            <span className="badge">{t("search.suppliersCount").replace("{count}", String(supplierStats.length))}</span>
+            <span className="badge">{t("search.monthsCount").replace("{count}", String(months.length))}</span>
           </div>
         </div>
         <Link
@@ -47,7 +47,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
           className="button button-secondary"
           style={{ fontSize: "12px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}
         >
-          <span>View All ↗</span>
+          <span>{t("search.viewAll")}</span>
         </Link>
       </div>
 
@@ -55,7 +55,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
         {/* Current supplier prices */}
         <div>
           <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", marginBottom: "10px" }}>
-            {months[0] ? formatMonthLabel(months[0]) : "Latest"} — Supplier Prices
+            {months[0] ? formatMonthLabel(months[0]) : t("search.latest")} — {t("search.supplierPrices")}
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px" }}>
             {supplierStats.map((sup, idx) => {
@@ -63,13 +63,13 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
               const isBest = idx === 0;
               return (
                 <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--info)" : color + "44"}`, background: isBest ? "var(--info-light)" : color + "0a", position: "relative" }}>
-                  {isBest && <span style={{ position: "absolute", top: "5px", right: "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>BEST</span>}
+                  {isBest && <span style={{ position: "absolute", top: "5px", insetInlineEnd: "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>{t("search.best")}</span>}
                   <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
                     <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
                     <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sup.name}</span>
                   </div>
                   <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
-                  <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>avg {formatCurrency(sup.avg)}</div>
+                  <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>{t("search.avg").toLowerCase()} {formatCurrency(sup.avg)}</div>
                 </div>
               );
             })}
@@ -79,15 +79,15 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
         {/* SC: selling prices */}
         {role === "SC" && sellingRows.length > 0 && (
           <div>
-            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", marginBottom: "8px" }}>Published Selling Prices</p>
+            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", marginBottom: "8px" }}>{t("search.publishedSellingPrices")}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
               {sellingRows.slice(0, 4).map(s => (
                 <div key={s.month} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "7px 12px", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border-light)", fontSize: "12px", flexWrap: "wrap" }}>
-                  <span className="badge" style={{ fontSize: "10px" }}>{s.month}</span>
+                  <span className="badge" style={{ fontSize: "10px" }}>{formatMonthLabel(s.month)}</span>
                   <strong style={{ color: "var(--success)" }}>{formatCurrency(s.sell_min)}</strong>
                   <span style={{ color: "var(--text-muted)" }}>→</span>
                   <strong style={{ color: "var(--primary)" }}>{formatCurrency(s.sell_max)}</strong>
-                  <span className="badge badge-strong" style={{ fontSize: "9px", marginLeft: "auto" }}>{s.strategy.toUpperCase()}</span>
+                  <span className="badge badge-strong" style={{ fontSize: "9px", marginLeft: "auto", marginRight: "auto" }}>{s.strategy.toUpperCase()}</span>
                 </div>
               ))}
             </div>
@@ -97,12 +97,12 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
         {/* Price history matrix */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", margin: 0 }}>Price History — Suppliers × Months</p>
+            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", margin: 0 }}>{t("search.priceHistory")}</p>
             <div style={{ display: "flex", gap: "3px", background: "var(--bg-muted)", padding: "3px", borderRadius: "7px", border: "1px solid var(--border-light)" }}>
               {([6, 12, "all"] as const).map(w => (
                 <button key={String(w)} type="button" onClick={() => setWindow(w as any)}
                   style={{ padding: "3px 10px", fontSize: "10px", fontWeight: 700, borderRadius: "5px", border: "none", cursor: "pointer", background: window === w ? "var(--primary)" : "transparent", color: window === w ? "#fff" : "var(--text-muted)", transition: "all 150ms" }}>
-                  {w === "all" ? "All" : `${w}M`}
+                  {w === "all" ? t("search.all") : t("search.monthsCountShort").replace("{count}", String(w))}
                 </button>
               ))}
             </div>
@@ -111,7 +111,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
               <thead>
                 <tr style={{ background: "var(--bg-elevated)" }}>
-                  <th style={{ padding: "7px 12px", textAlign: "left", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, left: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>Month</th>
+                  <th style={{ padding: "7px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, insetInlineStart: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>{t("search.month")}</th>
                   {supplierNames.map((s, i) => (
                     <th key={s} style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: COLORS[i % COLORS.length], borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -119,8 +119,8 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
                       </span>
                     </th>
                   ))}
-                  <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--primary)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Avg</th>
-                  {role === "SC" && <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--warning)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Sell Range</th>}
+                  <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--primary)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{t("search.avg")}</th>
+                  {role === "SC" && <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--warning)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{t("search.sellRange")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -133,9 +133,9 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
                   const isLatest = mi === 0;
                   return (
                     <tr key={m} style={{ borderBottom: "1px solid var(--border-light)", background: isLatest ? "rgba(99,102,241,0.03)" : "transparent" }}>
-                      <td style={{ padding: "8px 12px", position: "sticky", left: 0, background: isLatest ? "rgba(99,102,241,0.05)" : "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "8px 12px", position: "sticky", insetInlineStart: 0, background: isLatest ? "rgba(99,102,241,0.05)" : "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
                         <span style={{ fontSize: "11px", fontWeight: isLatest ? 800 : 600, color: isLatest ? "var(--primary)" : "var(--text-secondary)" }}>{formatMonthLabel(m)}</span>
-                        {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, marginLeft: "5px", color: "var(--primary)" }}>LATEST</span>}
+                        {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, marginInlineStart: "5px", color: "var(--primary)" }}>{t("search.latestLabel")}</span>}
                       </td>
                       {supplierNames.map(s => {
                         const entry = monthRow?.get(s);
@@ -166,6 +166,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
 
 // ── Supplier Detail ───────────────────────────────────────────────────────────
 function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCardData>; role: string; onClose: () => void }) {
+  const { t, locale } = useI18n();
   const [catFilter, setCatFilter] = useState("all");
   const { supplier, itemStats, monthStats } = data;
   const categories = Array.from(new Set(itemStats.map(i => i.categoryName))).sort();
@@ -181,18 +182,18 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
         <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
           <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🏭</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "#3b82f6", marginBottom: "3px" }}>Supplier Profile</div>
+            <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "#3b82f6", marginBottom: "3px" }}>{t("search.supplierCard")}</div>
             <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>{supplier.fame_name || supplier.name}</h2>
             {supplier.fame_name && supplier.fame_name !== supplier.name && (
               <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{supplier.name}</div>
             )}
             {supplier.contact_person && <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "3px" }}>{supplier.contact_person}{supplier.phone ? ` · ${supplier.phone}` : ""}</div>}
             <div style={{ display: "flex", gap: "8px", marginTop: "7px", flexWrap: "wrap" }}>
-              <span className="badge badge-strong">{totalQuotes} quotes</span>
-              <span className="badge">{itemStats.length} items</span>
-              <span className="badge">{data.months.length} months</span>
-              {avgDev < -1 && <span className="badge badge-success">Below market avg</span>}
-              {avgDev > 1 && <span className="badge badge-warning">Above market avg</span>}
+              <span className="badge badge-strong">{t("search.quotesCount").replace("{count}", String(totalQuotes))}</span>
+              <span className="badge">{t("search.itemsCount").replace("{count}", String(itemStats.length))}</span>
+              <span className="badge">{t("search.monthsCount").replace("{count}", String(data.months.length))}</span>
+              {avgDev < -1 && <span className="badge badge-success">{t("search.belowMarket")}</span>}
+              {avgDev > 1 && <span className="badge badge-warning">{t("search.aboveMarket")}</span>}
             </div>
           </div>
           <Link
@@ -201,16 +202,16 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
             className="button button-secondary"
             style={{ fontSize: "12px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0, alignSelf: "center" }}
           >
-            <span>View All ↗</span>
+            <span>{t("search.viewAll")}</span>
           </Link>
         </div>
 
         {/* KPI row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px", marginTop: "14px" }}>
           {[
-            { label: "Avg vs Market", value: `${avgDev > 0 ? "+" : ""}${avgDev.toFixed(1)}%`, color: avgDev < -1 ? "var(--success)" : avgDev > 1 ? "var(--danger)" : "var(--text-secondary)" },
-            { label: "Best-Price Items", value: `${itemStats.filter(i => i.avgDeviation < 0).length} / ${itemStats.length}`, color: "var(--success)" },
-            { label: "Active Months", value: String(data.months.length), color: "var(--primary)" },
+            { label: t("search.avgVsMarket"), value: `${avgDev > 0 ? "+" : ""}${avgDev.toFixed(1)}%`, color: avgDev < -1 ? "var(--success)" : avgDev > 1 ? "var(--danger)" : "var(--text-secondary)" },
+            { label: t("search.bestPriceItems"), value: `${itemStats.filter(i => i.avgDeviation < 0).length} / ${itemStats.length}`, color: "var(--success)" },
+            { label: t("search.activeMonths"), value: String(data.months.length), color: "var(--primary)" },
           ].map(kpi => (
             <div key={kpi.label} style={{ padding: "9px 12px", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border-light)" }}>
               <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "3px" }}>{kpi.label}</div>
@@ -222,14 +223,14 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
         {/* Activity sparkline */}
         {monthStats.length > 0 && (
           <div style={{ marginTop: "12px" }}>
-            <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "5px" }}>Quote activity</div>
+            <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "5px" }}>{t("search.quoteActivity")}</div>
             <div style={{ display: "flex", gap: "3px", alignItems: "flex-end", height: "24px" }}>
               {[...monthStats].reverse().map((ms, i, arr) => {
                 const isLatest = i === arr.length - 1;
                 return (
                   <div key={ms.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }} title={`${ms.month}: ${ms.count}`}>
                     <div style={{ width: "100%", height: `${Math.max(4, (ms.count / maxCount) * 20)}px`, borderRadius: "2px 2px 0 0", background: isLatest ? "#3b82f6" : "var(--border-medium)" }} />
-                    <span style={{ fontSize: "7px", color: isLatest ? "#3b82f6" : "var(--text-muted)", fontWeight: isLatest ? 800 : 400 }}>{ms.month.slice(5)}</span>
+                    <span style={{ fontSize: "7px", color: isLatest ? "#3b82f6" : "var(--text-muted)", fontWeight: isLatest ? 800 : 400 }}>{formatMonthLabel(ms.month)}</span>
                   </div>
                 );
               })}
@@ -242,14 +243,14 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
       <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
         {/* Category filter */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Filter:</span>
+          <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>{t("search.filter")}</span>
           {["all", ...categories].map(cat => (
             <button key={cat} type="button" onClick={() => setCatFilter(cat)} style={{ padding: "3px 10px", fontSize: "11px", fontWeight: 600, borderRadius: "20px", border: `1.5px solid ${catFilter === cat ? "var(--primary)" : "var(--border)"}`, background: catFilter === cat ? "var(--primary-light)" : "var(--bg-elevated)", color: catFilter === cat ? "var(--primary)" : "var(--text-secondary)", cursor: "pointer", transition: "all 150ms" }}>
-              {cat === "all" ? "All" : cat}
+              {cat === "all" ? t("search.all") : cat}
             </button>
           ))}
         </div>
-        <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)" }}>Items Quoted ({filtered.length})</div>
+        <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)" }}>{t("search.itemsQuoted")} ({filtered.length})</div>
         <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           {filtered.map(item => {
             const devColor = item.avgDeviation < -1 ? "var(--success)" : item.avgDeviation > 1 ? "var(--danger)" : "var(--text-muted)";
@@ -257,18 +258,18 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
               <div key={item.itemId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: "12px", alignItems: "center", padding: "9px 12px", borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border-light)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.itemName}</div>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{item.categoryName} · {item.unit} · {item.quoteCount} quotes</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{item.categoryName} · {item.unit} · {t("search.quotesShort").replace("{count}", String(item.quoteCount))}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Latest</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.latest")}</div>
                   <div style={{ fontSize: "13px", fontWeight: 800 }}>{formatCurrency(item.latestPrice)}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Avg</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.avg")}</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(item.avg)}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>vs Mkt</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.vsMkt")}</div>
                   <div style={{ fontSize: "13px", fontWeight: 800, color: devColor }}>{item.avgDeviation > 0 ? "+" : ""}{item.avgDeviation.toFixed(1)}%</div>
                 </div>
               </div>
@@ -441,7 +442,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                       {categoriesList.length > 0 && (
                         <div>
                           <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
-                            📁 {locale === "ar" ? "تصفح الفئات" : "Browse Categories"}
+                            📁 {t("search.browseCategories")}
                           </div>
                           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                             {categoriesList.map(cat => (
@@ -458,7 +459,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                       {index.items.length > 0 && (
                         <div>
                           <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
-                            📦 {locale === "ar" ? "أصناف مقترحة" : "Suggested Items"}
+                            📦 {t("search.suggestedItems")}
                           </div>
                           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                             {index.items.slice(0, 3).map(item => (
@@ -475,7 +476,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                       {role !== "SA" && index.suppliers.length > 0 && (
                         <div>
                           <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>
-                            🏭 {locale === "ar" ? "موردون مقترحون" : "Suggested Suppliers"}
+                            🏭 {t("search.suggestedSuppliers")}
                           </div>
                           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                             {index.suppliers.slice(0, 3).map(sup => (
@@ -531,7 +532,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
                               <span style={{ width: "34px", height: "34px", borderRadius: "9px", background: COLORS[i % COLORS.length] + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>🏭</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{sup.fame_name || sup.name}</div>
-                                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>{sup.quote_count} quotes{sup.contact_person ? ` · ${sup.contact_person}` : ""}</div>
+                                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>{sup.quote_count} {locale === "ar" ? "عروض" : "quotes"}{sup.contact_person ? ` · ${sup.contact_person}` : ""}</div>
                               </div>
                               <span style={{ fontSize: "18px", color: "var(--text-muted)", flexShrink: 0 }}>›</span>
                             </button>
@@ -552,9 +553,9 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
 
             {/* Footer */}
             <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border-light)", display: "flex", alignItems: "center", gap: "12px", flexShrink: 0, background: "var(--bg-elevated)", fontSize: "11px", color: "var(--text-muted)" }}>
-              <span>↩ select</span>
-              <span>ESC {card ? "back" : "close"}</span>
-              <span style={{ marginLeft: "auto" }}>{filteredItems.length + filteredSuppliers.length > 0 ? `${filteredItems.length + filteredSuppliers.length} results` : hasResults ? "" : ""}</span>
+              <span>{t("search.selectLabel")}</span>
+              <span>ESC {card ? t("search.back") : t("search.close")}</span>
+              <span style={{ marginInlineStart: "auto" }}>{filteredItems.length + filteredSuppliers.length > 0 ? t("search.resultsCount").replace("{count}", String(filteredItems.length + filteredSuppliers.length)) : ""}</span>
             </div>
           </div>
         </div>

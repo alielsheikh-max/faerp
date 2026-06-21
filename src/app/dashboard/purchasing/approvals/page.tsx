@@ -2,9 +2,11 @@ import { requireRole } from "@/lib/auth";
 import { getPriceChangeRequestsByUser } from "@/lib/db";
 import { SectionIntro, StatCard } from "@/components/app-shell";
 import ApprovalsHistory from "@/components/approvals-history";
+import { getServerT } from "@/lib/locale-server";
 
 export default function WHApprovalsPage() {
   const session = requireRole(["WH", "SC"]);
+  const t = getServerT();
 
   const all      = getPriceChangeRequestsByUser(session.displayName);
   const pending  = all.filter(r => r.status === "pending");
@@ -14,16 +16,16 @@ export default function WHApprovalsPage() {
   return (
     <div className="page-stack">
       <SectionIntro
-        eyebrow="My Submissions"
-        title="My Price Change Requests"
-        description="Track all price change requests you've submitted. Pending requests are waiting for SC Manager review. Approved requests have been written into the system."
+        eyebrow={t("whapp.eyebrow")}
+        title={t("whapp.title")}
+        description={t("whapp.desc")}
         actions={
           pending.length > 0 ? (
             <span className="badge badge-warning" style={{ fontSize: "12px", padding: "5px 12px", animation: "pulse-ring 2s ease-out infinite" }}>
-              ⏳ {pending.length} awaiting approval
+              ⏳ {t("whapp.awaitingApproval").replace("{count}", String(pending.length))}
             </span>
           ) : all.length > 0 ? (
-            <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>✓ Nothing pending</span>
+            <span className="badge badge-success" style={{ fontSize: "12px", padding: "5px 12px" }}>{t("whapp.nothingPending")}</span>
           ) : (
             <span className="badge" style={{ fontSize: "12px", padding: "5px 12px" }}>{session.displayName}</span>
           )
@@ -32,10 +34,10 @@ export default function WHApprovalsPage() {
 
       {/* KPI strip */}
       <section className="stat-grid">
-        <StatCard label="Pending"   value={pending.length}   note="Awaiting SC approval"  accent="amber" />
-        <StatCard label="Approved"  value={approved.length}  note="Price updated"          accent="green" />
-        <StatCard label="Rejected"  value={rejected.length}  note="See SC note below"      accent="red" />
-        <StatCard label="Total Sent" value={all.length}      note="All submissions"         accent="indigo" />
+        <StatCard label={t("gen.pending")}   value={pending.length}   note={t("whapp.pendingNote")}  accent="amber" />
+        <StatCard label={t("gen.approved")}  value={approved.length}  note={t("whapp.approvedNote")}  accent="green" />
+        <StatCard label={t("gen.rejected")}  value={rejected.length}  note={t("whapp.rejectedNote")}  accent="red" />
+        <StatCard label={t("whapp.submissionLog")} value={all.length}      note={t("whapp.totalSentNote")}         accent="indigo" />
       </section>
 
       {/* ── Pending requests — read-only for WH ── */}
@@ -43,10 +45,10 @@ export default function WHApprovalsPage() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow" style={{ fontSize: "10px" }}>Awaiting Review</p>
-              <h2>Pending Requests</h2>
+              <p className="eyebrow" style={{ fontSize: "10px" }}>{t("whapp.awaitingReview")}</p>
+              <h2>{t("whapp.pendingRequests")}</h2>
             </div>
-            <span className="badge badge-warning">{pending.length} in queue</span>
+            <span className="badge badge-warning">{t("whapp.inQueue").replace("{count}", String(pending.length))}</span>
           </div>
           <ApprovalsHistory requests={pending} mode="wh-pending" />
         </section>
@@ -56,18 +58,18 @@ export default function WHApprovalsPage() {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow" style={{ fontSize: "10px" }}>Submission Log</p>
-            <h2>All My Requests</h2>
+            <p className="eyebrow" style={{ fontSize: "10px" }}>{t("whapp.submissionLog")}</p>
+            <h2>{t("whapp.allMyRequests")}</h2>
           </div>
-          <span className="badge">{all.length} total</span>
+          <span className="badge">{t("whapp.total").replace("{count}", String(all.length))}</span>
         </div>
         {all.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 24px", color: "var(--text-muted)", fontSize: "13px" }}>
             <span style={{ fontSize: "32px", display: "block", marginBottom: "10px" }}>📋</span>
-            You haven't submitted any price change requests yet.
+            {t("whapp.noRequestsTitle")}
             <br />
             <span style={{ fontSize: "12px", marginTop: "6px", display: "block" }}>
-              When you update a confirmed price in the Purchasing page, a request will appear here.
+              {t("whapp.noRequestsDesc")}
             </span>
           </div>
         ) : (

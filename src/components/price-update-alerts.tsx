@@ -38,9 +38,9 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Load acknowledged alerts from sessionStorage
+    // Load acknowledged alerts from localStorage
     try {
-      const stored = sessionStorage.getItem("acknowledged_price_alerts");
+      const stored = localStorage.getItem("acknowledged_price_alerts");
       if (stored) {
         setDismissedIds(JSON.parse(stored));
       }
@@ -54,7 +54,7 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
     const next = [...dismissedIds, id];
     setDismissedIds(next);
     try {
-      sessionStorage.setItem("acknowledged_price_alerts", JSON.stringify(next));
+      localStorage.setItem("acknowledged_price_alerts", JSON.stringify(next));
     } catch (e) {
       console.error(e);
     }
@@ -68,7 +68,12 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
     await acknowledgeAlertAction(fd);
   };
 
-  const activeUpdates = recentUpdates.filter((u) => !dismissedIds.includes(u.id));
+  const activeUpdates = recentUpdates.filter((u) => {
+    if (dismissedIds.includes(u.id)) return false;
+    // For SA/AD, hide if it's already acknowledged in the database
+    if (role !== "SC" && u.ack_by) return false;
+    return true;
+  });
 
   if (!isLoaded || activeUpdates.length === 0) return null;
 

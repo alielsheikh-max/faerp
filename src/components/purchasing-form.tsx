@@ -1283,7 +1283,7 @@ export default function PurchasingForm({
             value={selectedItemId}
             onChange={setSelectedItemId}
             disabled={filteredItems.length === 0}
-            placeholder={filteredItems.length === 0 ? `— ${t("purch.noItemsInCat")} —` : "— Select an item —"}
+            placeholder={filteredItems.length === 0 ? `— ${t("purch.noItemsInCat")} —` : (isAr ? "— اختر الصنف —" : "— Select an item —")}
           />
         </label>
       </div>
@@ -1314,7 +1314,7 @@ export default function PurchasingForm({
                     className="button button-secondary"
                     style={{ fontSize: "11px", padding: "5px 11px", gap: "5px", marginTop: "2px" }}
                   >
-                    📅 Extend {suppliersExtendable.length} prev-month price{suppliersExtendable.length > 1 ? "s" : ""}
+                    {isAr ? `📅 تمديد ${suppliersExtendable.length} من أسعار الشهر الماضي` : `📅 Extend ${suppliersExtendable.length} prev-month price${suppliersExtendable.length > 1 ? "s" : ""}`}
                   </button>
                 )}
               </div>
@@ -1641,7 +1641,7 @@ export default function PurchasingForm({
                     <button key={f} type="button" onClick={() => setHistoryFilter(f)}
                       className={`button ${historyFilter === f ? "button-primary" : "button-secondary"}`}
                       style={{ padding: "4px 12px", fontSize: "11px", borderRadius: "6px", cursor: "pointer" }}>
-                      {f === "all" ? t("gen.all") : `${f}M`}
+                      {f === "all" ? t("gen.all") : (isAr ? `${f} أشهر` : `${f}M`)}
                     </button>
                   ))}
                 </div>

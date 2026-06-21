@@ -29,8 +29,32 @@ function shiftMonth(m: string, d: number) {
   const dt = new Date(y, mo - 1 + d, 1);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
 }
-function shortDate(iso: string) {
-  try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+const ARABIC_MONTHS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر"
+];
+
+function shortDate(iso: string, isRTL: boolean) {
+  try {
+    const d = new Date(iso);
+    if (isRTL) {
+      const hr = String(d.getHours()).padStart(2, "0");
+      const min = String(d.getMinutes()).padStart(2, "0");
+      const arMonth = ARABIC_MONTHS[d.getMonth()] || "";
+      return `${d.getDate()} ${arMonth} ${hr}:${min}`;
+    }
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
 }
 function pctDiff(next: number, prev: number | null) {
   if (!prev) return null;
@@ -369,7 +393,7 @@ export default function ScOverviewPanel({
                       </div>
                     </div>
                     <div style={{ fontSize: "9.5px", color: "var(--text-dim)", flexShrink: 0, textAlign: isRTL ? "left" : "right" }}>
-                      {shortDate(rc.changed_at)}
+                      {shortDate(rc.changed_at, isRTL)}
                     </div>
                   </div>
                 );

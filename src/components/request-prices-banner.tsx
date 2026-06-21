@@ -2,6 +2,38 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n-context";
+
+function isItemRelatedToSupplier(itemName: string, representedProducts: string | null): boolean {
+  if (!representedProducts) return true; // General or no filter
+
+  const normalize = (str: string) => {
+    return str
+      .toLowerCase()
+      .replace(/[\u064B-\u065F]/g, "") // remove diacritics
+      .replace(/[أإآ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي")
+      .replace(/[^a-z0-9\u0600-\u06FF\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const normalizedItemName = normalize(itemName);
+  const keywords = representedProducts.split(/[،,]+/).map(k => normalize(k)).filter(Boolean);
+  
+  for (const kw of keywords) {
+    let root = kw;
+    if (kw.includes("بالت")) root = "بالت";
+    else if (kw.includes("صندوق") || kw.includes("صناديق")) root = "صندوق";
+    else if (kw.includes("برنيك") || kw.includes("برانيك")) root = "برنيك";
+    else if (kw.includes("دعام")) root = "دعام";
+    
+    if (normalizedItemName.includes(root) || root.includes(normalizedItemName)) {
+      return true;
+    }
+  }
+  return false;
+}
 import * as XLSX from "xlsx-js-style";
 
 type Category = {
@@ -20,19 +52,30 @@ type Item = {
   category_name: string;
 };
 
+type Supplier = {
+  id: number;
+  name: string;
+  fame_name: string | null;
+  represented_products: string | null;
+  category_ids: number[];
+};
+
 export default function RequestPricesBanner({
   categories,
   items,
+  suppliers = [],
   simulate = false,
 }: {
   categories: Category[];
   items: Item[];
+  suppliers?: Supplier[];
   simulate?: boolean;
 }) {
   const { locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | "">("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<number | "">("");
   const [checkedItemIds, setCheckedItemIds] = useState<Record<number, boolean>>({});
 
   const isAr = locale === "ar";
@@ -58,8 +101,20 @@ export default function RequestPricesBanner({
     (item) => item.category_id === selectedCategoryId && item.active === 1
   );
 
+  const categorySuppliers = suppliers.filter(
+    (sup) => selectedCategoryId !== "" && sup.category_ids.includes(Number(selectedCategoryId))
+  );
+
+  const filteredCategoryItems = currentCategoryItems.filter((item) => {
+    if (selectedSupplierId === "") return true; // General
+    const supplier = suppliers.find(s => s.id === selectedSupplierId);
+    if (!supplier) return true;
+    return isItemRelatedToSupplier(item.name, supplier.represented_products);
+  });
+
   const handleSelectCategory = (catId: number | "") => {
     setSelectedCategoryId(catId);
+    setSelectedSupplierId(""); // reset selected supplier
     // Auto-check all items of this category initially
     if (catId !== "") {
       const initialChecked: Record<number, boolean> = {};
@@ -74,6 +129,21 @@ export default function RequestPricesBanner({
     }
   };
 
+  const handleSelectSupplier = (supId: number | "") => {
+    setSelectedSupplierId(supId);
+    const initialChecked: Record<number, boolean> = {};
+    const visibleItems = currentCategoryItems.filter((item) => {
+      if (supId === "") return true;
+      const supplier = suppliers.find(s => s.id === supId);
+      if (!supplier) return true;
+      return isItemRelatedToSupplier(item.name, supplier.represented_products);
+    });
+    visibleItems.forEach((item) => {
+      initialChecked[item.id] = true;
+    });
+    setCheckedItemIds(initialChecked);
+  };
+
   const handleToggleItem = (itemId: number) => {
     setCheckedItemIds((prev) => ({
       ...prev,
@@ -83,7 +153,7 @@ export default function RequestPricesBanner({
 
   const handleSelectAll = () => {
     const updated = { ...checkedItemIds };
-    currentCategoryItems.forEach((item) => {
+    filteredCategoryItems.forEach((item) => {
       updated[item.id] = true;
     });
     setCheckedItemIds(updated);
@@ -91,7 +161,7 @@ export default function RequestPricesBanner({
 
   const handleDeselectAll = () => {
     const updated = { ...checkedItemIds };
-    currentCategoryItems.forEach((item) => {
+    filteredCategoryItems.forEach((item) => {
       updated[item.id] = false;
     });
     setCheckedItemIds(updated);
@@ -297,7 +367,7 @@ export default function RequestPricesBanner({
     const category = categories.find((c) => c.id === selectedCategoryId);
     const categoryName = category ? category.name : "";
 
-    const checkedItems = currentCategoryItems.filter((item) => checkedItemIds[item.id]);
+    const checkedItems = filteredCategoryItems.filter((item) => checkedItemIds[item.id]);
 
     if (checkedItems.length === 0) {
       alert(isAr ? "الرجاء اختيار صنف واحد على الأقل." : "Please check at least one item.");
@@ -307,9 +377,13 @@ export default function RequestPricesBanner({
     // Sort by name
     checkedItems.sort((a, b) => a.name.localeCompare(b.name));
 
+    const supplier = selectedSupplierId !== "" ? suppliers.find(s => s.id === selectedSupplierId) : null;
+    const supplierSuffix = supplier ? ` - ${supplier.fame_name || supplier.name}` : "";
+    const filenameSupplierSuffix = supplier ? `_${(supplier.fame_name || supplier.name).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, "_")}` : "";
+
     const title = isAr 
-      ? `نموذج طلب أسعار فئة ${categoryName} لشهر ${nextMonthName} ${nextMonthYear}`
-      : `Supplier Price Request: ${categoryName} - ${nextMonthName} ${nextMonthYear}`;
+      ? `نموذج طلب أسعار فئة ${categoryName}${supplierSuffix} لشهر ${nextMonthName} ${nextMonthYear}`
+      : `Supplier Price Request: ${categoryName}${supplierSuffix} - ${nextMonthName} ${nextMonthYear}`;
 
     const headers = [
       isAr ? "معرف الصنف" : "Item ID",
@@ -328,7 +402,7 @@ export default function RequestPricesBanner({
     ]);
 
     const filenameSafeCategory = categoryName.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, "_");
-    downloadExcel(title, `Price_Request_${filenameSafeCategory}_${nextMonthName}_${nextMonthYear}.xlsx`, headers, dataRows);
+    downloadExcel(title, `Price_Request_${filenameSafeCategory}${filenameSupplierSuffix}_${nextMonthName}_${nextMonthYear}.xlsx`, headers, dataRows);
     setOpen(false);
   };
 
@@ -596,12 +670,42 @@ export default function RequestPricesBanner({
                     </select>
                   </div>
 
+                  {/* Supplier Selection Dropdown */}
+                  {selectedCategoryId !== "" && (
+                    <div>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "var(--text-muted)", marginBottom: "6px" }}>
+                        {isAr ? "اختر المورد (تصفية الأصناف):" : "Select Supplier (Filter Items):"}
+                      </label>
+                      <select
+                        value={selectedSupplierId}
+                        onChange={(e) => handleSelectSupplier(e.target.value ? Number(e.target.value) : "")}
+                        style={{
+                          width: "100%",
+                          padding: "10px 14px",
+                          borderRadius: "8px",
+                          border: "1.5px solid var(--border-medium)",
+                          background: "var(--bg-surface)",
+                          color: "var(--text-primary)",
+                          fontSize: "13px",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="">{isAr ? "عام / كافة المنتجات" : "General (All Items)"}</option>
+                        {categorySuppliers.map((sup) => (
+                          <option key={sup.id} value={sup.id}>
+                            {sup.fame_name || sup.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   {/* Items Checklist */}
                   {selectedCategoryId !== "" && (
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-light)", paddingBottom: "8px" }}>
                         <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
-                          {isAr ? "الأصناف المتوفرة:" : "Available Items:"} ({currentCategoryItems.length})
+                          {isAr ? "الأصناف المتوفرة:" : "Available Items:"} ({filteredCategoryItems.length})
                         </span>
                         <div style={{ display: "flex", gap: "10px" }}>
                           <button
@@ -633,12 +737,12 @@ export default function RequestPricesBanner({
                         flexDirection: "column",
                         gap: "8px",
                       }}>
-                        {currentCategoryItems.length === 0 ? (
+                        {filteredCategoryItems.length === 0 ? (
                           <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
-                            {isAr ? "لا توجد أصناف في هذه الفئة." : "No items found in this category."}
+                            {isAr ? "لا توجد أصناف تطابق هذا المورد في هذه الفئة." : "No items found for this supplier in this category."}
                           </div>
                         ) : (
-                          currentCategoryItems.map((item) => {
+                          filteredCategoryItems.map((item) => {
                             const isChecked = !!checkedItemIds[item.id];
                             return (
                               <label

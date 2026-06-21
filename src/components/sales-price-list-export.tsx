@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import * as XLSX from "xlsx-js-style";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMonthLabel } from "@/lib/format";
+import { useI18n } from "@/lib/i18n-context";
 
 type SalesRow = {
   item_id: number;
@@ -23,12 +24,15 @@ type SalesRow = {
 
 type Props = { rows: SalesRow[]; month: string; username: string };
 
-function fmtEGP(n: number | null) {
+function fmtEGP(n: number | null, locale?: string) {
   if (n === null) return "—";
+  if (locale === "ar") {
+    return `${n.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه`;
+  }
   return `EGP ${n.toLocaleString("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function getTierInfo(r: SalesRow) {
+function getTierInfo(r: SalesRow, locale?: string) {
   const isTiered = r.is_tiered === 1 && r.buy_avg != null;
   if (!isTiered) {
     return {
@@ -40,18 +44,19 @@ function getTierInfo(r: SalesRow) {
 
   const base = r.buy_avg ?? 0;
   const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+  const isAr = locale === "ar";
   const tierPrices = [
-    { label: "B",  range: `1–${r.tier1_max}`,  price: r.tier1_discount > 0 ? roundUp5(base / r.tier1_discount) : null },
-    { label: "T2", range: `${r.tier1_max + 1}–${r.tier2_max}`, price: r.tier2_discount > 0 ? roundUp5(base / r.tier2_discount) : null },
-    { label: "T3", range: `${r.tier2_max + 1}–${r.tier3_max}`, price: r.tier3_discount > 0 ? roundUp5(base / r.tier3_discount) : null },
-    { label: "T4", range: `>${r.tier3_max}`,   price: r.tier4_discount > 0 ? roundUp5(base / r.tier4_discount) : null },
+    { label: isAr ? "أساسي" : "B",  range: `1–${r.tier1_max}`,  price: r.tier1_discount > 0 ? roundUp5(base / r.tier1_discount) : null },
+    { label: isAr ? "ش٢" : "T2", range: `${r.tier1_max + 1}–${r.tier2_max}`, price: r.tier2_discount > 0 ? roundUp5(base / r.tier2_discount) : null },
+    { label: isAr ? "ش٣" : "T3", range: `${r.tier2_max + 1}–${r.tier3_max}`, price: r.tier3_discount > 0 ? roundUp5(base / r.tier3_discount) : null },
+    { label: isAr ? "ش٤" : "T4", range: `>${r.tier3_max}`,   price: r.tier4_discount > 0 ? roundUp5(base / r.tier4_discount) : null },
   ].filter(t => t.price !== null);
 
   if (tierPrices.length === 0) {
     return {
       min: r.sell_min,
       max: r.sell_max,
-      notes: "Tiered pricing applies"
+      notes: isAr ? "تطبق أسعار الشرائح" : "Tiered pricing applies"
     };
   }
 
@@ -61,7 +66,7 @@ function getTierInfo(r: SalesRow) {
 
   const notes = tierPrices.map(t => {
     const formattedPrice = t.price?.toLocaleString("en-EG", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    return `${t.label} (${t.range}): EGP ${formattedPrice}`;
+    return `${t.label} (${t.range}): ${formattedPrice} ${isAr ? "جنيه" : "EGP"}`;
   }).join(" | ");
 
   return {
@@ -71,36 +76,37 @@ function getTierInfo(r: SalesRow) {
   };
 }
 
-function printWindow(html: string, title: string) {
+function printWindow(html: string, title: string, isRTL?: boolean) {
   const win = window.open("", "_blank", "width=950,height=750");
   if (!win) { alert("Please allow pop-ups to generate PDF reports."); return; }
-  win.document.write(`<!DOCTYPE html><html><head>
+  win.document.write(`<!DOCTYPE html><html dir="${isRTL ? "rtl" : "ltr"}"><head>
     <meta charset="UTF-8"/>
     <title>${title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;600;700&display=swap" rel="stylesheet"/>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px}
+      body{font-family:'Readex Pro',sans-serif;font-size:12px;color:#111827;background:#fff;padding:32px 40px;direction:${isRTL ? "rtl" : "ltr"};text-align:${isRTL ? "right" : "left"}}
       .header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:16px;margin-bottom:24px}
       .brand{display:flex;align-items:center;gap:10px}
       .brand-mark{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
       .brand-name{font-size:18px;font-weight:800;color:#111827}
       .brand-sub{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em}
-      .meta{text-align:right}
+      .meta{text-align:${isRTL ? "left" : "right"}}
       .meta .doc-title{font-size:16px;font-weight:800;color:#111827;margin-bottom:4px}
       .meta .doc-sub{font-size:11px;color:#6b7280}
       .stamp{display:inline-block;padding:4px 12px;border-radius:99px;background:rgba(16,185,129,0.1);border:1.5px solid #10b981;color:#065f46;font-weight:800;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin-top:6px}
-      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-left:3px solid #1e3a8a;margin:16px 0 6px;border-radius:0 4px 4px 0}
+      .cat-header{background:#eff6ff;padding:8px 12px;font-weight:800;font-size:12px;color:#1e3a8a;border-inline-start:3px solid #1e3a8a;margin:16px 0 6px;border-radius:0 4px 4px 0}
+      html[dir="rtl"] .cat-header{border-radius: 4px 0 0 4px}
       table{width:100%;border-collapse:collapse;margin-bottom:8px}
-      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:left}
-      th.r{text-align:right}
+      th{background:#1e3a8a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffffff;padding:8px 10px;border-bottom:2px solid #1b357f;text-align:start}
+      th.r{text-align:end}
       td{padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:11px;vertical-align:top}
       tr:last-child td{border-bottom:none}
       tr:hover td{background:#fafafa}
-      .r{text-align:right;font-variant-numeric:tabular-nums}
+      .r{text-align:end;font-variant-numeric:tabular-nums}
       .sell-min{color:#0284c7;font-weight:800}
       .sell-max{color:#1e3a8a;font-weight:800}
-      .tier-tag{display:inline-block;padding:1px 6px;background:#eff6ff;color:#1e3a8a;border-radius:4px;font-size:9px;font-weight:800;margin-left:4px}
+      .tier-tag{display:inline-block;padding:1px 6px;background:#eff6ff;color:#1e3a8a;border-radius:4px;font-size:9px;font-weight:800;margin-inline-start:4px}
       .muted{color:#9ca3af}
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
       @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
@@ -110,6 +116,8 @@ function printWindow(html: string, title: string) {
 }
 
 export default function SalesPriceListExport({ rows, month, username }: Props) {
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   const [exporting, setExporting] = useState(false);
 
   const published = rows.filter(r => r.sell_min !== null);
@@ -119,10 +127,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
     grouped[r.category_name].push(r);
   }
 
-  const monthLabel = (() => {
-    const [y, m] = month.split("-");
-    return new Date(Number(y), Number(m) - 1).toLocaleString("en-EG", { month: "long", year: "numeric" });
-  })();
+  const monthLabel = formatMonthLabel(month);
 
   /* ── PDF ────────────────────────────────────────────────────── */
   const exportPDF = () => {
@@ -130,31 +135,35 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
       <div class="header">
         <div class="brand">
           <div class="brand-mark"><img src="/faerp%20logo.svg" style="width:36px;height:36px;object-fit:contain;" alt="Logo"/></div>
-          <div><div class="brand-name">FAERP</div><div class="brand-sub">Enterprise ERP · On-Premises</div></div>
+          <div><div class="brand-name">FAERP</div><div class="brand-sub">${isAr ? "نظام تخطيط موارد المؤسسات · تشغيل محلي" : "Enterprise ERP · On-Premises"}</div></div>
         </div>
         <div class="meta">
-          <div class="doc-title">Final Approved Price List</div>
-          <div class="doc-sub">${monthLabel} · Prepared by ${username}</div>
+          <div class="doc-title">${isAr ? "قائمة الأسعار النهائية المعتمدة" : "Final Approved Price List"}</div>
+          <div class="doc-sub">${monthLabel} · ${isAr ? `أعدت بواسطة ${username}` : `Prepared by ${username}`}</div>
           <div class="doc-sub">${formatDate()}</div>
-          <div class="stamp">✓ Published &amp; Approved by SC</div>
+          <div class="stamp">${isAr ? "✓ معتمدة ومنشورة بواسطة إدارة سلاسل الإمداد" : "✓ Published &amp; Approved by SC"}</div>
         </div>
       </div>`;
 
     for (const [cat, catRows] of Object.entries(grouped)) {
       body += `<div class="cat-header">${cat}</div>
         <table><thead><tr>
-          <th>Product</th><th>Unit</th><th class="r">MOQ</th>
-          <th class="r">Min Price (EGP)</th><th class="r">Max Price (EGP)</th><th>Notes</th>
+          <th>${isAr ? "المنتج" : "Product"}</th>
+          <th>${isAr ? "الوحدة" : "Unit"}</th>
+          <th class="r">${isAr ? "الحد الأدنى للطلب" : "MOQ"}</th>
+          <th class="r">${isAr ? "أدنى سعر بيع (جنيه)" : "Min Price (EGP)"}</th>
+          <th class="r">${isAr ? "أقصى سعر بيع (جنيه)" : "Max Price (EGP)"}</th>
+          <th>${isAr ? "ملاحظات" : "Notes"}</th>
         </tr></thead><tbody>`;
       for (const r of catRows) {
-        const info = getTierInfo(r);
+        const info = getTierInfo(r, locale);
         const hasTiers = r.is_tiered === 1 && r.buy_avg != null;
         body += `<tr>
-          <td>${r.item_name}${hasTiers ? '<span class="tier-tag">TIERED</span>' : ""}</td>
+          <td>${r.item_name}${hasTiers ? `<span class="tier-tag">${isAr ? "مقسم لشرائح" : "TIERED"}</span>` : ""}</td>
           <td class="muted">${r.unit}</td>
           <td class="r muted">${r.moq || "—"}</td>
-          <td class="r sell-min">${fmtEGP(info.min)}</td>
-          <td class="r sell-max">${fmtEGP(info.max)}</td>
+          <td class="r sell-min">${fmtEGP(info.min, locale)}</td>
+          <td class="r sell-max">${fmtEGP(info.max, locale)}</td>
           <td class="muted" style="font-size:10px">${info.notes}</td>
         </tr>`;
       }
@@ -162,12 +171,12 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
     }
 
     body += `<div class="footer">
-      <span>FAERP · Confidential · Internal Use Only</span>
-      <span>Approved &amp; Published by: ${username}</span>
+      <span>${isAr ? "FAERP · سري · للاستخدام الداخلي فقط" : "FAERP · Confidential · Internal Use Only"}</span>
+      <span>${isAr ? `معتمدة ومنشورة بواسطة: ${username}` : `Approved &amp; Published by: ${username}`}</span>
       <span>${formatDate()}</span>
     </div>`;
 
-    printWindow(body, `FAERP Price List – ${monthLabel}`);
+    printWindow(body, `${isAr ? "قائمة أسعار FAERP" : "FAERP Price List"} – ${monthLabel}`, isAr);
   };
 
   /* ── Excel ──────────────────────────────────────────────────── */
@@ -179,23 +188,23 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
       // Style Definitions (matching WH Supplier Request layout style)
       const titleStyle = {
         font: { name: "Segoe UI", sz: 16, bold: true, color: { rgb: "1E3A8A" } },
-        alignment: { horizontal: "left", vertical: "center" }
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" }
       };
 
       const subtitleStyle = {
         font: { name: "Segoe UI", sz: 10, italic: true, color: { rgb: "475569" } },
-        alignment: { horizontal: "left", vertical: "center" }
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" }
       };
 
       const statusStyle = {
         font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "065F46" } },
-        alignment: { horizontal: "left", vertical: "center" }
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" }
       };
 
       const headerStyleLeft = {
         font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
         fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
-        alignment: { horizontal: "left", vertical: "center" },
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" },
         border: {
           top: { style: "thin", color: { rgb: "1B357F" } },
           bottom: { style: "medium", color: { rgb: "1B357F" } },
@@ -219,7 +228,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
       const headerStyleRight = {
         font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
         fill: { fgColor: { rgb: "1E3A8A" } }, // App Blue (#1E3A8A)
-        alignment: { horizontal: "right", vertical: "center" },
+        alignment: { horizontal: isAr ? "left" : "right", vertical: "center" },
         border: {
           top: { style: "thin", color: { rgb: "1B357F" } },
           bottom: { style: "medium", color: { rgb: "1B357F" } },
@@ -231,6 +240,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
       const catStyle = {
         font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "4338CA" } },
         fill: { fgColor: { rgb: "F5F3FF" } }, // Purple-50
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" },
         border: {
           top: { style: "thin", color: { rgb: "E5E7EB" } },
           bottom: { style: "thin", color: { rgb: "E5E7EB" } },
@@ -241,7 +251,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
 
       const cellStyleProduct = {
         font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "334155" } },
-        alignment: { horizontal: "left", vertical: "center" },
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" },
         border: {
           top: { style: "thin", color: { rgb: "E2E8F0" } },
           bottom: { style: "thin", color: { rgb: "E2E8F0" } },
@@ -274,8 +284,8 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
 
       const cellStyleMin = {
         font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "0284C7" } },
-        alignment: { horizontal: "right", vertical: "center" },
-        numFmt: '"EGP" #,##0.00',
+        alignment: { horizontal: isAr ? "left" : "right", vertical: "center" },
+        numFmt: isAr ? '#,##0.00 "جنيه"' : '"EGP" #,##0.00',
         border: {
           top: { style: "thin", color: { rgb: "E2E8F0" } },
           bottom: { style: "thin", color: { rgb: "E2E8F0" } },
@@ -286,8 +296,8 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
 
       const cellStyleMax = {
         font: { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "6366F1" } },
-        alignment: { horizontal: "right", vertical: "center" },
-        numFmt: '"EGP" #,##0.00',
+        alignment: { horizontal: isAr ? "left" : "right", vertical: "center" },
+        numFmt: isAr ? '#,##0.00 "جنيه"' : '"EGP" #,##0.00',
         border: {
           top: { style: "thin", color: { rgb: "E2E8F0" } },
           bottom: { style: "thin", color: { rgb: "E2E8F0" } },
@@ -298,7 +308,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
 
       const cellStyleNotes = {
         font: { name: "Segoe UI", sz: 10, color: { rgb: "475569" } },
-        alignment: { horizontal: "left", vertical: "center" },
+        alignment: { horizontal: isAr ? "right" : "left", vertical: "center" },
         border: {
           top: { style: "thin", color: { rgb: "E2E8F0" } },
           bottom: { style: "thin", color: { rgb: "E2E8F0" } },
@@ -317,19 +327,19 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
       ];
 
       // Title rows
-      wsData.push([{ v: "FAERP — Final Approved Price List", s: titleStyle }]);
-      wsData.push([{ v: `${monthLabel} · Prepared by ${username} · ${formatDate()}`, s: subtitleStyle }]);
-      wsData.push([{ v: "✓ Published & Approved by SC", s: statusStyle }]);
+      wsData.push([{ v: isAr ? "FAERP — قائمة الأسعار النهائية المعتمدة" : "FAERP — Final Approved Price List", s: titleStyle }]);
+      wsData.push([{ v: isAr ? `${monthLabel} · أعدت بواسطة ${username} · ${formatDate()}` : `${monthLabel} · Prepared by ${username} · ${formatDate()}`, s: subtitleStyle }]);
+      wsData.push([{ v: isAr ? "✓ معتمدة ومنشورة بواسطة إدارة سلاسل الإمداد" : "✓ Published & Approved by SC", s: statusStyle }]);
       wsData.push([]);
 
       // Headers
       wsData.push([
-        { v: "Product",         s: headerStyleLeft },
-        { v: "Unit",            s: headerStyleCenter },
-        { v: "MOQ",             s: headerStyleCenter },
-        { v: "Min Price (EGP)", s: headerStyleRight },
-        { v: "Max Price (EGP)", s: headerStyleRight },
-        { v: "Notes",           s: headerStyleLeft },
+        { v: isAr ? "المنتج" : "Product",         s: isAr ? headerStyleRight : headerStyleLeft },
+        { v: isAr ? "الوحدة" : "Unit",            s: headerStyleCenter },
+        { v: isAr ? "الحد الأدنى للطلب" : "MOQ",   s: headerStyleCenter },
+        { v: isAr ? "السعر الأدنى (جنيه)" : "Min Price (EGP)", s: isAr ? headerStyleLeft : headerStyleRight },
+        { v: isAr ? "السعر الأقصى (جنيه)" : "Max Price (EGP)", s: isAr ? headerStyleLeft : headerStyleRight },
+        { v: isAr ? "الملاحظات" : "Notes",         s: isAr ? headerStyleRight : headerStyleLeft },
       ]);
 
       for (const [cat, catRows] of Object.entries(grouped)) {
@@ -344,7 +354,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
         rowHeights.push({ hpt: 26 });
         
         for (const r of catRows) {
-          const info = getTierInfo(r);
+          const info = getTierInfo(r, locale);
           wsData.push([
             { v: r.item_name, s: cellStyleProduct },
             { v: r.unit, s: cellStyleUnit },
@@ -377,7 +387,9 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
           let valStr = "";
           if (typeof cell.v === "number") {
             if (cIdx === 3 || cIdx === 4) {
-              valStr = `EGP ${cell.v.toLocaleString("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              valStr = isAr
+                ? `${cell.v.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه`
+                : `EGP ${cell.v.toLocaleString("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             } else {
               valStr = String(cell.v);
             }
@@ -401,9 +413,10 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
         { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
         { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
       ];
+      ws["!views"] = [{ RTL: isAr }];
       
       XLSX.utils.book_append_sheet(wb, ws, monthLabel.substring(0, 31));
-      XLSX.writeFile(wb, `FAERP_PriceList_${month}_${username}.xlsx`);
+      XLSX.writeFile(wb, isAr ? `قائمة_الأسعار_${month}_${username}.xlsx` : `FAERP_PriceList_${month}_${username}.xlsx`);
     } finally {
       setExporting(false);
     }
@@ -430,10 +443,12 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
         }}>📋</div>
         <div>
           <div style={{ fontSize: "14px", fontWeight: 800, color: "#3730a3", marginBottom: "3px" }}>
-            Final Price List — {monthLabel}
+            {isAr ? `قائمة الأسعار النهائية — ${monthLabel}` : `Final Price List — ${monthLabel}`}
           </div>
           <div style={{ fontSize: "11px", color: "#4338ca" }}>
-            {published.length} published items across {Object.keys(grouped).length} categories · Approved by SC
+            {isAr 
+              ? `تم نشر ${published.length} منتجاً في ${Object.keys(grouped).length} فئات · معتمد من إدارة سلاسل الإمداد` 
+              : `${published.length} published items across ${Object.keys(grouped).length} categories · Approved by SC`}
           </div>
         </div>
       </div>
@@ -455,7 +470,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.08)"; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "white"; }}
         >
-          📊 {exporting ? "Exporting…" : "Excel / XLSX"}
+          📊 {exporting ? (isAr ? "جاري التصدير…" : "Exporting…") : (isAr ? "إكسل / XLSX" : "Excel / XLSX")}
         </button>
         <button
           type="button"
@@ -473,7 +488,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 18px rgba(99,102,241,0.55)"; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 12px rgba(99,102,241,0.4)"; }}
         >
-          🖨️ Print / PDF
+          🖨️ {isAr ? "طباعة / PDF" : "Print / PDF"}
         </button>
       </div>
     </div>

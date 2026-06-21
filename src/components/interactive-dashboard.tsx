@@ -60,7 +60,8 @@ export default function InteractiveDashboard({
   tierEnabled = false,
   itemSellHistory = [],
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const isAr = locale === "ar";
   const router = useRouter();
 
   // ── Selection state ──────────────────────────────────────────────
@@ -248,7 +249,7 @@ export default function InteractiveDashboard({
                   background: window === w ? "var(--primary)" : "transparent",
                   color: window === w ? "#fff" : "var(--text-muted)",
                   transition: "all 150ms",
-                }}>{w}M</button>
+                }}>{isAr ? `${w} أشهر` : `${w}M`}</button>
             ))}
           </div>
         </div>
@@ -269,11 +270,11 @@ export default function InteractiveDashboard({
             {/* ── Sell Price History (last 3 months) ─────────────────── */}
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "16px 18px", boxShadow: "var(--shadow-sm)" }}>
               <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: "0 0 12px" }}>
-                📋 Sell Price History
+                📋 {isAr ? "سجل أسعار البيع" : "Sell Price History"}
               </p>
               {itemSellHistory.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-muted)", fontSize: "12px", fontStyle: "italic" }}>
-                  No selling prices published yet for this item.
+                  {isAr ? "لم يتم نشر أسعار بيع لهذا الصنف بعد." : "No selling prices published yet for this item."}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -299,7 +300,7 @@ export default function InteractiveDashboard({
                         <div>
                           <div style={{ fontSize: "10px", fontWeight: 800, color: isCurrentMonth ? "var(--primary)" : "var(--text-secondary)", whiteSpace: "nowrap" }}>
                             {formatMonthLabel(h.month)}
-                            {isCurrentMonth && <span style={{ marginLeft: "5px", fontSize: "8px", fontWeight: 900, background: "var(--primary)", color: "#fff", padding: "1px 5px", borderRadius: "4px", verticalAlign: "middle" }}>NOW</span>}
+                            {isCurrentMonth && <span style={{ marginInlineStart: "5px", fontSize: "8px", fontWeight: 900, background: "var(--primary)", color: "#fff", padding: "1px 5px", borderRadius: "4px", verticalAlign: "middle" }}>{isAr ? "الآن" : "NOW"}</span>}
                           </div>
                         </div>
                         {/* Markup */}
@@ -345,7 +346,7 @@ export default function InteractiveDashboard({
                       >
                         {selectedItem.name}
                       </span>
-                    ) : "Select an item"}
+                    ) : (isAr ? "اختر صنفًا" : "Select an item")}
                   </h2>
                 </div>
                 {cheapestPrice !== null && avgCurrentPrice !== null && (
@@ -358,7 +359,7 @@ export default function InteractiveDashboard({
 
               {latestSupplierPrices.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px" }}>
-                  No prices recorded for {formatMonthLabel(month ?? latestMonth)} yet.
+                  {isAr ? `لم يتم تسجيل أي أسعار لشهر ${formatMonthLabel(month ?? latestMonth)} بعد.` : `No prices recorded for ${formatMonthLabel(month ?? latestMonth)} yet.`}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -396,7 +397,7 @@ export default function InteractiveDashboard({
                     <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>–</span>
                     <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
-                    <span className="badge badge-success" style={{ fontSize: "10px" }}>✓ Published</span>
+                    <span className="badge badge-success" style={{ fontSize: "10px" }}>✓ {isAr ? "منشور" : "Published"}</span>
                     <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
                   </>
                 ) : (
@@ -535,7 +536,7 @@ export default function InteractiveDashboard({
               />
             ) : (
               <div className="restriction-info-banner" style={{ background: "rgba(245,158,11,0.06)", borderColor: "rgba(245,158,11,0.35)", color: "#b45309" }}>
-                <strong>No supplier quotes yet.</strong> WH needs to record prices for <em>{selectedItem?.name}</em> in {formatMonthLabel(month ?? latestMonth)} before a selling price can be set.
+                <strong>{isAr ? "لا توجد عروض أسعار من الموردين بعد." : "No supplier quotes yet."}</strong> {isAr ? `يجب على المشتريات تسجيل أسعار لـ` : `WH needs to record prices for `} <em>{selectedItem?.name}</em> {isAr ? `في شهر ${formatMonthLabel(month ?? latestMonth)} قبل أن يتمكن من تحديد سعر البيع.` : `in ${formatMonthLabel(month ?? latestMonth)} before a selling price can be set.`}
               </div>
             )}
           </div>
@@ -552,7 +553,7 @@ export default function InteractiveDashboard({
                   {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
                 </p>
                 <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "260px" }}>
-                  {selectedItem?.name ?? "Select an item"}
+                  {selectedItem?.name ?? (isAr ? "اختر صنفًا" : "Select an item")}
                 </h2>
               </div>
               {cheapestPrice !== null && avgCurrentPrice !== null && (
@@ -564,7 +565,7 @@ export default function InteractiveDashboard({
             </div>
             {latestSupplierPrices.length === 0 ? (
               <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)", fontSize: "13px" }}>
-                No prices recorded for {formatMonthLabel(month ?? latestMonth)} yet.
+                {isAr ? `لم يتم تسجيل أسعار لشهر ${formatMonthLabel(month ?? latestMonth)} بعد.` : `No prices recorded for ${formatMonthLabel(month ?? latestMonth)} yet.`}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -669,22 +670,22 @@ export default function InteractiveDashboard({
             </div>
             <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{t("idash.comparisonDesc")}</p>
           </div>
-          <span className="badge badge-strong">{matrixMonths.length} months</span>
+          <span className="badge badge-strong">{isAr ? `${matrixMonths.length} أشهر` : `${matrixMonths.length} months`}</span>
         </div>
 
         <div style={{ overflowX: "auto", maxHeight: "380px", overflowY: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--bg-elevated)" }}>
-                <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", position: "sticky", top: 0, left: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>Supplier</th>
+                <th style={{ padding: "10px 16px", textAlign: isAr ? "right" : "left", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", position: "sticky", top: 0, [isAr ? "right" : "left"]: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light), 0 1px 0 var(--border)` }}>{isAr ? "المورد" : "Supplier"}</th>
                 {matrixMonths.map((m, i) => (
                   <th key={m} style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: i === 0 ? "var(--primary)" : "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
                     {formatMonthLabel(m)}
-                    {i === 0 && <span style={{ display: "block", fontSize: "8px", color: "var(--primary)", fontWeight: 800 }}>LATEST</span>}
+                    {i === 0 && <span style={{ display: "block", fontSize: "8px", color: "var(--primary)", fontWeight: 800 }}>{isAr ? "الأحدث" : "LATEST"}</span>}
                   </th>
                 ))}
-                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Avg</th>
-                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>Trend</th>
+                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{isAr ? "المتوسط" : "Avg"}</th>
+                <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "11px", color: "var(--text-muted)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{isAr ? "الاتجاه" : "Trend"}</th>
               </tr>
             </thead>
             <tbody>
@@ -697,7 +698,7 @@ export default function InteractiveDashboard({
                 if (chronoPrices.length === 0) return null;
                 return (
                   <tr key={sup.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                    <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "10px 16px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: supColor, flexShrink: 0 }} />
                         <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.fame_name || sup.name}</span>
@@ -716,7 +717,7 @@ export default function InteractiveDashboard({
                       {avg !== null ? formatCurrency(avg) : "—"}
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 700, fontSize: "12px", color: trendPct === null ? "var(--text-dim)" : trendPct > 1 ? "var(--danger)" : trendPct < -1 ? "var(--success)" : "var(--text-muted)" }}>
-                      {trendPct === null ? "—" : trendPct > 1 ? `↑ ${trendPct.toFixed(1)}%` : trendPct < -1 ? `↓ ${Math.abs(trendPct).toFixed(1)}%` : "≈ stable"}
+                      {trendPct === null ? "—" : trendPct > 1 ? `↑ ${trendPct.toFixed(1)}%` : trendPct < -1 ? `↓ ${Math.abs(trendPct).toFixed(1)}%` : (isAr ? "≈ مستقر" : "≈ stable")}
                     </td>
                   </tr>
                 );
@@ -724,7 +725,7 @@ export default function InteractiveDashboard({
 
               {/* Market avg footer */}
               <tr style={{ background: "var(--bg-elevated)", borderTop: "2px solid var(--border)" }}>
-                <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "var(--bg-elevated)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", boxShadow: "1px 0 0 var(--border-light)" }}>Market Avg</td>
+                <td style={{ padding: "10px 16px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "var(--bg-elevated)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)` }}>{isAr ? "متوسط السوق" : "Market Avg"}</td>
                 {matrixMonths.map((m) => {
                   const prices = suppliers.map(s => latestBySupplierMonth.get(`${s.id}||${m}`)?.price).filter((p): p is number => p !== undefined);
                   const avg = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
@@ -740,7 +741,7 @@ export default function InteractiveDashboard({
               {/* SC: selling price row */}
               {role === "SC" && salesCatalog && (
                 <tr style={{ background: "rgba(245,158,11,0.05)", borderTop: "1px solid var(--border-light)" }}>
-                  <td style={{ padding: "10px 16px", position: "sticky", left: 0, background: "rgba(245,158,11,0.05)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", boxShadow: "1px 0 0 var(--border-light)" }}>Sell Range</td>
+                  <td style={{ padding: "10px 16px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "rgba(245,158,11,0.05)", zIndex: 1, fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)` }}>{isAr ? "نطاق البيع" : "Sell Range"}</td>
                   {matrixMonths.map((m) => {
                     const sell = salesCatalog.find(r => r.item_id === itemId && r.month === m);
                     return (

@@ -6,7 +6,7 @@ import CsvImportPanel from "@/components/csv-import-panel";
 import CollapsiblePanel from "@/components/collapsible-panel";
 import { requireRole } from "@/lib/auth";
 import { getAdminSnapshot, getMarginFloors, getItems, getItemTiers } from "@/lib/db";
-import { getServerT } from "@/lib/locale-server";
+import { getServerT, getServerLocale } from "@/lib/locale-server";
 
 export default function ItemsAdminPage({
   searchParams,
@@ -15,17 +15,24 @@ export default function ItemsAdminPage({
 }) {
   const session = requireRole(["AD", "SC", "WH"]);
   const t = getServerT();
+  const locale = getServerLocale();
+  const isAr = locale === "ar";
   const snapshot = getAdminSnapshot();
   const floors = getMarginFloors();
   const allItems = getItems();
   const tiers = getItemTiers();
 
+  const eyebrow = isAr ? "دليل النظام" : "ERP Catalog";
+  const description = session.role === "AD"
+    ? (isAr ? "تصفح المنتجات والأقسام وإعدادات التسعير القياسية وشرائح الكميات." : "Browse items, categories, standard pricing configs, and volume tiers.")
+    : (isAr ? "تصفح المنتجات والأقسام." : "Browse items and categories.");
+
   return (
     <div className="page-stack">
       <SectionIntro
-        eyebrow="ERP Catalog"
+        eyebrow={eyebrow}
         title={t("nav.items")}
-        description="Browse items, categories, standard pricing configs, and volume tiers."
+        description={description}
         actions={
           searchParams?.success ? (
             <span className="badge badge-success">{searchParams.success}</span>

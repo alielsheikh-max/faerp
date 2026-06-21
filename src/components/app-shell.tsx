@@ -167,8 +167,8 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
             <img src="/faerp logo.svg" style={{ width: "28px", height: "28px", objectFit: "contain" }} alt="Logo" />
           </div>
           <div>
-            <p className="eyebrow">{t("app.tagline")}</p>
             <h1>{t("app.name")}</h1>
+            <p className="eyebrow">{t("app.tagline")}</p>
           </div>
         </div>
 
