@@ -1161,103 +1161,11 @@ export default function PricingCalculator({
                 </div>
               )}
 
-              {/* Final Price Summary Box */}
-              {!usesTierStrategy && (
-                <div style={{
-                  padding: "12px 16px",
-                  background: "linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.08) 100%)",
-                  border: "1px solid rgba(59,130,246,0.2)",
-                  borderRadius: "12px",
-                  display: "flex", flexDirection: "column", gap: "8px"
-                }}>
-                  <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "var(--primary)", letterSpacing: "0.05em" }}>
-                    Total Price Published to Sales Agents
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Min Selling Price</div>
-                      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)" }}>
-                        {formatCurrency(finalSellMin)}
-                      </div>
-                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                        Base: {formatCurrency(liveSellMin)} + Trans: {formatCurrency(transportation)} + Exp: {formatCurrency(otherExpenses)}
-                      </div>
-                    </div>
-                    <div style={{ borderLeft: "1px solid var(--border-medium)", height: "36px" }} />
-                    <div>
-                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Max Selling Price</div>
-                      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)" }}>
-                        {formatCurrency(finalSellMax)}
-                      </div>
-                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                        Base: {formatCurrency(liveSellMax)} + Trans: {formatCurrency(transportation)} + Exp: {formatCurrency(otherExpenses)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Hidden inputs */}
               <input type="hidden" name="otherExpenses" value={otherExpenses} />
               <input type="hidden" name="transportOverrideEnabled" value={transportOverrideEnabled ? "1" : "0"} />
               {transportOverrideEnabled && (
                 <input type="hidden" name="transportOverride" value={transportOverrideAmount} />
-              )}
-
-              {/* Volume Tier Preview */}
-              {usesTierStrategy && (
-                <div style={{
-                  padding: "14px",
-                  background: "linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%)",
-                  border: "1.5px dashed rgba(16,185,129,0.3)",
-                  borderRadius: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px"
-                }}>
-                  <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    ⚡ Live Volume Tier Prices (rounded to 5 EGP)
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                      <span>Tier 1 (1 – {tier1Max} units):</span>
-                      <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(finalSellMin)}</strong>
-                    </div>
-                    {tier2Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
-                        <span>Tier 2 ({tier1Max + 1} – {tier2Max} units){tier2Discount < 1 ? ` ÷ ${tier2Discount}` : ` ${tier2Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier2Discount < 1
-                            ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
-                      </div>
-                    )}
-                    {tier3Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: tier4Discount > 0 ? "1px dashed var(--border-light)" : "none", paddingBottom: "4px" }}>
-                        <span>Tier 3 ({tier2Max + 1} – {tier3Max} units){tier3Discount < 1 ? ` ÷ ${tier3Discount}` : ` ${tier3Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier3Discount < 1
-                            ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
-                      </div>
-                    )}
-                    {tier4Discount > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Tier 4 ({tier3Max + 1}+ units){tier4Discount < 1 ? ` ÷ ${tier4Discount}` : ` ${tier4Discount}% off`}:</span>
-                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
-                          {formatCurrency(tier4Discount < 1
-                            ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses)
-                            : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses)
-                          )}
-                        </strong>
-                      </div>
-                    )}
-                  </div>
-                </div>
               )}
             </div>
 
@@ -1347,6 +1255,98 @@ export default function PricingCalculator({
                       : `Markup is close to the margin floor of (${floorPct}%). Make sure this is intentional.`
                     }
                   </span>
+                </div>
+              )}
+
+              {/* Final Price Summary Box */}
+              {!usesTierStrategy && (
+                <div style={{
+                  padding: "12px 16px",
+                  background: "linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.08) 100%)",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                  borderRadius: "12px",
+                  display: "flex", flexDirection: "column", gap: "8px"
+                }}>
+                  <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "var(--primary)", letterSpacing: "0.05em" }}>
+                    Total Price Published to Sales Agents
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Min Selling Price</div>
+                      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)" }}>
+                        {formatCurrency(finalSellMin)}
+                      </div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        Base: {formatCurrency(liveSellMin)} + Trans: {formatCurrency(transportation)} + Exp: {formatCurrency(otherExpenses)}
+                      </div>
+                    </div>
+                    <div style={{ borderLeft: "1px solid var(--border-medium)", height: "36px" }} />
+                    <div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Max Selling Price</div>
+                      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)" }}>
+                        {formatCurrency(finalSellMax)}
+                      </div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        Base: {formatCurrency(liveSellMax)} + Trans: {formatCurrency(transportation)} + Exp: {formatCurrency(otherExpenses)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Volume Tier Preview */}
+              {usesTierStrategy && (
+                <div style={{
+                  padding: "14px",
+                  background: "linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%)",
+                  border: "1.5px dashed rgba(16,185,129,0.3)",
+                  borderRadius: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px"
+                }}>
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    ⚡ Live Volume Tier Prices (rounded to 5 EGP)
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
+                      <span>Tier 1 (1 – {tier1Max} units):</span>
+                      <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(finalSellMin)}</strong>
+                    </div>
+                    {tier2Discount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "4px" }}>
+                        <span>Tier 2 ({tier1Max + 1} – {tier2Max} units){tier2Discount < 1 ? ` ÷ ${tier2Discount}` : ` ${tier2Discount}% off`}:</span>
+                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                          {formatCurrency(tier2Discount < 1
+                            ? roundUp5(buyAvg / tier2Discount + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - tier2Discount / 100) + transportation + otherExpenses)
+                          )}
+                        </strong>
+                      </div>
+                    )}
+                    {tier3Discount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: tier4Discount > 0 ? "1px dashed var(--border-light)" : "none", paddingBottom: "4px" }}>
+                        <span>Tier 3 ({tier2Max + 1} – {tier3Max} units){tier3Discount < 1 ? ` ÷ ${tier3Discount}` : ` ${tier3Discount}% off`}:</span>
+                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                          {formatCurrency(tier3Discount < 1
+                            ? roundUp5(buyAvg / tier3Discount + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - tier3Discount / 100) + transportation + otherExpenses)
+                          )}
+                        </strong>
+                      </div>
+                    )}
+                    {tier4Discount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>Tier 4 ({tier3Max + 1}+ units){tier4Discount < 1 ? ` ÷ ${tier4Discount}` : ` ${tier4Discount}% off`}:</span>
+                        <strong style={{ color: "var(--primary)", fontSize: "14px" }}>
+                          {formatCurrency(tier4Discount < 1
+                            ? roundUp5(buyAvg / tier4Discount + transportation + otherExpenses)
+                            : roundUp5(effectiveSellMin * (1 - tier4Discount / 100) + transportation + otherExpenses)
+                          )}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
