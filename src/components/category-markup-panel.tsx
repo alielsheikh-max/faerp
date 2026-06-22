@@ -56,6 +56,8 @@ export default function CategoryMarkupPanel({
   const [markupMin, setMarkupMin]   = useState("15");
   const [markupMax, setMarkupMax]   = useState("25");
   const [divisor, setDivisor]       = useState("0.77");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [pending, startTransition] = useTransition();
   const [result, setResult]         = useState<{ applied: number; skipped: number; errors: string[] } | null>(null);
@@ -451,7 +453,7 @@ export default function CategoryMarkupPanel({
         gap: "12px",
         marginTop: "-6px"
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", flexDirection: isAr ? "row-reverse" : "row" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexDirection: isAr ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "18px" }}>⚡</span>
             <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -472,6 +474,51 @@ export default function CategoryMarkupPanel({
               🪙 {isAr ? "الأسعار مقربة لأقرب 5 ج.م" : "Prices rounded up to nearest 5 EGP"}
             </span>
           </div>
+
+          {/* Search bar */}
+          <div style={{ flex: 1, maxWidth: "340px", position: "relative", margin: "0 12px" }}>
+            <span style={{ position: "absolute", left: isAr ? "auto" : "10px", right: isAr ? "10px" : "auto", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontSize: "12px", pointerEvents: "none" }}>🔍</span>
+            <input
+              type="text"
+              placeholder={isAr ? "ابحث عن صنف..." : "Search items..."}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              style={{
+                width: "100%",
+                padding: isAr ? "6px 30px 6px 12px" : "6px 12px 6px 30px",
+                borderRadius: "20px",
+                border: searchFocused ? "1.5px solid var(--primary)" : "1.5px solid var(--border-light)",
+                background: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+                fontSize: "12.5px",
+                outline: "none",
+                boxShadow: searchFocused ? "0 0 0 3px rgba(99, 102, 241, 0.15)" : "none",
+                transition: "all 0.2s ease"
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                style={{
+                  position: "absolute",
+                  right: isAr ? "auto" : "8px",
+                  left: isAr ? "8px" : "auto",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  fontSize: "12px",
+                  padding: "2px 6px"
+                }}
+              >✕</button>
+            )}
+          </div>
+
           <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700 }}>
             {strategy === "min" ? (isAr ? "مظلل: السعر الأدنى" : "Highlighted: Min Price") : strategy === "max" ? (isAr ? "مظلل: السعر الأقصى" : "Highlighted: Max Price") : (isAr ? "مظلل: متوسط السعر" : "Highlighted: Avg Price")}
           </div>
@@ -483,12 +530,26 @@ export default function CategoryMarkupPanel({
             (item) => item.category_id === selectedCategoryIdNum && item.is_tiered === 1
           );
 
+          const filteredItems = searchQuery.trim() === ""
+            ? tieredItemsOfCategory
+            : tieredItemsOfCategory.filter(item =>
+                item.name.toLowerCase().includes(searchQuery.toLowerCase())
+              );
+
           if (tieredItemsOfCategory.length === 0) {
             return (
               <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic" }}>
                 {isAr 
                   ? "لا توجد عناصر ذات تسعير حجمي مكوّنة في هذه الفئة." 
                   : "No volume tiered items configured in this category."}
+              </div>
+            );
+          }
+
+          if (filteredItems.length === 0) {
+            return (
+              <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "16px" }}>
+                🔍 {isAr ? "لم يتم العثور على نتائج تطابق البحث." : "No items match your search query."}
               </div>
             );
           }
@@ -505,7 +566,7 @@ export default function CategoryMarkupPanel({
               scrollbarWidth: "thin",
               scrollbarColor: "rgba(99,102,241,0.3) transparent",
             }}>
-              {tieredItemsOfCategory.map((item) => {
+              {filteredItems.map((item) => {
                 const itemState = itemStates[item.id] || {
                   checked: true,
                   transportation: (item as any).transportation_per_unit ?? 0,
