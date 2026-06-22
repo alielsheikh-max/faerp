@@ -143,7 +143,10 @@ export default function CategoryMarkupPanel({
     setItemStates(prev => {
       const next = { ...prev };
       if (next[itemId]) {
-        const num = parseFloat(val) || 0;
+        let num = parseFloat(val) || 0;
+        if (field !== "transportation") {
+          num = Math.round(num * 100) / 100;
+        }
         next[itemId] = {
           ...next[itemId],
           [field]: num,
@@ -377,6 +380,12 @@ export default function CategoryMarkupPanel({
                 step="0.01"
                 value={divisor}
                 onChange={e => setDivisor(e.target.value)}
+                onBlur={e => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setDivisor(val.toFixed(2));
+                  }
+                }}
                 style={{ padding: "9px 12px", borderRadius: "8px", border: "1.5px solid var(--primary)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 800, fontSize: "16px", width: "120px" }}
               />
               {/* Quick-select tier divisors */}
@@ -407,12 +416,24 @@ export default function CategoryMarkupPanel({
             <label className="field">
               <span>{isAr ? "أقل هامش" : "Min Markup"} {markupType === "percent" ? "%" : `(${locale === "ar" ? "ج.م" : "EGP"})`}</span>
               <input type="number" min="0" step="any" value={markupMin} onChange={e => setMarkupMin(e.target.value)}
+                onBlur={e => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setMarkupMin(val.toFixed(2));
+                  }
+                }}
                 style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--success)", fontWeight: 700, fontSize: "14px" }} />
             </label>
             {/* Max markup */}
             <label className="field">
               <span>{isAr ? "أقصى هامش" : "Max Markup"} {markupType === "percent" ? "%" : `(${locale === "ar" ? "ج.م" : "EGP"})`}</span>
               <input type="number" min="0" step="any" value={markupMax} onChange={e => setMarkupMax(e.target.value)}
+                onBlur={e => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setMarkupMax(val.toFixed(2));
+                  }
+                }}
                 style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--primary)", fontWeight: 700, fontSize: "14px" }} />
             </label>
           </>
@@ -431,10 +452,24 @@ export default function CategoryMarkupPanel({
         marginTop: "-6px"
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexDirection: isAr ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "18px" }}>⚡</span>
             <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
               {isAr ? "خصومات الحجم النشطة للعناصر" : "Active Item Volume Tiers"}
+            </span>
+            <span style={{
+              fontSize: "10px",
+              color: "var(--text-secondary)",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-light)",
+              padding: "2px 8px",
+              borderRadius: "12px",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px"
+            }}>
+              🪙 {isAr ? "الأسعار مقربة لأقرب 5 ج.م" : "Prices rounded up to nearest 5 EGP"}
             </span>
           </div>
           <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700 }}>
@@ -484,7 +519,10 @@ export default function CategoryMarkupPanel({
                   .filter(pe => pe.item_id === item.id && pe.month === month && pe.price > 0)
                   .map(pe => ({
                     supplierId: pe.supplier_id,
-                    supplierName: pe.supplier_name || suppliers.find(s => s.id === pe.supplier_id)?.name || `Supplier #${pe.supplier_id}`,
+                    supplierName: (() => {
+                      const sup = suppliers.find(s => s.id === pe.supplier_id);
+                      return sup?.fame_name || sup?.name || pe.supplier_name || `Supplier #${pe.supplier_id}`;
+                    })(),
                     price: pe.negotiated_price && pe.negotiated_price > 0 ? pe.negotiated_price : pe.price
                   }));
 
@@ -620,7 +658,8 @@ export default function CategoryMarkupPanel({
                       <div style={{
                         display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center",
                         background: "var(--bg-subtle)", padding: "6px 10px", borderRadius: "6px",
-                        fontSize: "11px", flexDirection: isAr ? "row-reverse" : "row"
+                        fontSize: "12px", flexDirection: isAr ? "row-reverse" : "row",
+                        border: "1px solid var(--border-light)"
                       }}>
                         <span style={{ fontWeight: 800, color: "var(--text-muted)" }}>{isAr ? "عروض الأسعار:" : "Quotes:"}</span>
                         {/* Min quote */}
@@ -628,7 +667,8 @@ export default function CategoryMarkupPanel({
                           padding: "2px 6px", borderRadius: "4px",
                           border: strategy === "min" ? "1.5px solid var(--success)" : "1px solid var(--border)",
                           background: strategy === "min" ? "rgba(16,185,129,0.08)" : "transparent",
-                          fontWeight: strategy === "min" ? 800 : 500
+                          fontWeight: strategy === "min" ? 800 : 500,
+                          fontSize: "11px"
                         }}>
                           Min: {formatCurrency(buyMin)}
                         </span>
@@ -637,7 +677,8 @@ export default function CategoryMarkupPanel({
                           padding: "2px 6px", borderRadius: "4px",
                           border: strategy === "avg" ? "1.5px solid var(--primary)" : "1px solid var(--border)",
                           background: strategy === "avg" ? "rgba(99,102,241,0.08)" : "transparent",
-                          fontWeight: strategy === "avg" ? 800 : 500
+                          fontWeight: strategy === "avg" ? 800 : 500,
+                          fontSize: "11px"
                         }}>
                           Avg: {formatCurrency(buyAvg)}
                         </span>
@@ -646,20 +687,30 @@ export default function CategoryMarkupPanel({
                           padding: "2px 6px", borderRadius: "4px",
                           border: strategy === "max" ? "1.5px solid var(--warning)" : "1px solid var(--border)",
                           background: strategy === "max" ? "rgba(245,158,11,0.08)" : "transparent",
-                          fontWeight: strategy === "max" ? 800 : 500
+                          fontWeight: strategy === "max" ? 800 : 500,
+                          fontSize: "11px"
                         }}>
                           Max: {formatCurrency(buyMax)}
                         </span>
                         
                         {/* Suppliers click details */}
-                        <span style={{ marginInlineStart: "auto", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <span style={{ marginInlineStart: "auto", display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ color: "var(--text-muted)", fontSize: "10.5px", fontWeight: 700 }}>{isAr ? "الموردون:" : "Suppliers:"}</span>
                           {itemQuotes.map(q => (
                             <span
                               key={q.supplierId}
                               onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } }))}
                               style={{
-                                cursor: "pointer", textDecoration: "underline", color: "var(--primary)",
-                                fontSize: "10px", fontWeight: 600
+                                cursor: "pointer",
+                                textDecoration: "underline",
+                                textDecorationStyle: "dotted",
+                                color: "var(--primary)",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "1px 5px",
+                                borderRadius: "4px",
+                                background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-light)"
                               }}
                               title={isAr ? "انقر لعرض تفاصيل المورد" : "Click to view supplier details"}
                             >
@@ -710,40 +761,75 @@ export default function CategoryMarkupPanel({
                             flexDirection: "column",
                             gap: "4px",
                           }}>
-                            <div style={{ color: "var(--text-muted)", fontSize: "10px", fontWeight: 800, textAlign: "center" }}>{tc.label}</div>
+                            <div style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "4px",
+                              color: "var(--text-secondary)",
+                              fontSize: "10px",
+                              fontWeight: 800,
+                              textAlign: "center"
+                            }}>
+                              <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: tc.color }}></span>
+                              {tc.label}
+                            </div>
                             
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "4px", flexDirection: isAr ? "row-reverse" : "row" }}>
                               {/* Prev price */}
-                              <div style={{ fontSize: "10px", color: "var(--text-secondary)", textAlign: isAr ? "right" : "left" }}>
-                                <div style={{ scale: "0.8", transformOrigin: isAr ? "right" : "left", color: "var(--text-muted)", marginBottom: "2px" }}>PREV</div>
-                                <strong>{prevPrice !== null && prevPrice > 0 ? formatCurrency(prevPrice) : "—"}</strong>
+                              <div style={{ fontSize: "10.5px", color: "var(--text-secondary)", textAlign: isAr ? "right" : "left" }}>
+                                <div style={{ scale: "0.85", transformOrigin: isAr ? "right" : "left", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>PREV</div>
+                                <strong style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{prevPrice !== null && prevPrice > 0 ? formatCurrency(prevPrice) : "—"}</strong>
                               </div>
 
                               {/* Input divisor */}
-                              <div style={{ display: "flex", justifyContent: "center" }}>
+                              <div style={{ display: "flex", justifyContent: "center" }} title={isAr ? "اكتب المقسوم لتجاوزه لهذا الصنف (مثال: 0.77)" : "Type a divisor directly to override (e.g. 0.77)"}>
                                 <input
                                   type="number"
                                   step="0.01"
-                                  min="0"
+                                  min="0.01"
+                                  max="1"
                                   value={tc.val}
                                   onChange={e => handleUpdateItemTier(item.id, tc.field, e.target.value)}
                                   style={{
-                                    width: "50px", padding: "3px 4px", fontSize: "11px", fontWeight: 800,
-                                    textAlign: "center", borderRadius: "6px", border: "1px solid var(--border)",
-                                    background: "var(--bg-elevated)", color: tc.color
+                                    width: "52px", padding: "3px 4px", fontSize: "11.5px", fontWeight: 900,
+                                    textAlign: "center", borderRadius: "6px", border: `1.5px solid ${tc.color}75`,
+                                    background: "var(--bg-elevated)", color: tc.color,
+                                    boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)"
                                   }}
                                 />
                               </div>
 
                               {/* New price */}
                               <div style={{ textAlign: isAr ? "left" : "right" }}>
-                                <div style={{ scale: "0.8", transformOrigin: isAr ? "left" : "right", color: "var(--text-muted)", marginBottom: "2px" }}>NEW</div>
-                                <strong style={{ color: tc.color, fontSize: "11.5px" }}>{newPrice > 0 ? formatCurrency(newPrice) : "—"}</strong>
+                                <div style={{ scale: "0.85", transformOrigin: isAr ? "left" : "right", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>NEW</div>
+                                <strong style={{ color: tc.color, fontSize: "13.5px", fontWeight: 900 }}>{newPrice > 0 ? formatCurrency(newPrice) : "—"}</strong>
                               </div>
                             </div>
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* Divisor/Transportation edit reminder */}
+                    <div style={{
+                      fontSize: "9.5px",
+                      color: "var(--text-muted)",
+                      textAlign: "center",
+                      display: "flex",
+                      gap: "4px",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: "2px",
+                      fontStyle: "italic",
+                      opacity: 0.85
+                    }}>
+                      <span>✏️</span>
+                      <span>
+                        {isAr 
+                          ? "يمكنك تعديل المقسوم أو تكلفة النقل مباشرةً لتجاوز القيم الافتراضية للفئة لهذا الصنف."
+                          : "Edit divisor or transportation directly to override for this item."}
+                      </span>
                     </div>
                   </div>
                 );
