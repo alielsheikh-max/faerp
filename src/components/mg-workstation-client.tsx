@@ -15,6 +15,7 @@ type ItemView = {
   unit: string;
   categoryId: number;
   categoryName: string;
+  confirmedSupplier: string | null;
   currentSp: {
     strategy: string;
     sellMin: number;
@@ -45,6 +46,16 @@ export default function MGWorkstationClient({ items, categories, month, username
   const [searchFocused, setSearchFocused] = useState(false);
   const [reconsiderItemId, setReconsiderItemId] = useState<number | null>(null);
   const [reconsiderNote, setReconsiderNote] = useState("");
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+
+  const toggleExpand = (itemId: number) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
 
   const [pending, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -237,9 +248,11 @@ export default function MGWorkstationClient({ items, categories, month, username
             const hasQuote = item.currentSp !== null;
             const status = item.currentSp?.approvalStatus;
 
+            const isExpanded = expandedItems.has(item.itemId);
+
             return (
               <div key={item.itemId} style={{
-                padding: "16px 20px",
+                padding: "14px 20px",
                 background: "var(--bg-elevated)",
                 border: `1.5px solid ${
                   status === "approved" ? "var(--success)" :
@@ -250,168 +263,255 @@ export default function MGWorkstationClient({ items, categories, month, username
                 boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                 display: "flex",
                 flexDirection: "column",
-                gap: "12px",
-                position: "relative"
+                position: "relative",
+                transition: "all 0.2s ease"
               }}>
-                {/* Header row */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                    <span style={{ fontSize: "15px", fontWeight: 900, color: "var(--text-primary)" }}>{item.itemName}</span>
+                {/* Clickable Header Row */}
+                <div
+                  onClick={() => toggleExpand(item.itemId)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    flexWrap: "wrap",
+                    gap: "16px",
+                    flexDirection: isAr ? "row-reverse" : "row",
+                    userSelect: "none"
+                  }}
+                >
+                  {/* Column 1: Item Info */}
+                  <div style={{ flex: "2 1 240px", display: "flex", alignItems: "center", gap: "8px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    <span style={{ fontSize: "14px", fontWeight: 900, color: "var(--text-primary)" }}>{item.itemName}</span>
                     <span className="badge badge-strong" style={{ fontSize: "9px" }}>{item.unit}</span>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--bg-subtle)", padding: "2px 8px", borderRadius: "10px", border: "1px solid var(--border-light)" }}>{item.categoryName}</span>
                   </div>
+                  <div style={{ flex: "2.5 1 250px", display: "flex", gap: "16px", justifyContent: "space-between", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: isAr ? "flex-end" : "flex-start" }}>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                        {isAr ? "تكلفة الشهر السابق" : "Prev Month Cost"}
+                      </span>
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                        {item.buyingHistory[0]?.min != null ? (
+                          item.buyingHistory[0].min === item.buyingHistory[0].max
+                            ? formatCurrency(item.buyingHistory[0].min)
+                            : `${formatCurrency(item.buyingHistory[0].min)} – ${formatCurrency(item.buyingHistory[0].max)}`
+                        ) : "—"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: isAr ? "flex-end" : "flex-start" }}>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                        {isAr ? "تكلفة الشهر الحالي" : "Current Month Cost"}
+                      </span>
+                      <div style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--text-primary)" }}>
+                        {hasQuote && item.currentSp ? (
+                          <>
+                            <strong>{formatCurrency(item.currentSp.strategy === "min" ? item.currentSp.buyMin : item.currentSp.strategy === "max" ? item.currentSp.buyMax : item.currentSp.buyAvg)}</strong>
+                            <span style={{ fontSize: "9px", color: "var(--text-muted)", marginLeft: "4px" }}>({item.currentSp.strategy})</span>
+                          </>
+                        ) : "—"}
+                      </div>
+                      <span style={{ fontSize: "10.5px", color: "var(--primary)", fontWeight: 700, marginTop: "1px" }}>
+                        🏭 {item.confirmedSupplier || (isAr ? "غير محدد" : "Not set")}
+                      </span>
+                    </div>
+                  </div>
 
-                  {/* Status indicator */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                    {!hasQuote ? (
-                      <span className="badge" style={{ background: "var(--bg-subtle)", color: "var(--text-muted)" }}>
-                        {isAr ? "لم يتم تقديم سعر" : "No price submitted"}
+                  {/* Column 3: Selling Price Ranges (Prev vs Proposed) */}
+                  <div style={{ flex: "2 1 220px", display: "flex", gap: "16px", justifyContent: "space-between", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: isAr ? "flex-end" : "flex-start" }}>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                        {isAr ? "سعر البيع السابق" : "Prev Month Sell"}
                       </span>
-                    ) : status === "approved" ? (
-                      <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                        ✓ {isAr ? "معتمد ومتاح للبيع" : "Approved & Live"}
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                        {item.sellingHistory[0]?.sell_min != null ? `${formatCurrency(item.sellingHistory[0].sell_min)} – ${formatCurrency(item.sellingHistory[0].sell_max)}` : "—"}
                       </span>
-                    ) : status === "reconsidered" ? (
-                      <span className="badge badge-danger" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }} title={item.currentSp?.reconsiderNote || ""}>
-                        ↩ {isAr ? "تمت إعادته للمراجعة" : "Returned for Review"}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: isAr ? "flex-end" : "flex-start" }}>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                        {isAr ? "البيع المقترح" : "Proposed Sell"}
                       </span>
-                    ) : (
-                      <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: "4px", animation: "pulse-ring 2s infinite" }}>
-                        ⏳ {isAr ? "في انتظار الاعتماد" : "Pending Approval"}
+                      <span style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--success)" }}>
+                        {hasQuote && item.currentSp ? `${formatCurrency(item.currentSp.sellMin)} – ${formatCurrency(item.currentSp.sellMax)}` : "—"}
                       </span>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Column 4: Status and Toggle */}
+                  <div style={{ flex: "1 1 140px", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    <div>
+                      {!hasQuote ? (
+                        <span className="badge" style={{ background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: "9.5px" }}>
+                          {isAr ? "لم يقدم سعر" : "No price"}
+                        </span>
+                      ) : status === "approved" ? (
+                        <span className="badge badge-success" style={{ fontSize: "9.5px" }}>
+                          ✓ {isAr ? "معتمد" : "Approved"}
+                        </span>
+                      ) : status === "reconsidered" ? (
+                        <span className="badge badge-danger" style={{ fontSize: "9.5px" }}>
+                          ↩ {isAr ? "مرفوض" : "Returned"}
+                        </span>
+                      ) : (
+                        <span className="badge badge-warning" style={{ fontSize: "9.5px", animation: "pulse-ring 2s infinite" }}>
+                          ⏳ {isAr ? "معلق" : "Pending"}
+                        </span>
+                      )}
+                    </div>
+
+                    <span style={{
+                      fontSize: "12px",
+                      color: "var(--text-muted)",
+                      transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 200ms ease",
+                      display: "inline-block",
+                    }}>
+                      ▼
+                    </span>
                   </div>
                 </div>
 
-                {/* Main 3 columns comparison: Purchasing history, selling history, proposed price */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.2fr", gap: "16px" }}>
-                  {/* Column 1: Purchasing quotes history */}
-                  <div style={{ padding: "10px 14px", background: "var(--bg-subtle)", borderRadius: "10px", border: "1px solid var(--border-light)" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
-                      🏭 {isAr ? "تاريخ تكاليف الموردين" : "Supplier Quotes Cost History"}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {item.buyingHistory.map((h, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                          <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
-                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
-                            {h.avg !== null ? `${formatCurrency(h.avg)} (avg)` : "—"}
-                          </span>
+                {/* Collapsible Details Body */}
+                {isExpanded && (
+                  <div className="animate-scale-in" style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    borderTop: "1.5px solid var(--border-light)",
+                    paddingTop: "14px",
+                    marginTop: "12px"
+                  }}>
+                    {/* Main 3 columns comparison: Purchasing history, selling history, proposed price */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.2fr", gap: "16px" }}>
+                      {/* Column 1: Purchasing quotes history */}
+                      <div style={{ padding: "10px 14px", background: "var(--bg-subtle)", borderRadius: "10px", border: "1px solid var(--border-light)" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
+                          🏭 {isAr ? "تاريخ تكاليف الموردين" : "Supplier Quotes Cost History"}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Column 2: Selling price history */}
-                  <div style={{ padding: "10px 14px", background: "var(--bg-subtle)", borderRadius: "10px", border: "1px solid var(--border-light)" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
-                      💰 {isAr ? "تاريخ أسعار البيع المعتمدة" : "Approved Selling Price History"}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {item.sellingHistory.map((h, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                          <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
-                          <span style={{ fontWeight: 700, color: "var(--primary)" }}>
-                            {h.sell_min !== null ? `${formatCurrency(h.sell_min)} – ${formatCurrency(h.sell_max)}` : "—"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Column 3: Proposed prices (Current month) */}
-                  <div style={{ padding: "10px 14px", background: "rgba(99,102,241,0.03)", borderRadius: "10px", border: "1px solid rgba(99,102,241,0.15)" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 900, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
-                      ⚡ {isAr ? "السعر المقترح والأساس" : "Proposed Pricing & Base"}
-                    </div>
-                    {hasQuote && item.currentSp ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                          <span style={{ color: "var(--text-secondary)" }}>{isAr ? "الأساس المالي المعتمد:" : "Selected Cost Base:"}</span>
-                          <strong style={{ color: "var(--text-primary)" }}>{formatCurrency(item.currentSp.strategy === "min" ? item.currentSp.buyMin : item.currentSp.strategy === "max" ? item.currentSp.buyMax : item.currentSp.buyAvg)} ({item.currentSp.strategy})</strong>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginTop: "4px", borderTop: "1px dashed var(--border-light)", paddingTop: "4px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                          <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{isAr ? "سعر البيع المقترح:" : "Proposed Sell Price:"}</span>
-                          <strong style={{ color: "var(--success)", fontSize: "14px", fontWeight: 900 }}>{formatCurrency(item.currentSp.sellMin)} – {formatCurrency(item.currentSp.sellMax)}</strong>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {item.buyingHistory.map((h, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
+                              <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+                                {h.avg !== null ? `${formatCurrency(h.avg)} (avg)` : "—"}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ) : (
-                      <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>
-                        {isAr ? "لم يقم مسؤول التسعير بتقديم أي اقتراح لهذا الشهر بعد." : "No proposed prices submitted by the SC yet."}
+
+                      {/* Column 2: Selling price history */}
+                      <div style={{ padding: "10px 14px", background: "var(--bg-subtle)", borderRadius: "10px", border: "1px solid var(--border-light)" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
+                          💰 {isAr ? "تاريخ أسعار البيع المعتمدة" : "Approved Selling Price History"}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {item.sellingHistory.map((h, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
+                              <span style={{ fontWeight: 700, color: "var(--primary)" }}>
+                                {h.sell_min !== null ? `${formatCurrency(h.sell_min)} – ${formatCurrency(h.sell_max)}` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Column 3: Proposed prices (Current month) */}
+                      <div style={{ padding: "10px 14px", background: "rgba(99,102,241,0.03)", borderRadius: "10px", border: "1px solid rgba(99,102,241,0.15)" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 900, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px", textAlign: isAr ? "right" : "left" }}>
+                          ⚡ {isAr ? "السعر المقترح والأساس" : "Proposed Pricing & Base"}
+                        </div>
+                        {hasQuote && item.currentSp ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                              <span style={{ color: "var(--text-secondary)" }}>{isAr ? "الأساس المالي المعتمد:" : "Selected Cost Base:"}</span>
+                              <strong style={{ color: "var(--text-primary)" }}>{formatCurrency(item.currentSp.strategy === "min" ? item.currentSp.buyMin : item.currentSp.strategy === "max" ? item.currentSp.buyMax : item.currentSp.buyAvg)} ({item.currentSp.strategy})</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginTop: "4px", borderTop: "1px dashed var(--border-light)", paddingTop: "4px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                              <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{isAr ? "سعر البيع المقترح:" : "Proposed Sell Price:"}</span>
+                              <strong style={{ color: "var(--success)", fontSize: "14px", fontWeight: 900 }}>{formatCurrency(item.currentSp.sellMin)} – {formatCurrency(item.currentSp.sellMax)}</strong>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>
+                            {isAr ? "لم يقم مسؤول التسعير بتقديم أي اقتراح لهذا الشهر بعد." : "No proposed prices submitted by the SC yet."}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Reconsideration Note display (if returned) */}
+                    {status === "reconsidered" && item.currentSp?.reconsiderNote && (
+                      <div style={{
+                        padding: "8px 12px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)",
+                        borderRadius: "8px", fontSize: "11.5px", color: "var(--danger)", display: "flex", gap: "6px",
+                        flexDirection: isAr ? "row-reverse" : "row", marginTop: "2px"
+                      }}>
+                        <strong>{isAr ? "سبب الإرجاع للمراجعة:" : "Reconsideration Reason:"}</strong>
+                        <span>{item.currentSp.reconsiderNote}</span>
                       </div>
                     )}
-                  </div>
-                </div>
 
-                {/* Reconsideration Note display (if returned) */}
-                {status === "reconsidered" && item.currentSp?.reconsiderNote && (
-                  <div style={{
-                    padding: "8px 12px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)",
-                    borderRadius: "8px", fontSize: "11.5px", color: "var(--danger)", display: "flex", gap: "6px",
-                    flexDirection: isAr ? "row-reverse" : "row", marginTop: "2px"
-                  }}>
-                    <strong>{isAr ? "سبب الإرجاع للمراجعة:" : "Reconsideration Reason:"}</strong>
-                    <span>{item.currentSp.reconsiderNote}</span>
-                  </div>
-                )}
+                    {/* Action Buttons for Manager */}
+                    {hasQuote && status !== "approved" && (
+                      <div style={{
+                        display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "4px",
+                        borderTop: "1px solid var(--border-light)", paddingTop: "10px",
+                        flexDirection: isAr ? "row-reverse" : "row"
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReconsider(item.itemId)}
+                          disabled={pending}
+                          className="button button-danger"
+                          style={{
+                            padding: "6px 14px", fontSize: "12px", cursor: pending ? "not-allowed" : "pointer",
+                            display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700
+                          }}
+                        >
+                          <span>↩</span>
+                          <span>{isAr ? "إعادة للنظر" : "Reconsider"}</span>
+                        </button>
 
-                {/* Action Buttons for Manager */}
-                {hasQuote && status !== "approved" && (
-                  <div style={{
-                    display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "4px",
-                    borderTop: "1px solid var(--border-light)", paddingTop: "10px",
-                    flexDirection: isAr ? "row-reverse" : "row"
-                  }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenReconsider(item.itemId)}
-                      disabled={pending}
-                      className="button button-danger"
-                      style={{
-                        padding: "6px 14px", fontSize: "12px", cursor: pending ? "not-allowed" : "pointer",
-                        display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700
-                      }}
-                    >
-                      <span>↩</span>
-                      <span>{isAr ? "إعادة للنظر" : "Reconsider"}</span>
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApproveItem(item.itemId)}
+                          disabled={pending}
+                          className="button button-success"
+                          style={{
+                            padding: "6px 18px", fontSize: "12px", cursor: pending ? "not-allowed" : "pointer",
+                            display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700
+                          }}
+                        >
+                          <span>✓</span>
+                          <span>{isAr ? "اعتماد السعر" : "Approve Price"}</span>
+                        </button>
+                      </div>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleApproveItem(item.itemId)}
-                      disabled={pending}
-                      className="button button-success"
-                      style={{
-                        padding: "6px 18px", fontSize: "12px", cursor: pending ? "not-allowed" : "pointer",
-                        display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700
-                      }}
-                    >
-                      <span>✓</span>
-                      <span>{isAr ? "اعتماد السعر" : "Approve Price"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Undo option if approved to allow returning to SC */}
-                {hasQuote && status === "approved" && (
-                  <div style={{
-                    display: "flex", justifyContent: "flex-end", marginTop: "4px",
-                    borderTop: "1px solid var(--border-light)", paddingTop: "10px",
-                    flexDirection: isAr ? "row-reverse" : "row"
-                  }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenReconsider(item.itemId)}
-                      disabled={pending}
-                      className="button button-secondary"
-                      style={{
-                        padding: "4px 10px", fontSize: "11px", cursor: pending ? "not-allowed" : "pointer",
-                        display: "inline-flex", alignItems: "center", gap: "4px"
-                      }}
-                    >
-                      <span>↩</span>
-                      <span>{isAr ? "تعديل السعر المعتمد (إعادة للنظر)" : "Revise Approved Price (Reconsider)"}</span>
-                    </button>
+                    {/* Undo option if approved to allow returning to SC */}
+                    {hasQuote && status === "approved" && (
+                      <div style={{
+                        display: "flex", justifyContent: "flex-end", marginTop: "4px",
+                        borderTop: "1px solid var(--border-light)", paddingTop: "10px",
+                        flexDirection: isAr ? "row-reverse" : "row"
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReconsider(item.itemId)}
+                          disabled={pending}
+                          className="button button-secondary"
+                          style={{
+                            padding: "4px 10px", fontSize: "11px", cursor: pending ? "not-allowed" : "pointer",
+                            display: "inline-flex", alignItems: "center", gap: "4px"
+                          }}
+                        >
+                          <span>↩</span>
+                          <span>{isAr ? "تعديل السعر المعتمد (إعادة للنظر)" : "Revise Approved Price (Reconsider)"}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

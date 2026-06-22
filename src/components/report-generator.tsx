@@ -26,7 +26,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "أسعار البيع المنشورة للمبيعات",
     descEn: "Min and max published selling prices for the selected month or range of months",
     descAr: "أسعار البيع الدنيا والقصوى المعتمدة والمنشورة للشهر المحدد أو نطاق الأشهر",
-    roles: ["SC"],
+    roles: ["SC", "MG"],
     color: "#059669",
   },
   {
@@ -36,7 +36,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "نظرة عامة على السوق الشهري",
     descEn: "All supplier quotes this month, min/avg/max per item, market trend",
     descAr: "جميع عروض أسعار الموردين هذا الشهر، أدنى/متوسط/أقصى لكل صنف، اتجاه السوق",
-    roles: ["SC"],
+    roles: ["SC", "MG"],
     color: "#6366f1",
   },
   {
@@ -46,7 +46,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "قائمة أسعار البيع المعتمدة",
     descEn: "Published min/max selling prices by category and item for this month",
     descAr: "أسعار البيع الدنيا والقصوى المنشورة حسب الفئة والصنف لهذا الشهر",
-    roles: ["SA"],
+    roles: ["SA", "MG"],
     color: "#10b981",
   },
   {
@@ -56,7 +56,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "مقارنة أسعار الموردين",
     descEn: "Side-by-side supplier prices per item with cheapest highlighted",
     descAr: "مقارنة أسعار الموردين لكل صنف مع تمييز الأرخص",
-    roles: ["SC"],
+    roles: ["SC", "MG"],
     color: "#3b82f6",
   },
   {
@@ -66,7 +66,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "تنبيه تقلب الأسعار",
     descEn: "Items with same-month price revisions and spread analysis",
     descAr: "الأصناف التي شهدت مراجعات أسعار في نفس الشهر وتحليل الفارق",
-    roles: ["SC"],
+    roles: ["SC", "MG"],
     color: "#ef4444",
   },
   // WH presets
@@ -98,7 +98,7 @@ const PRESETS: ReportPreset[] = [
     titleAr: "كتالوج أسعار المبيعات",
     descEn: "Clean approved price list ready for client quotations",
     descAr: "قائمة أسعار معتمدة جاهزة لعروض أسعار العملاء",
-    roles: ["SA", "SC"],
+    roles: ["SA", "SC", "MG"],
     color: "#8b5cf6",
   },
 ];

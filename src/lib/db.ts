@@ -4293,12 +4293,62 @@ export function getMGItemsView(month: string) {
       };
     });
 
+    let confirmedSupplier: string | null = null;
+    if (currentSp) {
+      if (currentSp.strategy === "min") {
+        const sRow = db.prepare(`
+          SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
+          FROM price_entries pe
+          JOIN suppliers s ON s.id = pe.supplier_id
+          WHERE pe.item_id = ? AND pe.month = ? AND (pe.negotiated_price = ? OR (pe.negotiated_price IS NULL AND pe.price = ?)) AND pe.status = 'approved'
+          LIMIT 1
+        `).get(item.id, month, currentSp.buy_min, currentSp.buy_min) as { name: string } | undefined;
+        if (sRow) {
+          confirmedSupplier = sRow.name;
+        } else {
+          const cheapestRow = db.prepare(`
+            SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
+            FROM price_entries pe
+            JOIN suppliers s ON s.id = pe.supplier_id
+            WHERE pe.item_id = ? AND pe.month = ? AND pe.status = 'approved'
+            ORDER BY COALESCE(pe.negotiated_price, pe.price) ASC
+            LIMIT 1
+          `).get(item.id, month) as { name: string } | undefined;
+          if (cheapestRow) confirmedSupplier = cheapestRow.name;
+        }
+      } else if (currentSp.strategy === "max") {
+        const sRow = db.prepare(`
+          SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
+          FROM price_entries pe
+          JOIN suppliers s ON s.id = pe.supplier_id
+          WHERE pe.item_id = ? AND pe.month = ? AND (pe.negotiated_price = ? OR (pe.negotiated_price IS NULL AND pe.price = ?)) AND pe.status = 'approved'
+          LIMIT 1
+        `).get(item.id, month, currentSp.buy_max, currentSp.buy_max) as { name: string } | undefined;
+        if (sRow) {
+          confirmedSupplier = sRow.name;
+        } else {
+          const expensiveRow = db.prepare(`
+            SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
+            FROM price_entries pe
+            JOIN suppliers s ON s.id = pe.supplier_id
+            WHERE pe.item_id = ? AND pe.month = ? AND pe.status = 'approved'
+            ORDER BY COALESCE(pe.negotiated_price, pe.price) DESC
+            LIMIT 1
+          `).get(item.id, month) as { name: string } | undefined;
+          if (expensiveRow) confirmedSupplier = expensiveRow.name;
+        }
+      } else {
+        confirmedSupplier = "Average (All)";
+      }
+    }
+
     return {
       itemId: item.id,
       itemName: item.name,
       unit: item.unit,
       categoryId: item.category_id,
       categoryName: item.category_name,
+      confirmedSupplier,
       currentSp: currentSp ? {
         strategy: currentSp.strategy,
         sellMin: currentSp.sell_min,
