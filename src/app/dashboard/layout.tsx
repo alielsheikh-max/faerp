@@ -7,7 +7,8 @@ import {
   countPendingRequestsByUser,
   getUnreadPriceAcknowledgmentsCount,
   getUnreadRejectedPriceEntriesCountForWH,
-  getMGPendingItemsCount
+  getMGPendingItemsCount,
+  countPendingQuotes
 } from "@/lib/db";
 import { currentMonth } from "@/lib/format";
 
@@ -17,9 +18,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     ? getSearchIndex()
     : { items: [], suppliers: [] };
 
-  // SC sees count of all pending requests; WH sees count of their own pending requests; MG sees pending pricing submissions
+  // SC sees count of all pending requests (quotes + change requests); WH sees count of their own pending requests; MG sees pending pricing submissions
   const pendingRequests =
-    session.role === "SC" ? countPendingRequests() :
+    session.role === "SC" ? (countPendingRequests() + countPendingQuotes()) :
     session.role === "WH" ? countPendingRequestsByUser(session.displayName) :
     session.role === "MG" ? getMGPendingItemsCount(currentMonth()) :
     0;

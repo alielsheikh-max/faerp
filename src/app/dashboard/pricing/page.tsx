@@ -21,7 +21,26 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
   const categories   = getCategories();
   const items        = getItems();
   const suppliers    = getSuppliers();
-  const priceEntries = getAllPriceEntries().filter(pe => pe.status === 'approved');
+  const allEntries   = getAllPriceEntries();
+  const priceEntries = allEntries.filter(pe => pe.status === 'approved');
+
+  // Filter items that have at least one approved price entry for the current month
+  // OR have NO price entries at all (approved, pending, or rejected) for the current month.
+  const currentMonthEntries = allEntries.filter(pe => pe.month === month);
+  const entriesByItem = new Map<number, typeof currentMonthEntries>();
+  for (const entry of currentMonthEntries) {
+    if (!entriesByItem.has(entry.item_id)) {
+      entriesByItem.set(entry.item_id, []);
+    }
+    entriesByItem.get(entry.item_id)!.push(entry);
+  }
+
+  const filteredItems = items.filter(item => {
+    const itemEntries = entriesByItem.get(item.id) || [];
+    if (itemEntries.length === 0) return true;
+    return itemEntries.some(entry => entry.status === 'approved');
+  });
+
   const reviewData   = getMonthlyReviewData(month);
   const tierEnabled  = isTierPricingEnabled(month);
   const scTransportOverrideEnabled = isScTransportOverrideEnabled(month);
@@ -32,8 +51,8 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
 
   const resolvedItemId =
     initialItemId ?? (initialCategoryId
-      ? items.find(i => i.category_id === initialCategoryId)?.id
-      : items[0]?.id);
+      ? filteredItems.find(i => i.category_id === initialCategoryId)?.id
+      : filteredItems[0]?.id);
 
   // Get last 3 months in chronological order descending relative to selected month
   const last3Months = (() => {
@@ -147,7 +166,7 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
       {/* Item-level pricing calculator */}
       <InteractiveDashboard
         categories={categories}
-        items={items}
+        items={filteredItems}
         suppliers={suppliers}
         priceEntries={priceEntries}
         role={session.role}

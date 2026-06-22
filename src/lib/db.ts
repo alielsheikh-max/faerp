@@ -1319,26 +1319,61 @@ export function addPriceEntry(input: {
     throw new Error(`MONTH_LOCKED: Prices can only be added for the current month (${now}). Past months are locked.`);
   }
 
-  database()
-    .prepare(`
+  const db = database();
+  const existing = db.prepare(`
+    SELECT id, status FROM price_entries
+    WHERE item_id = ? AND supplier_id = ? AND month = ?
+  `).get(input.itemId, input.supplierId, input.month) as { id: number; status: string } | undefined;
+
+  if (existing) {
+    if (existing.status === "approved") {
+      throw new Error("Cannot overwrite an approved price entry directly. Please submit a price change request.");
+    }
+    // Update existing entry
+    db.prepare(`
+      UPDATE price_entries
+      SET price = ?,
+          notes = ?,
+          recorded_at = ?,
+          actual_transport = ?,
+          status = ?,
+          review_note = NULL,
+          reviewed_by = NULL,
+          reviewed_at = NULL,
+          collected_by = ?,
+          collected_role = ?
+      WHERE id = ?
+    `).run(
+      input.price,
+      input.notes,
+      new Date().toISOString(),
+      input.actualTransport ?? null,
+      input.collectedRole === "WH" ? "pending" : "approved",
+      input.collectedBy,
+      input.collectedRole,
+      existing.id
+    );
+  } else {
+    // Insert new entry
+    db.prepare(`
       INSERT INTO price_entries (
         item_id, supplier_id, month, price, currency, collected_by, collected_role, notes, recorded_at, actual_transport, status
       ) VALUES (
-        @item_id, @supplier_id, @month, @price, 'EGP', @collected_by, @collected_role, @notes, @recorded_at, @actual_transport, @status
+        ?, ?, ?, ?, 'EGP', ?, ?, ?, ?, ?, ?
       )
-    `)
-    .run({
-      item_id: input.itemId,
-      supplier_id: input.supplierId,
-      month: input.month,
-      price: input.price,
-      collected_by: input.collectedBy,
-      collected_role: input.collectedRole,
-      notes: input.notes,
-      recorded_at: new Date().toISOString(),
-      actual_transport: input.actualTransport ?? null,
-      status: input.collectedRole === "WH" ? "pending" : "approved",
-    });
+    `).run(
+      input.itemId,
+      input.supplierId,
+      input.month,
+      input.price,
+      input.collectedBy,
+      input.collectedRole,
+      input.notes,
+      new Date().toISOString(),
+      input.actualTransport ?? null,
+      input.collectedRole === "WH" ? "pending" : "approved"
+    );
+  }
 }
 
 /**
@@ -2417,6 +2452,8 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
       pe.actual_transport,
       pe.negotiated_price,
       pe.negotiated_notes,
+      pe.status,
+      pe.review_note,
       COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name)  as supplier_name,
       i.name  as item_name,
       i.unit  as item_unit,
@@ -2439,6 +2476,8 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
     actual_transport: number | null;
     negotiated_price: number | null;
     negotiated_notes: string | null;
+    status: string;
+    review_note: string | null;
     supplier_name: string;
     item_name: string;
     item_unit: string;
@@ -3177,7 +3216,7 @@ export function getRecentPriceUpdates(month: string, limit = 5): any[] {
       WITH latest AS (
         SELECT item_id, MAX(id) as max_id
         FROM selling_price_history
-        WHERE month = ? AND is_update = 1
+        WHERE month = ? AND is_update = 1 AND approval_status = 'approved'
         GROUP BY item_id
       )
       SELECT

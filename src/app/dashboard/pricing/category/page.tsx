@@ -29,6 +29,23 @@ export default function CategoryPricingPage({ searchParams }: { searchParams?: S
   const suppliers = getSuppliers();
   const priceEntries = getAllPriceEntries();
 
+  // Filter items that have at least one approved price entry for the current month
+  // OR have NO price entries at all (approved, pending, or rejected) for the current month.
+  const currentMonthEntries = priceEntries.filter(pe => pe.month === month);
+  const entriesByItem = new Map<number, typeof currentMonthEntries>();
+  for (const entry of currentMonthEntries) {
+    if (!entriesByItem.has(entry.item_id)) {
+      entriesByItem.set(entry.item_id, []);
+    }
+    entriesByItem.get(entry.item_id)!.push(entry);
+  }
+
+  const filteredItems = items.filter(item => {
+    const itemEntries = entriesByItem.get(item.id) || [];
+    if (itemEntries.length === 0) return true;
+    return itemEntries.some(entry => entry.status === 'approved');
+  });
+
   return (
     <div className="page-stack">
       <SectionIntro
@@ -99,14 +116,15 @@ export default function CategoryPricingPage({ searchParams }: { searchParams?: S
               display: "flex", gap: "14px", alignItems: "flex-start",
               boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
             }}>
-              <span style={{
-                width: "42px", height: "42px", borderRadius: "10px", flexShrink: 0,
-                background: m.color + "18", color: m.color,
-                fontWeight: 900, fontSize: "20px",
+              <div style={{
+                width: "36px", height: "36px", borderRadius: "10px",
+                background: m.color + "15", border: `1px solid ${m.color}30`,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: `0 2px 8px ${m.color}30`,
-              }}>{m.icon}</span>
-              <div style={{ minWidth: 0 }}>
+                fontSize: "18px", fontWeight: 900, color: m.color, flexShrink: 0,
+              }}>
+                {m.icon}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "6px" }}>
                   {m.label}
                 </div>
@@ -130,7 +148,7 @@ export default function CategoryPricingPage({ searchParams }: { searchParams?: S
         <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "16px" }}>
           <CategoryMarkupPanel
             categories={categories}
-            items={items}
+            items={filteredItems}
             month={month}
             username={session.displayName}
             defaultCategoryId={initialCategoryId}

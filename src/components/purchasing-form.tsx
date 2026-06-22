@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n-context";
 export type Category    = { id: number; name: string; description: string };
 export type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
 export type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
-type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null; negotiated_price?: number | null; negotiated_notes?: string | null };
+type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null; negotiated_price?: number | null; negotiated_notes?: string | null; status: string; review_note?: string | null };
 type HistoryFilter = "3" | "6" | "all";
 
 type Props = {
@@ -1081,7 +1081,22 @@ export default function PurchasingForm({
                                           {/* Status badge */}
                                           <td style={{ padding: "8px 12px", textAlign: "center", verticalAlign: "middle" }}>
                                             {entry ? (
-                                              entry.collected_role === "WH" ? (
+                                              entry.status === "rejected" ? (
+                                                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                                                  <span className="badge badge-danger" style={{ fontSize: "10px", padding: "2px 8px" }} title={entry.review_note || ""}>
+                                                    ✕ {isAr ? "مرفوض" : "Rejected"}
+                                                  </span>
+                                                  {entry.review_note && (
+                                                    <span style={{ fontSize: "9px", color: "var(--danger)", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={entry.review_note}>
+                                                      {entry.review_note}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : entry.status === "pending" ? (
+                                                <span className="badge badge-warning" style={{ fontSize: "10px", padding: "2px 8px" }}>
+                                                  ⏳ {isAr ? "قيد الانتظار" : "Pending SC"}
+                                                </span>
+                                              ) : entry.collected_role === "WH" ? (
                                                 <span className="badge badge-success" style={{ fontSize: "10px", padding: "2px 8px" }}>{isAr ? "تم إرساله" : "Submitted"}</span>
                                               ) : (
                                                 <span className="badge" style={{ fontSize: "10px", padding: "2px 8px", background: "var(--primary-light)", color: "var(--primary)", border: "1px solid var(--border-accent)" }}>{isAr ? "ممدد" : "Extended"}</span>
@@ -1149,7 +1164,7 @@ export default function PurchasingForm({
                                                       oldTransport: entry.actual_transport,
                                                       newTransport: entry.actual_transport,
                                                       isNegotiation: false,
-                                                      isFirstEntry: false,
+                                                      isFirstEntry: entry.status === 'pending' || entry.status === 'rejected',
                                                     })}
                                                   >
                                                     {isAr ? "تعديل" : "Edit"}
