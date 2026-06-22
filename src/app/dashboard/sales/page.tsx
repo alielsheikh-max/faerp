@@ -14,11 +14,10 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
   const month = searchParams?.month || currentMonth();
   const categoryId = searchParams?.categoryId ? Number(searchParams.categoryId) : undefined;
   const categories = getCategories();
+  const isSC = session.role === "SC";
   const rows = getSalesCatalog(month, categoryId);
   const metrics = getMonthlyMetrics(month);
-  const publishedRows = rows.filter((row) => row.sell_min !== null);
-
-  const isSC = session.role === "SC";
+  const publishedRows = rows.filter((row) => row.sell_min !== null && (isSC || row.approval_status === "approved"));
 
   // Build price history map for ALL roles — used for the 📝 Revised badge
   // SC: also shows inline old→new in the row. SA: badge only (they get the alert banner).

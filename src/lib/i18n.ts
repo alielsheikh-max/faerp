@@ -46,8 +46,10 @@ export const translations = {
   "role.activeSession":     { en: "Active Session",     ar: "جلسة نشطة" },
   "role.WH.title":          { en: "Purchasing",         ar: "المشتريات" },
   "role.WH.desc":           { en: "Collect monthly quotes from multiple suppliers and keep the market view current.", ar: "جمع عروض الأسعار الشهرية من الموردين والحفاظ على تحديث عرض السوق." },
-  "role.SC.title":          { en: "Manager",            ar: "المدير" },
-  "role.SC.desc":           { en: "Compare supplier prices, review historical trends, and publish resale limits.", ar: "مقارنة أسعار الموردين ومراجعة الاتجاهات التاريخية ونشر حدود إعادة البيع." },
+  "role.SC.title":          { en: "Pricing Control",    ar: "التحكم في الأسعار" },
+  "role.SC.desc":           { en: "Compare supplier prices, review historical trends, and submit resale limits for Manager approval.", ar: "مقارنة أسعار الموردين ومراجعة الاتجاهات التاريخية وتقديم حدود إعادة البيع لاعتماد المدير." },
+  "role.MG.title":          { en: "Manager",            ar: "المدير" },
+  "role.MG.desc":           { en: "Approve or reconsider pricing control submissions before publishing to sales catalog.", ar: "اعتماد أو إعادة النظر في طلبات تسعير الأصناف قبل نشرها في دليل المبيعات." },
   "role.SA.title":          { en: "Sales",              ar: "المبيعات" },
   "role.SA.desc":           { en: "Review approved minimum and maximum selling prices for the active month.", ar: "مراجعة أسعار البيع الدنيا والقصوى المعتمدة للشهر الحالي." },
   "role.AD.title":          { en: "Admin",              ar: "المسؤول" },
@@ -244,7 +246,8 @@ export const translations = {
   "admin.quotes":           { en: "quotes",            ar: "عرض" },
   "admin.activeLabel":      { en: "Active",            ar: "نشط" },
   "admin.whRole":           { en: "WH Purchasing",     ar: "مشتريات WH" },
-  "admin.scRole":           { en: "SC Manager",        ar: "مدير SC" },
+  "admin.scRole":           { en: "SC Pricing",        ar: "تسعير SC" },
+  "admin.mgRole":           { en: "MG Manager",        ar: "مدير MG" },
   "admin.saRole":           { en: "SA Sales",          ar: "مبيعات SA" },
 
   // ── Sales page ────────────────────────────────────────────────────────────

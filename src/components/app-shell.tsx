@@ -17,6 +17,7 @@ const ROLE_COLORS: Record<RoleCode, { badge: string; dot: string }> = {
   WH: { badge: "#34d399", dot: "#10b981" },
   SA: { badge: "#fbbf24", dot: "#f59e0b" },
   AD: { badge: "#ec4899", dot: "#db2777" },
+  MG: { badge: "#f59e0b", dot: "#d97706" },
 };
 
 export function AppShell({ role, children, searchIndex, pendingRequests = 0, ackCount = 0 }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number; ackCount?: number }) {
@@ -101,6 +102,11 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       { href: "/dashboard/admin/activity",  labelKey: "nav.activityLog", icon: "📜", exact: true },
       { href: "/dashboard/admin/about",     labelKey: "nav.about",       icon: "ℹ️", exact: true },
     ],
+    MG: [
+      { href: "/dashboard/notifications", labelKey: "nav.notifications", icon: "📨", pendingKey: "ackCount", iconOnly: true },
+      { href: "/dashboard",               labelKey: "nav.overview",        icon: "⊞", pendingKey: "scApprovals", exact: true },
+      { href: "/dashboard/notifications", labelKey: "nav.notifications",    icon: "📨", pendingKey: "ackCount" },
+    ],
   };
 
   const navItems = NAV_BY_ROLE[role];
@@ -117,9 +123,9 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
           display: "flex", gap: "8px", zIndex: 600,
           pointerEvents: "auto",
         }}>
-          {pendingRequests > 0 && (role === "SC" || role === "WH") && (
+          {pendingRequests > 0 && (role === "SC" || role === "WH" || role === "MG") && (
             <Link
-              href={role === "WH" ? "/dashboard/purchasing/approvals" : "/dashboard/approvals"}
+              href={role === "WH" ? "/dashboard/purchasing/approvals" : role === "MG" ? "/dashboard" : "/dashboard/approvals"}
               style={{
                 display: "flex", alignItems: "center", gap: "7px",
                 padding: "8px 16px", borderRadius: "99px",
@@ -197,8 +203,8 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
           <div style={{ display: "flex", gap: "8px", padding: "0 12px", marginBottom: "10px" }}>
             {navItems.filter(i => i.iconOnly).map(item => {
               const count =
-                item.pendingKey === "scApprovals" ? pendingRequests :
-                item.pendingKey === "whApprovals" ? pendingRequests :
+                item.pendingKey === "scApprovals" && (role === "SC" || role === "MG") ? pendingRequests :
+                item.pendingKey === "whApprovals" && role === "WH" ? pendingRequests :
                 item.pendingKey === "ackCount"    ? ackCount : 0;
               const isActive = pathname.startsWith(item.href);
               const badgeBg  = item.pendingKey === "scApprovals" || item.pendingKey === "whApprovals" ? "#ef4444" : "#6366f1";
@@ -305,7 +311,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
             // ── Standard flat nav item ─────────────────────────────────────
             const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             const badgeCount =
-              item.pendingKey === "scApprovals" && role === "SC" ? pendingRequests :
+              item.pendingKey === "scApprovals" && (role === "SC" || role === "MG") ? pendingRequests :
               item.pendingKey === "whApprovals" && role === "WH" ? pendingRequests :
               item.pendingKey === "ackCount" ? ackCount :
               0;

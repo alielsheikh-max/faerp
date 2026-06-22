@@ -5,7 +5,7 @@ import {
   getCategories, getItems, getSuppliers, getAllPriceEntries,
   getSalesCatalog, getMonthlyReviewData,
   countPendingRequests, getRecentPriceUpdates,
-  getWHCollectionOverview,
+  getWHCollectionOverview, getMGItemsView,
 } from "@/lib/db";
 import { currentMonth, formatCurrency, formatMonthLabel } from "@/lib/format";
 import { SectionIntro } from "@/components/app-shell";
@@ -20,6 +20,7 @@ import MonthlyReviewModal from "@/components/monthly-review-modal";
 import ScOverviewPanel from "@/components/sc-overview-panel";
 import WhMissingQuotes from "@/components/wh-missing-quotes";
 import ClickableDetailTrigger from "@/components/clickable-detail-trigger";
+import MGWorkstationClient from "@/components/mg-workstation-client";
 
 type SearchParams = { month?: string; categoryId?: string; itemId?: string; saved?: string; error?: string; simulate?: string };
 
@@ -38,7 +39,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
   // ── SA: read-only approved catalog ──
   if (role === "SA") {
     const catalog = getSalesCatalog(month);
-    const published = catalog.filter(r => r.sell_min !== null);
+    const published = catalog.filter(r => r.sell_min !== null && r.approval_status === "approved");
     const grouped: Record<string, typeof published> = {};
     for (const row of published) {
       if (!grouped[row.category_name]) grouped[row.category_name] = [];
@@ -211,6 +212,35 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
   const items        = getItems();
   const suppliers    = getSuppliers();
   const priceEntries = getAllPriceEntries();
+  const isAr         = getServerLocale() === "ar";
+
+  // ── MG: Manager approval workstation ──
+  if (role === "MG") {
+    const mgItems = getMGItemsView(month);
+    return (
+      <div className="page-stack">
+        <SectionIntro
+          eyebrow={formatMonthLabel(month)}
+          title={isAr ? "مركز الاعتمادات والرقابة" : "Pricing Approvals Workstation"}
+          description={isAr ? `جلسة نشطة: ${session.displayName} — مراجعة واعتماد أسعار البيع المقترحة` : `Active Session: ${session.displayName} — Review & approve proposed selling prices`}
+          actions={
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <ReportGenerator role="MG" username={session.displayName} dashboardMonth={month} />
+              <span className="badge badge-success">{mgItems.filter(item => item.currentSp?.approvalStatus === "approved").length} {isAr ? "معتمد" : "Approved"}</span>
+              <span className="badge badge-warning">{mgItems.filter(item => item.currentSp?.approvalStatus === "pending").length} {isAr ? "معلق" : "Pending"}</span>
+            </div>
+          }
+        />
+        
+        <MGWorkstationClient
+          items={mgItems}
+          categories={categories}
+          month={month}
+          username={session.displayName}
+        />
+      </div>
+    );
+  }
 
   // ── SC: insights data ──
   const salesCatalog   = role === "SC" ? getSalesCatalog(month) : [];

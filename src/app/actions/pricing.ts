@@ -184,7 +184,7 @@ export async function publishSellingPrice(formData: FormData) {
   const markupType = (["percent", "amount", "divisor"].includes(markupTypeRaw) ? markupTypeRaw : "percent") as "percent" | "amount" | "divisor";
   const markupMin = asNumber(formData.get("markupMin"));
   const markupMax = asNumber(formData.get("markupMax"));
-  const createdBy = asString(formData.get("createdBy")) || "SC Manager";
+  const createdBy = asString(formData.get("createdBy")) || "SC";
   const changeReason = asString(formData.get("changeReason")) || undefined;
   const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
   // T5: SC transport override for this month
@@ -342,7 +342,7 @@ export async function setMarginFloorAction(formData: FormData): Promise<void> {
   const itemId = asNumber(formData.get("itemId")) ?? undefined;
   const categoryId = asNumber(formData.get("categoryId")) ?? undefined;
   const minMarkupPct = asNumber(formData.get("minMarkupPct")) ?? 5;
-  const setBy = asString(formData.get("setBy")) || "SC Manager";
+  const setBy = asString(formData.get("setBy")) || "SC";
   const notes = asString(formData.get("notes")) || undefined;
 
   upsertMarginFloor({ floorType, itemId, categoryId, minMarkupPct, setBy, notes });
@@ -385,7 +385,7 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     const markupType  = (["percent","amount","divisor"].includes(markupTypeR) ? markupTypeR : "percent") as "percent" | "amount" | "divisor";
     const markupMin   = asNumber(formData.get("markupMin")) ?? 8;
     const markupMax   = asNumber(formData.get("markupMax")) ?? 14;
-    const createdBy   = asString(formData.get("createdBy")) || "SC Manager";
+    const createdBy   = asString(formData.get("createdBy")) || "SC";
     const itemsDataRaw = asString(formData.get("itemsData"));
 
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
@@ -484,7 +484,7 @@ export async function submitPriceChangeRequestAction(formData: FormData): Promis
 export async function approvePriceChangeRequestAction(formData: FormData): Promise<void> {
   requireRole(["SC"]);
   const requestId  = asNumber(formData.get("requestId"));
-  const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+  const reviewedBy = asString(formData.get("reviewedBy")) || "SC";
   const reviewNote = asString(formData.get("reviewNote")) || undefined;
 
   if (requestId === null) return;
@@ -502,7 +502,7 @@ export async function approvePriceChangeRequestAction(formData: FormData): Promi
 export async function rejectPriceChangeRequestAction(formData: FormData): Promise<void> {
   requireRole(["SC"]);
   const requestId  = asNumber(formData.get("requestId"));
-  const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+  const reviewedBy = asString(formData.get("reviewedBy")) || "SC";
   const reviewNote = asString(formData.get("reviewNote")) || undefined;
 
   if (requestId === null) return;
@@ -550,7 +550,7 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     const markupType = (["percent", "amount", "divisor"].includes(markupTypeRaw) ? markupTypeRaw : "percent") as "percent" | "amount" | "divisor";
     const markupMin = asNumber(formData.get("markupMin"));
     const markupMax = asNumber(formData.get("markupMax"));
-    const createdBy = asString(formData.get("createdBy")) || "SC Manager";
+    const createdBy = asString(formData.get("createdBy")) || "SC";
     const changeReason = asString(formData.get("changeReason")) || undefined;
     const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
@@ -710,7 +710,7 @@ export async function approvePriceEntryAction(formData: FormData): Promise<{ ok:
   try {
     requireRole(["SC", "AD"]);
     const entryId = asNumber(formData.get("entryId"));
-    const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+    const reviewedBy = asString(formData.get("reviewedBy")) || "SC";
     const note = asString(formData.get("reviewNote")) || undefined;
 
     if (entryId === null) return { ok: false, error: "Missing entry ID." };
@@ -731,7 +731,7 @@ export async function rejectPriceEntryAction(formData: FormData): Promise<{ ok: 
   try {
     requireRole(["SC", "AD"]);
     const entryId = asNumber(formData.get("entryId"));
-    const reviewedBy = asString(formData.get("reviewedBy")) || "SC Manager";
+    const reviewedBy = asString(formData.get("reviewedBy")) || "SC";
     const note = asString(formData.get("reviewNote")) || "";
 
     if (entryId === null) return { ok: false, error: "Missing entry ID." };

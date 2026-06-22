@@ -7,13 +7,14 @@ import {
   getPendingPriceChangeRequests,
   getNegotiatedPriceEntries,
   getRejectedPriceEntriesForWH,
+  getSalesCatalog,
 } from "@/lib/db";
 import { formatDateTime, formatCurrency, currentMonth, formatMonthLabel } from "@/lib/format";
 import PriceChangeRequests from "@/components/price-change-requests";
 import { getServerT, getServerLocale } from "@/lib/locale-server";
 
 export default function NotificationsPage() {
-  const session = requireRole(["SC", "SA", "AD", "WH"]);
+  const session = requireRole(["SC", "SA", "AD", "WH", "MG"]);
   const t = getServerT();
   const locale = getServerLocale();
   const isAr = locale === "ar";
@@ -21,6 +22,7 @@ export default function NotificationsPage() {
 
   const isManager = session.role === "SC" || session.role === "AD";
   const isWH = session.role === "WH";
+  const isMG = session.role === "MG";
 
   const recentUpdates = (session.role === "SC" || session.role === "SA" || session.role === "AD") ? getRecentPriceUpdates(month, 20) : [];
   const acknowledgments = isManager ? getPriceAcknowledgments(30) : [];
@@ -28,13 +30,24 @@ export default function NotificationsPage() {
   const negotiatedEntries = isManager ? getNegotiatedPriceEntries(month) : [];
   const rejectedEntries = isWH ? getRejectedPriceEntriesForWH(session.displayName) : [];
 
+  // Reconsidered proposed prices returned from MG to SC
+  const isSC = session.role === "SC";
+  const reconsideredCatalog = isSC ? getSalesCatalog(month).filter((row: any) => row.sell_min !== null && row.approval_status === "reconsidered") : [];
+
+  // Pending proposed prices submitted from SC to MG
+  const mgPendingItems = isMG ? getSalesCatalog(month).filter((row: any) => row.sell_min !== null && row.approval_status === "pending") : [];
+
   const unreadCount = isWH
     ? rejectedEntries.filter((u: any) => !u.read_by_wh).length
-    : recentUpdates.filter((u: any) => !u.ack_by).length;
+    : isMG
+      ? mgPendingItems.length
+      : recentUpdates.filter((u: any) => !u.ack_by).length;
 
   const totalActivity = isWH
     ? rejectedEntries.length
-    : pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length;
+    : isMG
+      ? mgPendingItems.length
+      : pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length + reconsideredCatalog.length;
 
   if (isWH) {
     return (
@@ -177,6 +190,69 @@ export default function NotificationsPage() {
         )}
 
         <MarkWHReadClient />
+      </div>
+    );
+  }
+
+  if (isMG) {
+    return (
+      <div className="page-stack">
+        <SectionIntro
+          eyebrow={isAr ? "مركز الإشعارات" : "Notification Center"}
+          title={isAr ? "طلبات التسعير المعلقة" : "Pending Pricing Approvals"}
+          description={
+            isAr
+              ? "مراجعة واعتماد طلبات تسعير الفئات والأصناف المقدمة من Pricing Control."
+              : "Review and approve category/item pricing proposals submitted by Pricing Control."
+          }
+          actions={<span className="badge badge-strong">{formatMonthLabel(month)}</span>}
+        />
+
+        {mgPendingItems.length > 0 ? (
+          <div style={{
+            padding: "20px 24px", borderRadius: "16px",
+            background: "linear-gradient(135deg, rgba(245,158,11,0.08), rgba(99,102,241,0.06))",
+            border: "1.5px solid rgba(245,158,11,0.35)",
+            display: "flex", alignItems: "center", gap: "16px",
+            boxShadow: "0 4px 20px rgba(245,158,11,0.12)",
+            flexDirection: isAr ? "row-reverse" : "row"
+          }}>
+            <div style={{
+              width: "52px", height: "52px", borderRadius: "14px", flexShrink: 0,
+              background: "linear-gradient(135deg, #f59e0b, #6366f1)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "22px", boxShadow: "0 4px 14px rgba(245,158,11,0.45)",
+            }}>🔔</div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: isAr ? "right" : "left" }}>
+              <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#b45309", marginBottom: "4px" }}>
+                {isAr ? "مطلوب إجراء" : "Action Required"}
+              </div>
+              <div style={{ fontSize: "17px", fontWeight: 900, color: "#92400e", marginBottom: "3px" }}>
+                {isAr ? `لديك ${mgPendingItems.length} أصناف تنتظر الاعتماد` : `You have ${mgPendingItems.length} items waiting for approval`}
+              </div>
+              <div style={{ fontSize: "12px", color: "#b45309" }}>
+                {isAr ? "يرجى الذهاب إلى الصفحة الرئيسية لمراجعتها واعتمادها" : "Please navigate to the dashboard overview to review and approve."}
+              </div>
+            </div>
+            <a href="/dashboard" className="button button-primary" style={{ padding: "8px 16px", fontSize: "12px", textDecoration: "none" }}>
+              {isAr ? "الذهاب للاعتماد ←" : "Go to Approvals →"}
+            </a>
+          </div>
+        ) : (
+          <div style={{
+            padding: "48px", borderRadius: "20px", textAlign: "center",
+            background: "linear-gradient(135deg, rgba(16,185,129,0.06), rgba(5,150,105,0.04))",
+            border: "1.5px solid rgba(16,185,129,0.25)",
+          }}>
+            <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
+            <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>
+              {isAr ? "لا توجد طلبات معلقة" : "No Pending Approvals"}
+            </div>
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              {isAr ? "كل شيء معتمد! لا توجد طلبات تسعير معلقة حالياً." : "All clear! There are no proposed prices awaiting your approval."}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -584,6 +660,44 @@ export default function NotificationsPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Reconsidered Prices section (SC only) ── */}
+      {isSC && reconsideredCatalog.length > 0 && (
+        <section className="panel animate-fade-in" style={{ borderColor: "rgba(239,68,68,0.4)", marginBottom: "16px" }}>
+          <div className="panel-header" style={{ marginBottom: "16px" }}>
+            <div>
+              <p className="eyebrow" style={{ color: "var(--danger)" }}>{isAr ? "إعادة النظر والرقابة" : "Reconsideration Actions Required"}</p>
+              <h2>{isAr ? "أسعار أعادها المدير للمراجعة" : "Proposed Prices Returned by Manager"}</h2>
+            </div>
+            <span className="badge badge-danger">{reconsideredCatalog.length} {t("gen.item")}</span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {reconsideredCatalog.map(row => (
+              <div key={row.item_id} style={{
+                padding: "16px", borderRadius: "12px", background: "rgba(239,68,68,0.03)",
+                border: "1.5px solid rgba(239,68,68,0.2)", display: "flex", flexDirection: "column", gap: "8px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexDirection: isAr ? "row-reverse" : "row" }}>
+                  <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{row.item_name}</strong>
+                  <span className="badge" style={{ fontSize: "10px" }}>{row.category_name}</span>
+                </div>
+                <div style={{
+                  padding: "8px 12px", background: "rgba(239,68,68,0.06)", border: "1px dashed rgba(239,68,68,0.25)",
+                  borderRadius: "8px", fontSize: "12px", color: "var(--danger)"
+                }}>
+                  <strong>{isAr ? "ملاحظة المدير:" : "Manager Note:"}</strong> {row.reconsider_note || (isAr ? "لا توجد ملاحظة إضافية." : "No additional note provided.")}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                  <a href={`/dashboard/pricing/category?categoryId=${row.category_id}`} className="button button-primary" style={{ padding: "6px 12px", fontSize: "11px", textDecoration: "none" }}>
+                    ✏️ {isAr ? "تعديل التسعير الآن" : "Edit Pricing Now"}
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}

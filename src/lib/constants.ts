@@ -10,9 +10,15 @@ export const ROLE_PROFILES = {
   },
   SC: {
     code: "SC",
+    title: "Pricing Control",
+    shortTitle: "SC Pricing",
+    description: "Compare supplier prices, review historical trends, and submit resale limits for Manager approval."
+  },
+  MG: {
+    code: "MG",
     title: "Manager",
-    shortTitle: "Pricing Control",
-    description: "Compare supplier prices, review historical trends, and publish resale limits."
+    shortTitle: "Manager Control",
+    description: "Approve or reconsider pricing control submissions before publishing to sales catalog."
   },
   SA: {
     code: "SA",
@@ -42,7 +48,12 @@ export const QUICK_LOGIN_CREDENTIALS: Record<
   SC: {
     username: "sc",
     password: "sc123",
-    displayName: "SC Manager"
+    displayName: "SC Pricing"
+  },
+  MG: {
+    username: "mg",
+    password: "mg123",
+    displayName: "MG Manager"
   },
   SA: {
     username: "sa",
