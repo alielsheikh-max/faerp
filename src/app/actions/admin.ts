@@ -17,6 +17,7 @@ import {
   updateUser,
   purgeAllDataExceptUsers,
   setSupplierCategories,
+  ensureSupplierCategory,
   bulkSetItemActive,
   bulkMoveItemCategory,
   bulkDeleteItems,
@@ -26,8 +27,8 @@ import { asNumber, asString } from "@/lib/format";
 import { requireRole } from "@/lib/auth";
 import { log } from "@/lib/activity";
 
-function fail(message: string): never {
-  redirect(`/dashboard/admin?error=${encodeURIComponent(message)}`);
+function fail(message: string, returnTo: string = "/dashboard/admin"): never {
+  redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
 }
 
 function done(message: string, returnTo: string = "/dashboard/admin"): never {
@@ -159,12 +160,12 @@ export async function createCategoryAction(formData: FormData) {
   const description = asString(formData.get("description"));
 
   if (!name) {
-    fail("Category name is required.");
+    fail("Category name is required.", "/dashboard/admin/items");
   }
 
   createCategory({ name, description });
   log.categoryCreated({ username: "admin", role: "AD" }, { name });
-  done("Category created.");
+  done("Category created.", "/dashboard/admin/items");
 }
 
 export async function updateCategoryAction(formData: FormData) {
@@ -174,12 +175,12 @@ export async function updateCategoryAction(formData: FormData) {
   const description = asString(formData.get("description"));
 
   if (id === null || !name) {
-    fail("Category update is incomplete.");
+    fail("Category update is incomplete.", "/dashboard/admin/items");
   }
 
   updateCategory({ id, name, description });
   log.categoryUpdated({ username: "admin", role: "AD" }, { name });
-  done("Category updated.");
+  done("Category updated.", "/dashboard/admin/items");
 }
 
 export async function deleteCategoryAction(formData: FormData) {
@@ -193,11 +194,11 @@ export async function deleteCategoryAction(formData: FormData) {
   try {
     deleteCategory(id);
   } catch (error) {
-    fail(error instanceof Error ? error.message : "Category delete failed.");
+    fail(error instanceof Error ? error.message : "Category delete failed.", "/dashboard/admin/items");
   }
 
   log.categoryDeleted({ username: "admin", role: "AD" }, { name: `id:${id}` });
-  done("Category deleted.");
+  done("Category deleted.", "/dashboard/admin/items");
 }
 
 export async function createSupplierAction(formData: FormData) {
@@ -214,7 +215,7 @@ export async function createSupplierAction(formData: FormData) {
   const address = asString(formData.get("address"));
 
   if (!name) {
-    fail("Supplier name is required.");
+    fail("Supplier name is required.", "/dashboard/admin/suppliers");
   }
 
   createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
@@ -237,7 +238,7 @@ export async function updateSupplierAction(formData: FormData) {
   const address = asString(formData.get("address"));
 
   if (id === null || !name) {
-    fail("Supplier update is incomplete.");
+    fail("Supplier update is incomplete.", "/dashboard/admin/suppliers");
   }
 
   updateSupplier({ id, name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
@@ -256,7 +257,7 @@ export async function deleteSupplierAction(formData: FormData) {
   try {
     deleteSupplier(id);
   } catch (error) {
-    fail(error instanceof Error ? error.message : "Supplier delete failed.");
+    fail(error instanceof Error ? error.message : "Supplier delete failed.", "/dashboard/admin/suppliers");
   }
 
   log.supplierDeleted({ username: "admin", role: "AD" }, { name: `id:${id}` });
@@ -271,12 +272,19 @@ export async function createItemAction(formData: FormData) {
   const description = asString(formData.get("description"));
   const transportationPerUnit = asNumber(formData.get("transportationPerUnit")) || 0;
   const moq = asNumber(formData.get("moq")) || 0;
+  const recommendedSupplierId = asNumber(formData.get("recommendedSupplierId"));
 
   if (categoryId === null || !name || !unit) {
-    fail("Item creation is incomplete.");
+    fail("Item creation is incomplete.", "/dashboard/admin/items");
   }
 
-  createItem({ categoryId, name, unit, description, transportationPerUnit, moq });
+  createItem({ categoryId, name, unit, description, transportationPerUnit, moq, recommendedSupplierId });
+
+  // Auto-assign category to recommended supplier so item appears in WH missing quotes
+  if (recommendedSupplierId && categoryId) {
+    ensureSupplierCategory(recommendedSupplierId, categoryId, "system:auto");
+  }
+
   log.itemCreated({ username: "admin", role: "AD" }, { name, category: `Category #${categoryId}` });
   done("Item created.", "/dashboard/admin/items");
 }
@@ -291,12 +299,19 @@ export async function updateItemAction(formData: FormData) {
   const active = asString(formData.get("active")) === "on";
   const transportationPerUnit = asNumber(formData.get("transportationPerUnit")) || 0;
   const moq = asNumber(formData.get("moq")) || 0;
+  const recommendedSupplierId = asNumber(formData.get("recommendedSupplierId"));
 
   if (id === null || categoryId === null || !name || !unit) {
-    fail("Item update is incomplete.");
+    fail("Item update is incomplete.", "/dashboard/admin/items");
   }
 
-  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq });
+  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq, recommendedSupplierId });
+
+  // Auto-assign category to recommended supplier so item appears in WH missing quotes
+  if (recommendedSupplierId && categoryId) {
+    ensureSupplierCategory(recommendedSupplierId, categoryId, "system:auto");
+  }
+
   log.itemUpdated({ username: "admin", role: "AD" }, { name });
   done("Item updated.", "/dashboard/admin/items");
 }
@@ -841,5 +856,45 @@ export async function getSupplierQuotesHistoryAction(supplierId: number): Promis
     return { success: true, quotes };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to load supplier quotes history." };
+  }
+}
+
+export async function getSupplierConfirmedPricesAction(supplierId: number): Promise<{ success: boolean; history?: any[]; error?: string }> {
+  try {
+    requireRole(["AD", "SC", "WH", "SA"]);
+    const db = database();
+    const history = db.prepare(`
+      SELECT 
+        sp.month,
+        i.name AS item_name,
+        i.unit,
+        c.name AS category_name,
+        sp.strategy,
+        COALESCE(
+          (SELECT price FROM price_entries 
+           WHERE item_id = sp.item_id 
+             AND month = sp.month 
+             AND supplier_id = sp.confirmed_supplier_id 
+             AND status = 'approved' 
+           LIMIT 1),
+          CASE 
+            WHEN sp.strategy = 'min' THEN sp.buy_min
+            WHEN sp.strategy = 'max' THEN sp.buy_max
+            ELSE sp.buy_avg
+          END
+        ) AS cost_base,
+        sp.sell_min,
+        sp.sell_max
+      FROM selling_prices sp
+      JOIN items i ON sp.item_id = i.id
+      JOIN categories c ON i.category_id = c.id
+      WHERE sp.confirmed_supplier_id = ?
+        AND sp.approval_status = 'approved'
+      ORDER BY sp.month DESC, i.name ASC
+    `).all(supplierId) as any[];
+
+    return { success: true, history };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to load supplier confirmed prices history." };
   }
 }

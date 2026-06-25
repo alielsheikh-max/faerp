@@ -1,7 +1,8 @@
 "use client";
+// Category Markup Panel component
 
 import { useState, useTransition, useEffect } from "react";
-import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { formatCurrency, formatMonthLabel, shiftMonth } from "@/lib/format";
 import { applyCategoryMarkupAction, publishSellingPriceAction } from "@/app/actions/pricing";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -51,7 +52,7 @@ export default function CategoryMarkupPanel({
   const [categoryId, setCategoryId] = useState<string>(
     defaultCategoryId || (categories[0]?.id ? String(categories[0].id) : "")
   );
-  const [strategy, setStrategy]     = useState<"min" | "avg" | "max">("max");
+  const [strategy, setStrategy]     = useState<"min" | "avg" | "max" | "fav">("max");
   const [markupType, setMarkupType] = useState<"percent" | "amount" | "divisor">("divisor");
   const [markupMin, setMarkupMin]   = useState("15");
   const [markupMax, setMarkupMax]   = useState("25");
@@ -75,6 +76,7 @@ export default function CategoryMarkupPanel({
   };
   const [itemStates, setItemStates] = useState<Record<number, ItemState>>({});
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [submitSuccessId, setSubmitSuccessId] = useState<number | null>(null);
 
   const selectedCat = categories.find(c => String(c.id) === categoryId);
 
@@ -193,14 +195,14 @@ export default function CategoryMarkupPanel({
     fd.set("tier3Max", "800");
     fd.set("tier3Discount", String(state.tier3_discount));
     fd.set("tier4Discount", String(state.tier4_discount));
-    fd.set("changeReason", `Published single item from category workstation by ${username}`);
+    fd.set("changeReason", `Submitted single item for approval from category workstation by ${username}`);
 
     try {
       const res = await publishSellingPriceAction(fd);
       if (res?.ok) {
-        alert(isAr ? "تم نشر السعر بنجاح!" : "Selling price published successfully!");
+        setSubmitSuccessId(itemId);
       } else {
-        alert(res?.error || (isAr ? "فشل النشر" : "Failed to publish"));
+        alert(res?.error || (isAr ? "فشل التقديم للاعتماد" : "Failed to submit for approval"));
       }
     } catch (err) {
       alert(String(err));
@@ -343,12 +345,13 @@ export default function CategoryMarkupPanel({
           <span>{isAr ? "قاعدة التسعير" : "Pricing Base"}</span>
           <select
             value={strategy}
-            onChange={e => setStrategy(e.target.value as "min" | "avg" | "max")}
+            onChange={e => setStrategy(e.target.value as "min" | "avg" | "max" | "fav")}
             style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "13px" }}
           >
             <option value="min">{isAr ? "أرخص مورد (الأدنى)" : "Cheapest Supplier (Min)"}</option>
             <option value="avg">{isAr ? "متوسط الموردين (المتوسط)" : "Average Supplier (Avg)"}</option>
             <option value="max">{isAr ? "أغلى مورد (الأقصى)" : "Highest Supplier (Max)"}</option>
+            <option value="fav">{isAr ? "المورد الموصى به (⭐ المفضلة)" : "Recommended Supplier (⭐ Fav)"}</option>
           </select>
         </label>
 
@@ -520,7 +523,7 @@ export default function CategoryMarkupPanel({
           </div>
 
           <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700 }}>
-            {strategy === "min" ? (isAr ? "مظلل: السعر الأدنى" : "Highlighted: Min Price") : strategy === "max" ? (isAr ? "مظلل: السعر الأقصى" : "Highlighted: Max Price") : (isAr ? "مظلل: متوسط السعر" : "Highlighted: Avg Price")}
+            {strategy === "min" ? (isAr ? "مظلل: السعر الأدنى" : "Highlighted: Min Price") : strategy === "max" ? (isAr ? "مظلل: السعر الأقصى" : "Highlighted: Max Price") : strategy === "fav" ? (isAr ? "مظلل: المورد الموصى به" : "Highlighted: Recommended Supplier") : (isAr ? "مظلل: متوسط السعر" : "Highlighted: Avg Price")}
           </div>
         </div>
 
@@ -592,15 +595,32 @@ export default function CategoryMarkupPanel({
                 const buyMax = prices.length > 0 ? Math.max(...prices) : 0;
                 const buyAvg = prices.length > 0 ? parseFloat((prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2)) : 0;
 
-                const costBase = strategy === "min" ? buyMin : strategy === "max" ? buyMax : buyAvg;
+                const recommendedSupplierId = (item as any).recommended_supplier_id ?? null;
+                let buyFav = 0;
+                if (recommendedSupplierId) {
+                  const favQuote = itemQuotes.find(q => q.supplierId === recommendedSupplierId);
+                  buyFav = favQuote ? favQuote.price : 0;
+                }
+
+                const costBase = strategy === "min" ? buyMin : strategy === "max" ? buyMax : strategy === "fav" ? buyFav : buyAvg;
 
                 const prevItemSp = prevCatalog?.find(s => s.item_id === item.id);
 
                 const getPrevTierPrice = (idx: number) => {
                   if (!prevItemSp) return null;
-                  const prevCost = prevItemSp.strategy === "min" ? prevItemSp.buy_min 
+                  let prevCost = prevItemSp.strategy === "min" ? prevItemSp.buy_min 
                     : prevItemSp.strategy === "max" ? prevItemSp.buy_max 
                     : prevItemSp.buy_avg;
+                  if (prevItemSp.strategy === "fav") {
+                    const prevFavId = prevItemSp.confirmed_supplier_id || prevItemSp.recommended_supplier_id;
+                    if (prevFavId) {
+                      const prevMonthLabel = shiftMonth(month, -1);
+                      const favEntry = priceEntries.find(
+                        pe => pe.item_id === item.id && pe.month === prevMonthLabel && pe.supplier_id === prevFavId && pe.status === 'approved'
+                      );
+                      prevCost = favEntry ? (favEntry.negotiated_price && favEntry.negotiated_price > 0 ? favEntry.negotiated_price : favEntry.price) : null;
+                    }
+                  }
                   if (!prevCost) return null;
                   
                   if (idx === 0) return prevItemSp.sell_min;
@@ -696,7 +716,7 @@ export default function CategoryMarkupPanel({
                                 setActiveMenuId(null);
                               }}
                               style={{ padding: "8px 12px", fontSize: "12px", border: "none", background: "none", textAlign: isAr ? "right" : "left", cursor: "pointer", borderRadius: "6px", color: "var(--primary)", fontWeight: 700 }}
-                            >⚡ {isAr ? "نشر الصنف منفصلاً" : "Publish Item Only"}</button>
+                            >⚡ {isAr ? "تقديم الصنف للاعتماد" : "Submit Item for Approval"}</button>
                             <button
                               type="button"
                               onClick={() => {
@@ -753,6 +773,18 @@ export default function CategoryMarkupPanel({
                         }}>
                           Max: {formatCurrency(buyMax)}
                         </span>
+                        {/* Fav quote */}
+                        {recommendedSupplierId !== null && (
+                          <span style={{
+                            padding: "2px 6px", borderRadius: "4px",
+                            border: strategy === "fav" ? "1.5px solid var(--warning)" : "1px solid var(--border)",
+                            background: strategy === "fav" ? "rgba(245,158,11,0.08)" : "transparent",
+                            fontWeight: strategy === "fav" ? 800 : 500,
+                            fontSize: "11px"
+                          }}>
+                            Fav ⭐: {buyFav > 0 ? formatCurrency(buyFav) : "—"}
+                          </span>
+                        )}
                         
                         {/* Suppliers click details */}
                         <span style={{ marginInlineStart: "auto", display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
@@ -770,12 +802,12 @@ export default function CategoryMarkupPanel({
                                 fontWeight: 700,
                                 padding: "1px 5px",
                                 borderRadius: "4px",
-                                background: "var(--bg-elevated)",
-                                border: "1px solid var(--border-light)"
+                                background: q.supplierId === recommendedSupplierId ? "rgba(245,158,11,0.08)" : "var(--bg-elevated)",
+                                border: q.supplierId === recommendedSupplierId ? "1px solid rgba(245,158,11,0.4)" : "1px solid var(--border-light)"
                               }}
-                              title={isAr ? "انقر لعرض تفاصيل المورد" : "Click to view supplier details"}
+                              title={q.supplierId === recommendedSupplierId ? (isAr ? "المورد الموصى به" : "Recommended Supplier") : (isAr ? "انقر لعرض تفاصيل المورد" : "Click to view supplier details")}
                             >
-                              {q.supplierName}
+                              {q.supplierName} {q.supplierId === recommendedSupplierId && "⭐"}
                             </span>
                           ))}
                         </span>
@@ -965,8 +997,60 @@ export default function CategoryMarkupPanel({
         className="button button-primary"
         style={{ padding: "11px 24px", fontSize: "13px", cursor: pending ? "not-allowed" : "pointer", opacity: pending ? 0.7 : 1, alignSelf: "flex-start" }}
       >
-        {pending ? (isAr ? "⏳ جاري التطبيق..." : "⏳ Applying…") : (isAr ? "⚡ تطبيق على جميع الأصناف في الفئة" : `⚡ Apply to All Items in Category`)}
+        {pending ? (isAr ? "⏳ جاري التقديم..." : "⏳ Submitting…") : (isAr ? "⚡ تقديم جميع أصناف الفئة للاعتماد" : `⚡ Submit All Items in Category for Approval`)}
       </button>
+      {/* Success Modal Overlay */}
+      {submitSuccessId !== null && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+        }}>
+          <div className="animate-scale-in" style={{
+            background: "var(--bg-elevated)",
+            borderRadius: "16px",
+            border: "1.5px solid var(--success)",
+            boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            padding: "40px 32px",
+            width: "100%",
+            maxWidth: "380px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+          }}>
+            {/* Animated Checkmark */}
+            <div style={{
+              width: "64px", height: "64px", borderRadius: "50%",
+              background: "var(--success-light)", border: "2px solid var(--success)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: "20px", boxShadow: "var(--glow-success)",
+            }}>
+              <span style={{ fontSize: "32px", color: "var(--success)", fontWeight: "bold" }}>✓</span>
+            </div>
+
+            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "8px" }}>
+              {isAr ? "تم التقديم للاعتماد" : "Submitted for Approval"}
+            </h3>
+
+            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "300px", margin: "0 auto 24px", lineHeight: 1.6 }}>
+              {isAr
+                ? "تم تقديم سعر البيع للاعتماد بنجاح، وهو بانتظار موافقة المدير."
+                : "The selling price has been successfully submitted for approval and is now pending manager review."
+              }
+            </p>
+
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => setSubmitSuccessId(null)}
+              style={{ padding: "8px 32px", fontSize: "13px", cursor: "pointer", minWidth: "120px" }}
+            >
+              {isAr ? "حسناً" : "OK"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { ItemCombobox } from "./item-combobox";
 import { useI18n } from "@/lib/i18n-context";
 
 export type Category    = { id: number; name: string; description: string };
-export type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number };
+export type Item        = { id: number; name: string; unit: string; category_id: number; category_name: string; transportation_per_unit?: number; moq?: number; recommended_supplier_id?: number | null };
 export type Supplier    = { id: number; name: string; fame_name?: string | null; contact_person?: string; phone?: string; category_ids: number[] };
 type HistoryEntry = { item_id: number; supplier_id: number; month: string; price: number; recorded_at: string; collected_role: string; supplier_name: string; notes: string | null; actual_transport?: number | null; negotiated_price?: number | null; negotiated_notes?: string | null; status: string; review_note?: string | null };
 type HistoryFilter = "3" | "6" | "all";
@@ -1069,6 +1069,9 @@ export default function PurchasingForm({
                                                 >
                                                   {supplier.fame_name || supplier.name}
                                                 </div>
+                                                {selectedItem?.recommended_supplier_id === supplier.id && (
+                                                  <span style={{ color: "#eab308", fontSize: "12px", cursor: "help" }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>
+                                                )}
                                                 {prevPrice != null && (
                                                   <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
                                                     {isAr ? "السابق" : "Prev"}: {formatCurrency(prevPrice)}
@@ -1391,6 +1394,9 @@ export default function PurchasingForm({
                           >
                             {supplier.fame_name || supplier.name}
                           </div>
+                          {selectedItem?.recommended_supplier_id === supplier.id && (
+                            <span style={{ color: "#eab308", fontSize: "12px", cursor: "help" }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>
+                          )}
                           {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{isAr ? "السابق" : "Last"}: {formatCurrency(lastEntry.price)}</div>}
                         </div>
                       </div>
@@ -1535,6 +1541,9 @@ export default function PurchasingForm({
                           >
                             {supplier.fame_name || supplier.name}
                           </div>
+                          {selectedItem?.recommended_supplier_id === supplier.id && (
+                            <span style={{ color: "#eab308", fontSize: "12px", cursor: "help" }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>
+                          )}
                           {lastEntry && <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{isAr ? "السابق" : "Last"}: {formatCurrency(lastEntry.price)}</div>}
                         </div>
                       </div>
@@ -1672,16 +1681,14 @@ export default function PurchasingForm({
                     <thead>
                       <tr style={{ background: "var(--bg-subtle)" }}>
                         <th style={{ padding: "7px 12px", textAlign: isAr ? "right" : "left", fontWeight: 800, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, [isAr ? "right" : "left"]: 0, background: "var(--bg-subtle)", zIndex: 3, whiteSpace: "nowrap", boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light), 0 1px 0 var(--border)`, minWidth: "80px" }}>
-                          {t("purch.month")}
+                          {isAr ? "المورد" : "Supplier"}
                         </th>
-                        {pivotData.activeSuppliers.map(sup => {
-                          const color = COLORS[suppliers.findIndex(s => s.id === sup.id) % COLORS.length];
+                        {pivotData.pivotMonths.map((m, mi) => {
+                          const isLatest = m === month;
                           return (
-                            <th key={sup.id} style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color, borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-subtle)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)", minWidth: "110px" }}>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: color, display: "inline-block" }} />
-                                {sup.fame_name || sup.name}
-                              </span>
+                            <th key={m} style={{ padding: "7px 12px", textAlign: "center", fontWeight: isLatest ? 800 : 700, fontSize: "10px", color: isLatest ? "var(--primary)" : "var(--text-muted)", borderBottom: "1.5px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-subtle)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)", minWidth: "110px" }}>
+                              {m}
+                              {isLatest && <span style={{ fontSize: "7px", fontWeight: 800, marginInlineStart: "4px", color: "var(--primary)", verticalAlign: "super" }}>{t("gen.latest")}</span>}
                             </th>
                           );
                         })}
@@ -1691,35 +1698,24 @@ export default function PurchasingForm({
                       </tr>
                     </thead>
                     <tbody>
-                      {pivotData.pivotMonths.map((m, mi) => {
-                        const isLatest = m === month;
-                        const minP = pivotData.minByMonth.get(m);
-                        const mPrices = pivotData.activeSuppliers.map(s => pivotData.priceMap.get(`${s.id}||${m}`)).filter((p): p is number => p !== undefined);
-                        const mAvg = mPrices.length ? mPrices.reduce((a, b) => a + b, 0) / mPrices.length : null;
-                        const prevAvg = pivotData.monthAvgs[mi + 1];
-                        const currAvg = pivotData.monthAvgs[mi];
-                        let trendEl: React.ReactNode = null;
-                        if (prevAvg != null && currAvg != null) {
-                          const pct = ((currAvg - prevAvg) / prevAvg) * 100;
-                          if (Math.abs(pct) > 0.5) trendEl = (
-                            <span style={{ fontSize: "9px", fontWeight: 800, color: pct > 0 ? "var(--danger)" : "var(--success)", marginLeft: "3px" }}>
-                              {pct > 0 ? `↑${pct.toFixed(1)}%` : `↓${Math.abs(pct).toFixed(1)}%`}
-                            </span>
-                          );
-                        }
+                      {pivotData.activeSuppliers.map((sup, si) => {
+                        const color = COLORS[suppliers.findIndex(s => s.id === sup.id) % COLORS.length];
+                        const allPrices = pivotData.pivotMonths.map(m => pivotData.priceMap.get(`${sup.id}||${m}`)).filter((p): p is number => p !== undefined);
+                        const avg = allPrices.length ? allPrices.reduce((a, b) => a + b, 0) / allPrices.length : null;
                         return (
-                          <tr key={m} style={{ borderBottom: mi < pivotData.pivotMonths.length - 1 ? "1px solid var(--border-light)" : "none", background: isLatest ? "rgba(99,102,241,0.04)" : "transparent" }}>
-                            <td style={{ padding: "8px 12px", position: "sticky", [isAr ? "right" : "left"]: 0, background: isLatest ? "rgba(99,102,241,0.07)" : "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                                <span className="badge" style={{ fontSize: "10px", ...(isLatest ? { background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" } : {}) }}>{m}</span>
-                                {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, color: "var(--primary)" }}>{t("gen.latest")}</span>}
-                              </div>
+                          <tr key={sup.id} style={{ borderBottom: si < pivotData.activeSuppliers.length - 1 ? "1px solid var(--border-light)" : "none" }}>
+                            <td style={{ padding: "8px 12px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+                                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>{sup.fame_name || sup.name}</span>
+                              </span>
                             </td>
-                            {pivotData.activeSuppliers.map(sup => {
+                            {pivotData.pivotMonths.map(m => {
                               const price = pivotData.priceMap.get(`${sup.id}||${m}`);
+                              const minP = pivotData.minByMonth.get(m);
                               const isBest = price !== undefined && price === minP;
                               return (
-                                <td key={sup.id} style={{ padding: "8px 12px", textAlign: "center", background: isBest ? "rgba(2,132,199,0.08)" : "transparent", whiteSpace: "nowrap" }}>
+                                <td key={m} style={{ padding: "8px 12px", textAlign: "center", background: isBest ? "rgba(2,132,199,0.08)" : "transparent", whiteSpace: "nowrap" }}>
                                   {price !== undefined ? (
                                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
                                       <strong style={{ fontSize: "13px", fontWeight: isBest ? 800 : 600, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(price)}</strong>
@@ -1730,16 +1726,45 @@ export default function PurchasingForm({
                               );
                             })}
                             <td style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
-                              {mAvg !== null ? (
-                                <span style={{ display: "inline-flex", alignItems: "center" }}>
-                                  <strong style={{ fontSize: "12px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(mAvg)}</strong>
-                                  {trendEl}
-                                </span>
+                              {avg !== null ? (
+                                <strong style={{ fontSize: "12px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(avg)}</strong>
                               ) : <span style={{ color: "var(--text-dim)" }}>—</span>}
                             </td>
                           </tr>
                         );
                       })}
+                      {/* Monthly average summary row */}
+                      {pivotData.pivotMonths.length > 0 && (
+                        <tr style={{ borderTop: "2px solid var(--border)", background: "rgba(99,102,241,0.03)" }}>
+                          <td style={{ padding: "8px 12px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
+                            <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--primary)", textTransform: "uppercase" }}>{t("purch.avg")} ⌀</span>
+                          </td>
+                          {pivotData.pivotMonths.map((m, mi) => {
+                            const mAvg = pivotData.monthAvgs[mi];
+                            const prevAvg = pivotData.monthAvgs[mi + 1];
+                            let trendEl: React.ReactNode = null;
+                            if (prevAvg != null && mAvg != null) {
+                              const pct = ((mAvg - prevAvg) / prevAvg) * 100;
+                              if (Math.abs(pct) > 0.5) trendEl = (
+                                <span style={{ fontSize: "9px", fontWeight: 800, color: pct > 0 ? "var(--danger)" : "var(--success)", marginLeft: "3px" }}>
+                                  {pct > 0 ? `↑${pct.toFixed(1)}%` : `↓${Math.abs(pct).toFixed(1)}%`}
+                                </span>
+                              );
+                            }
+                            return (
+                              <td key={m} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
+                                {mAvg !== null ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center" }}>
+                                    <strong style={{ fontSize: "12px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(mAvg)}</strong>
+                                    {trendEl}
+                                  </span>
+                                ) : <span style={{ color: "var(--text-dim)" }}>—</span>}
+                              </td>
+                            );
+                          })}
+                          <td style={{ padding: "8px 12px" }}></td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

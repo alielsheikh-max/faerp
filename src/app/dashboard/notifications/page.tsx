@@ -12,6 +12,9 @@ import {
 import { formatDateTime, formatCurrency, currentMonth, formatMonthLabel } from "@/lib/format";
 import PriceChangeRequests from "@/components/price-change-requests";
 import { getServerT, getServerLocale } from "@/lib/locale-server";
+import CancelPendingButton from "@/components/cancel-pending-button";
+
+const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
 
 export default function NotificationsPage() {
   const session = requireRole(["SC", "SA", "AD", "WH", "MG"]);
@@ -25,7 +28,7 @@ export default function NotificationsPage() {
   const isMG = session.role === "MG";
 
   const recentUpdates = (session.role === "SC" || session.role === "SA" || session.role === "AD") ? getRecentPriceUpdates(month, 20) : [];
-  const acknowledgments = isManager ? getPriceAcknowledgments(30) : [];
+  const acknowledgments = (isManager || isMG) ? getPriceAcknowledgments(30) : [];
   const pendingChangeRequests = isManager ? getPendingPriceChangeRequests() : [];
   const negotiatedEntries = isManager ? getNegotiatedPriceEntries(month) : [];
   const rejectedEntries = isWH ? getRejectedPriceEntriesForWH(session.displayName) : [];
@@ -35,6 +38,7 @@ export default function NotificationsPage() {
   const reconsideredCatalog = isSC ? getSalesCatalog(month).filter((row: any) => row.sell_min !== null && row.approval_status === "reconsidered") : [];
 
   // Pending proposed prices submitted from SC to MG
+  const scPendingCatalog = isSC ? getSalesCatalog(month).filter((row: any) => row.sell_min !== null && row.approval_status === "pending") : [];
   const mgPendingItems = isMG ? getSalesCatalog(month).filter((row: any) => row.sell_min !== null && row.approval_status === "pending") : [];
 
   const unreadCount = isWH
@@ -47,7 +51,7 @@ export default function NotificationsPage() {
     ? rejectedEntries.length
     : isMG
       ? mgPendingItems.length
-      : pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length + reconsideredCatalog.length;
+      : pendingChangeRequests.length + acknowledgments.length + recentUpdates.length + negotiatedEntries.length + reconsideredCatalog.length + scPendingCatalog.length;
 
   if (isWH) {
     return (
@@ -209,35 +213,66 @@ export default function NotificationsPage() {
         />
 
         {mgPendingItems.length > 0 ? (
-          <div style={{
-            padding: "20px 24px", borderRadius: "16px",
-            background: "linear-gradient(135deg, rgba(245,158,11,0.08), rgba(99,102,241,0.06))",
-            border: "1.5px solid rgba(245,158,11,0.35)",
-            display: "flex", alignItems: "center", gap: "16px",
-            boxShadow: "0 4px 20px rgba(245,158,11,0.12)",
-            flexDirection: isAr ? "row-reverse" : "row"
-          }}>
-            <div style={{
-              width: "52px", height: "52px", borderRadius: "14px", flexShrink: 0,
-              background: "linear-gradient(135deg, #f59e0b, #6366f1)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "22px", boxShadow: "0 4px 14px rgba(245,158,11,0.45)",
-            }}>🔔</div>
-            <div style={{ flex: 1, minWidth: 0, textAlign: isAr ? "right" : "left" }}>
-              <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#b45309", marginBottom: "4px" }}>
-                {isAr ? "مطلوب إجراء" : "Action Required"}
+          <section className="panel animate-fade-in">
+            <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
+              <div>
+                <p className="eyebrow">{isAr ? "مطلوب إجراء" : "Action Required"}</p>
+                <h2>{isAr ? `${mgPendingItems.length} أصناف تنتظر الاعتماد` : `${mgPendingItems.length} Items Awaiting Approval`}</h2>
+                <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
+                  {isAr ? "مراجعة الأسعار المقترحة مقابل الأسعار الحالية" : "Review proposed prices vs current approved prices"}
+                </p>
               </div>
-              <div style={{ fontSize: "17px", fontWeight: 900, color: "#92400e", marginBottom: "3px" }}>
-                {isAr ? `لديك ${mgPendingItems.length} أصناف تنتظر الاعتماد` : `You have ${mgPendingItems.length} items waiting for approval`}
-              </div>
-              <div style={{ fontSize: "12px", color: "#b45309" }}>
-                {isAr ? "يرجى الذهاب إلى الصفحة الرئيسية لمراجعتها واعتمادها" : "Please navigate to the dashboard overview to review and approve."}
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <span className="badge badge-warning" style={{ animation: "pulse-ring 2s ease-out infinite" }}>
+                  {mgPendingItems.length} {isAr ? "معلق" : "pending"}
+                </span>
+                <a href="/dashboard" className="button button-primary" style={{ padding: "6px 14px", fontSize: "11px", textDecoration: "none" }}>
+                  {isAr ? "اعتماد ←" : "Approve →"}
+                </a>
               </div>
             </div>
-            <a href="/dashboard" className="button button-primary" style={{ padding: "8px 16px", fontSize: "12px", textDecoration: "none" }}>
-              {isAr ? "الذهاب للاعتماد ←" : "Go to Approvals →"}
-            </a>
-          </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {mgPendingItems.map((row: any) => (
+                <div key={row.item_id} style={{
+                  display: "grid", gridTemplateColumns: "1fr auto auto",
+                  gap: "16px", alignItems: "center",
+                  padding: "14px 16px", borderRadius: "12px",
+                  background: "rgba(245,158,11,0.04)",
+                  border: "1.5px solid rgba(245,158,11,0.25)",
+                  borderLeft: isAr ? "none" : "4px solid #f59e0b",
+                  borderRight: isAr ? "4px solid #f59e0b" : "none",
+                  direction: isAr ? "rtl" : "ltr",
+                }}>
+                  <div style={{ textAlign: isAr ? "right" : "left" }}>
+                    <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{row.item_name}</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{row.category_name}</div>
+                  </div>
+                  {/* Current approved price */}
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "2px" }}>
+                      {isAr ? "السعر الحالي" : "Current"}
+                    </div>
+                    {row.last_approved_sell_min != null ? (
+                      <div style={{ fontSize: "12px", color: "var(--text-muted)", textDecoration: "line-through" }}>
+                        {formatCurrency(roundUp5(row.last_approved_sell_min))} – {formatCurrency(roundUp5(row.last_approved_sell_max))}
+                      </div>
+                    ) : (
+                      <span className="badge" style={{ fontSize: "9px" }}>{isAr ? "جديد" : "New Item"}</span>
+                    )}
+                  </div>
+                  {/* Proposed new price */}
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "9px", color: "#b45309", textTransform: "uppercase", fontWeight: 700, marginBottom: "2px" }}>
+                      {isAr ? "المقترح" : "Proposed"}
+                    </div>
+                    <div style={{ fontWeight: 800, color: "#b45309", fontSize: "13px" }}>
+                      {formatCurrency(roundUp5(row.sell_min))} – {formatCurrency(roundUp5(row.sell_max))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : (
           <div style={{
             padding: "48px", borderRadius: "20px", textAlign: "center",
@@ -252,6 +287,53 @@ export default function NotificationsPage() {
               {isAr ? "كل شيء معتمد! لا توجد طلبات تسعير معلقة حالياً." : "All clear! There are no proposed prices awaiting your approval."}
             </div>
           </div>
+        )}
+
+        {/* SA Acknowledgment Feed — also visible to MG */}
+        {acknowledgments.length > 0 && (
+          <section className="panel animate-fade-in">
+            <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
+              <div>
+                <p className="eyebrow">{isAr ? "نشاط الفريق" : "Team Activity"}</p>
+                <h2>{isAr ? "تأكيدات المبيعات" : "Sales Acknowledgments"}</h2>
+                <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
+                  {isAr ? "تأكيد فريق المبيعات على استلام تحديثات الأسعار المنقحة" : "Sales team confirmations that revised price updates have been received"}
+                </p>
+              </div>
+              <span className="badge badge-strong">{acknowledgments.length} {isAr ? "إجمالي" : "total"}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {acknowledgments.map((a) => (
+                <div key={a.id} style={{
+                  display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                  gap: "12px", alignItems: "center",
+                  padding: "12px 16px", borderRadius: "10px",
+                  background: "var(--bg-surface)", border: "1px solid var(--border-light)",
+                  borderLeft: isAr ? "none" : "4px solid var(--success)",
+                  borderRight: isAr ? "4px solid var(--success)" : "none",
+                  direction: isAr ? "rtl" : "ltr",
+                }}>
+                  <div style={{ textAlign: isAr ? "right" : "left" }}>
+                    <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
+                  </div>
+                  <span className="badge">{formatMonthLabel(a.month)}</span>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{isAr ? "السعر" : "Price Range"}</div>
+                    <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
+                      {formatCurrency(a.new_sell_min)} – {formatCurrency(a.new_sell_max)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                    <span style={{
+                      fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                      background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
+                    }}>✓ {isAr ? `تم بواسطة ${a.acknowledged_by}` : `Seen by ${a.acknowledged_by}`}</span>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.acknowledged_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </div>
     );
@@ -660,6 +742,69 @@ export default function NotificationsPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* ── SC: Outgoing Pending Approvals ───────────────────────────────── */}
+      {isSC && scPendingCatalog.length > 0 && (
+        <section className="panel animate-fade-in">
+          <div className="panel-header" style={{ marginBottom: "14px", textAlign: isAr ? "right" : "left" }}>
+            <div>
+              <p className="eyebrow" style={{ color: "#f59e0b" }}>{isAr ? "الطلبات الصادرة" : "Outgoing Requests"}</p>
+              <h2>{isAr ? "أسعار معلقة لدى المدير" : "Pending MG Approval"}</h2>
+              <p style={{ fontSize: "10px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
+                {isAr ? "الأسعار المقترحة المرسلة للمدير للاعتماد — يمكنك إلغاء الطلب قبل اتخاذ إجراء" : "Proposed prices sent to Manager for approval — you can cancel before action is taken"}
+              </p>
+            </div>
+            <span className="badge badge-warning" style={{ animation: "pulse-ring 2s ease-out infinite" }}>
+              {scPendingCatalog.length} {isAr ? "معلق" : "pending"}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {scPendingCatalog.map((row: any) => (
+              <div key={row.item_id} style={{
+                display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                gap: "14px", alignItems: "center",
+                padding: "14px 16px", borderRadius: "12px",
+                background: "rgba(245,158,11,0.04)",
+                border: "1.5px solid rgba(245,158,11,0.25)",
+                borderLeft: isAr ? "none" : "4px solid #f59e0b",
+                borderRight: isAr ? "4px solid #f59e0b" : "none",
+                direction: isAr ? "rtl" : "ltr",
+              }}>
+                <div style={{ textAlign: isAr ? "right" : "left" }}>
+                  <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{row.item_name}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{row.category_name}</div>
+                </div>
+                {/* Current approved price */}
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "2px" }}>
+                    {isAr ? "الحالي" : "Current"}
+                  </div>
+                  {row.last_approved_sell_min != null ? (
+                    <div style={{ fontSize: "12px", color: "var(--text-muted)", textDecoration: "line-through" }}>
+                      {formatCurrency(roundUp5(row.last_approved_sell_min))} – {formatCurrency(roundUp5(row.last_approved_sell_max))}
+                    </div>
+                  ) : (
+                    <span className="badge" style={{ fontSize: "9px" }}>{isAr ? "أول مرة" : "First Time"}</span>
+                  )}
+                </div>
+                {/* Proposed new price */}
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "9px", color: "#b45309", textTransform: "uppercase", fontWeight: 700, marginBottom: "2px" }}>
+                    {isAr ? "المقترح" : "Proposed"}
+                  </div>
+                  <div style={{ fontWeight: 800, color: "#b45309", fontSize: "13px" }}>
+                    {formatCurrency(roundUp5(row.sell_min))} – {formatCurrency(roundUp5(row.sell_max))}
+                  </div>
+                </div>
+                {/* Cancel button */}
+                <div style={{ textAlign: "center" }}>
+                  <CancelPendingButton itemId={row.item_id} month={month} itemName={row.item_name} />
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}

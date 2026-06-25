@@ -11,6 +11,18 @@ type Props = {
   username: string;
 };
 
+type InlineEditState = {
+  itemId: number;
+  tier1Max: string;
+  tier1Discount: string;
+  tier2Max: string;
+  tier2Discount: string;
+  tier3Max: string;
+  tier3Discount: string;
+  tier4Max: string;
+  tier4Discount: string;
+};
+
 export default function TierPricingPanel({ tiers, items, username }: Props) {
   const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [isTiered, setIsTiered] = useState(true);
@@ -24,6 +36,12 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
   const [tier4Discount, setTier4Discount] = useState("0.89");
   const [useTier4, setUseTier4] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  // Inline editing state
+  const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null);
+
+  // Tier search state
+  const [tierSearch, setTierSearch] = useState("");
 
   const activeTiers = tiers.filter((t) => t.is_tiered === 1);
 
@@ -58,6 +76,33 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
     setTimeout(() => {
       document.getElementById("tier-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
+  };
+
+  const startInlineEdit = (t: ItemTierConfig) => {
+    setInlineEdit({
+      itemId: t.item_id,
+      tier1Max: String(t.tier1_max),
+      tier1Discount: String(t.tier1_discount),
+      tier2Max: String(t.tier2_max),
+      tier2Discount: String(t.tier2_discount),
+      tier3Max: String(t.tier3_max ?? 800),
+      tier3Discount: String(t.tier3_discount),
+      tier4Max: String(t.tier4_max ?? 0),
+      tier4Discount: String(t.tier4_discount ?? 0.89),
+    });
+  };
+
+  const cancelInlineEdit = () => setInlineEdit(null);
+
+  const inlineInputStyle: React.CSSProperties = {
+    width: "58px",
+    padding: "3px 5px",
+    fontSize: "11px",
+    fontWeight: 700,
+    textAlign: "center",
+    borderRadius: "5px",
+    border: "1.5px solid var(--border-accent)",
+    background: "var(--bg-elevated)",
   };
 
   return (
@@ -237,7 +282,40 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
           <span className="badge badge-indigo">{activeTiers.length} items configured</span>
         </div>
 
-        {activeTiers.length === 0 ? (
+        {activeTiers.length > 0 && (
+          <div style={{ marginBottom: "14px" }}>
+            <input
+              type="text"
+              placeholder="🔍 Search items by name or category..."
+              value={tierSearch}
+              onChange={(e) => setTierSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "9px 14px",
+                fontSize: "12px",
+                border: "1.5px solid var(--border-medium)",
+                borderRadius: "8px",
+                background: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+                outline: "none",
+              }}
+            />
+          </div>
+        )}
+
+        {(() => {
+          const filteredTiers = tierSearch.trim()
+            ? activeTiers.filter((t) => {
+                const q = tierSearch.toLowerCase();
+                return t.item_name.toLowerCase().includes(q) || t.category_name.toLowerCase().includes(q);
+              })
+            : activeTiers;
+
+          return filteredTiers.length === 0 && activeTiers.length > 0 ? (
+            <div style={{ padding: "20px", textAlign: "center", border: "1px dashed var(--border-medium)", borderRadius: "8px" }}>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>No items match "{tierSearch}"</p>
+            </div>
+          ) : activeTiers.length === 0 ? (
           <div style={{ padding: "24px", textAlign: "center", border: "1px dashed var(--border-medium)", borderRadius: "8px" }}>
             <span style={{ fontSize: "28px" }}>🏷️</span>
             <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px" }}>No items are currently configured with tiers.</p>
@@ -257,8 +335,144 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {activeTiers.map((t) => {
+                {filteredTiers.map((t) => {
                   const has4 = (t.tier4_max ?? 0) > 0 || (t.tier4_discount ?? 0) > 0;
+                  const isEditing = inlineEdit?.itemId === t.item_id;
+
+                  if (isEditing && inlineEdit) {
+                    // ── Inline Edit Mode ──
+                    const ie = inlineEdit;
+                    const has4Edit = Number(ie.tier4Max) > 0 || Number(ie.tier4Discount) > 0;
+                    return (
+                      <tr key={t.item_id} style={{ backgroundColor: "rgba(99,102,241,0.06)", borderLeft: "3px solid var(--primary)" }}>
+                        <td style={{ fontWeight: 700 }}>{t.item_name}</td>
+                        <td><span className="badge">{t.category_name}</span></td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <input
+                              type="number"
+                              min="1"
+                              value={ie.tier1Max}
+                              onChange={(e) => setInlineEdit({ ...ie, tier1Max: e.target.value })}
+                              style={inlineInputStyle}
+                              title="Tier 1 Max Qty"
+                            />
+                            <input
+                              type="number"
+                              min="0.01"
+                              max="1"
+                              step="0.001"
+                              value={ie.tier1Discount}
+                              onChange={(e) => setInlineEdit({ ...ie, tier1Discount: e.target.value })}
+                              style={{ ...inlineInputStyle, color: "var(--success)" }}
+                              title="Tier 1 Divisor"
+                            />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <input
+                              type="number"
+                              min="1"
+                              value={ie.tier2Max}
+                              onChange={(e) => setInlineEdit({ ...ie, tier2Max: e.target.value })}
+                              style={inlineInputStyle}
+                              title="Tier 2 Max Qty"
+                            />
+                            <input
+                              type="number"
+                              min="0.01"
+                              max="1"
+                              step="0.001"
+                              value={ie.tier2Discount}
+                              onChange={(e) => setInlineEdit({ ...ie, tier2Discount: e.target.value })}
+                              style={{ ...inlineInputStyle, color: "var(--primary)" }}
+                              title="Tier 2 Divisor"
+                            />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <input
+                              type="number"
+                              min="1"
+                              value={ie.tier3Max}
+                              onChange={(e) => setInlineEdit({ ...ie, tier3Max: e.target.value })}
+                              style={inlineInputStyle}
+                              title="Tier 3 Max Qty"
+                            />
+                            <input
+                              type="number"
+                              min="0.01"
+                              max="1"
+                              step="0.001"
+                              value={ie.tier3Discount}
+                              onChange={(e) => setInlineEdit({ ...ie, tier3Discount: e.target.value })}
+                              style={{ ...inlineInputStyle, color: "var(--warning)" }}
+                              title="Tier 3 Divisor"
+                            />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={ie.tier4Max}
+                              onChange={(e) => setInlineEdit({ ...ie, tier4Max: e.target.value })}
+                              style={inlineInputStyle}
+                              title="Tier 4 Max Qty (0 = unlimited)"
+                              placeholder="0"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.001"
+                              value={ie.tier4Discount}
+                              onChange={(e) => setInlineEdit({ ...ie, tier4Discount: e.target.value })}
+                              style={{ ...inlineInputStyle, color: has4Edit ? "var(--danger)" : "var(--text-muted)" }}
+                              title="Tier 4 Divisor"
+                              placeholder="0"
+                            />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", gap: "5px", justifyContent: "center", flexWrap: "wrap" }}>
+                            <form action={saveItemTierConfigAction} style={{ display: "inline" }}>
+                              <input type="hidden" name="itemId" value={ie.itemId} />
+                              <input type="hidden" name="isTiered" value="on" />
+                              <input type="hidden" name="tier1Max" value={ie.tier1Max} />
+                              <input type="hidden" name="tier1Discount" value={ie.tier1Discount} />
+                              <input type="hidden" name="tier2Max" value={ie.tier2Max} />
+                              <input type="hidden" name="tier2Discount" value={ie.tier2Discount} />
+                              <input type="hidden" name="tier3Max" value={ie.tier3Max} />
+                              <input type="hidden" name="tier3Discount" value={ie.tier3Discount} />
+                              <input type="hidden" name="tier4Max" value={ie.tier4Max} />
+                              <input type="hidden" name="tier4Discount" value={ie.tier4Discount} />
+                              <button
+                                type="submit"
+                                className="button button-primary"
+                                style={{ padding: "5px 12px", fontSize: "11px" }}
+                              >
+                                Save
+                              </button>
+                            </form>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: "5px 10px", fontSize: "11px" }}
+                              onClick={cancelInlineEdit}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // ── Read-only Mode ──
                   return (
                     <tr key={t.item_id}>
                       <td style={{ fontWeight: 700 }}>{t.item_name}</td>
@@ -291,7 +505,7 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
                             type="button"
                             className="button button-secondary"
                             style={{ padding: "5px 10px", fontSize: "11px" }}
-                            onClick={() => handleItemSelect(String(t.item_id))}
+                            onClick={() => startInlineEdit(t)}
                           >
                             Edit
                           </button>
@@ -328,7 +542,8 @@ export default function TierPricingPanel({ tiers, items, username }: Props) {
               </tbody>
             </table>
           </div>
-        )}
+        );
+        })()}
       </div>
     </div>
   );

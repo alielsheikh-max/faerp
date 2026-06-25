@@ -351,37 +351,39 @@ export default function ItemDetailClient({
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
-                      <th style={{ padding: "10px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, color: "var(--text-muted)" }}>{locale === "ar" ? "الشهر" : "Month"}</th>
-                      {supplierNames.map((s, idx) => (
-                        <th key={s} style={{ padding: "10px 12px", textAlign: "center", color: COLORS[idx % COLORS.length], fontWeight: 700 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: COLORS[idx % COLORS.length], display: "inline-block" }} />
-                            {s}
-                          </span>
-                        </th>
-                      ))}
+                      <th style={{ padding: "10px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, color: "var(--text-muted)" }}>{locale === "ar" ? "المورد" : "Supplier"}</th>
+                      {visibleMonths.map((m, mi) => {
+                        const isLatest = mi === 0;
+                        return (
+                          <th key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isLatest ? 800 : 700, color: isLatest ? "var(--primary)" : "var(--text-muted)" }}>
+                            {formatMonthLabel(m)}
+                            {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, marginInlineStart: "5px", color: "var(--primary)", verticalAlign: "super" }}>{locale === "ar" ? "الأحدث" : "LATEST"}</span>}
+                          </th>
+                        );
+                      })}
                       <th style={{ padding: "10px 12px", textAlign: "center", color: "var(--primary)", fontWeight: 700 }}>{locale === "ar" ? "المتوسط" : "Avg"}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleMonths.map((m, mi) => {
-                      const monthRow = serializedGrid[m];
-                      const prices = supplierNames.map((s) => monthRow?.[s]?.price).filter((p): p is number => p !== undefined);
-                      const avg = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
-                      const minPrice = prices.length ? Math.min(...prices) : null;
-                      const isLatest = mi === 0;
-
+                    {supplierNames.map((sName, si) => {
+                      const color = COLORS[si % COLORS.length];
+                      const allPrices = visibleMonths.map(m => serializedGrid[m]?.[sName]?.price).filter((p): p is number => p !== undefined);
+                      const avg = allPrices.length ? allPrices.reduce((a, b) => a + b, 0) / allPrices.length : null;
                       return (
-                        <tr key={m} style={{ borderBottom: "1px solid var(--border-light)", background: isLatest ? "rgba(99,102,241,0.03)" : "transparent" }}>
-                          <td style={{ padding: "10px 12px", fontWeight: isLatest ? 700 : 500 }}>
-                            {formatMonthLabel(m)}
-                            {isLatest && <span style={{ fontSize: "9px", fontWeight: 800, color: "var(--primary)", marginLeft: "6px", marginRight: "6px" }}>{locale === "ar" ? "الأحدث" : "LATEST"}</span>}
+                        <tr key={sName} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                              <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>{sName}</span>
+                            </span>
                           </td>
-                          {supplierNames.map((s) => {
-                            const entry = monthRow?.[s];
+                          {visibleMonths.map(m => {
+                            const entry = serializedGrid[m]?.[sName];
+                            const monthPrices = supplierNames.map(s => serializedGrid[m]?.[s]?.price).filter((p): p is number => p !== undefined);
+                            const minPrice = monthPrices.length ? Math.min(...monthPrices) : null;
                             const isBest = entry && minPrice !== null && entry.price === minPrice;
                             return (
-                              <td key={s} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.06)" : "transparent" }}>
+                              <td key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.06)" : "transparent" }}>
                                 {entry ? formatCurrency(entry.price) : "—"}
                               </td>
                             );

@@ -36,7 +36,15 @@ type SalesRow = {
   // T20: actual transport stored on selling price
   transportation: number;
   other_expenses: number;
+  // MG Approval: pending revision hold
+  approval_status?: string;
+  last_approved_sell_min?: number | null;
+  last_approved_sell_max?: number | null;
+  last_approved_strategy?: string | null;
 };
+
+/** Round up to nearest 5 EGP — used for ALL sell price displays. */
+const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
 
 /** T10: Compute tier prices using unified formula (divisor/percentage markup, including transport & expenses). */
 function calcTierPrices(row: SalesRow) {
@@ -45,19 +53,19 @@ function calcTierPrices(row: SalesRow) {
   const transport = row.transportation ?? 0;
   const other = row.other_expenses ?? 0;
   const sellMin = row.sell_min;
-  const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+  const r5 = (n: number) => Math.ceil(n / 5) * 5;
 
   function getPriceForDiscount(discount: number) {
     if (discount <= 0 || buyAvg <= 0) return null;
     if (discount < 1) {
-      return roundUp5(buyAvg / discount + transport + other);
+      return r5(buyAvg / discount + transport + other);
     }
     const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
-    return roundUp5(baseSellMin * (1 - discount / 100) + transport + other);
+    return r5(baseSellMin * (1 - discount / 100) + transport + other);
   }
 
   return [
-    { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin ?? getPriceForDiscount(row.tier1_discount) },
+    { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin !== null ? r5(sellMin) : getPriceForDiscount(row.tier1_discount) },
     { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: getPriceForDiscount(row.tier2_discount) },
     { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: getPriceForDiscount(row.tier3_discount) },
     { label: "T4", range: `>${row.tier3_max}`,   price: getPriceForDiscount(row.tier4_discount) },
@@ -105,6 +113,9 @@ export default function SalesList({ initialRows, categories, month, role, priceH
     yes: isAr ? "نعم" : "Yes",
     no: isAr ? "لا" : "No",
     pending: isAr ? "معلق" : "Pending",
+    pendingRevision: isAr ? "⏳ مراجعة معلقة 🔒" : "⏳ Pending Revision 🔒",
+    pendingRevisionTooltip: isAr ? "السعر قيد المراجعة من المدير - العروض متوقفة مؤقتاً" : "Price is being revised and is awaiting MG approval — quoting is on hold",
+    onHold: isAr ? "معلق" : "ON HOLD",
 
     simEyebrow: isAr ? "مساعد مبيعات تفاعلي" : "Interactive sales assistant",
     simTitle: isAr ? "محاكي عروض أسعار صفقات العملاء" : "Client Deal Quoting Simulator",
@@ -400,6 +411,44 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                 </div>
               )}
 
+              {selectedItem && (() => {
+                const isPendingSelected = role === "SA" && selectedItem.approval_status !== "approved" && selectedItem.last_approved_sell_min != null;
+                return isPendingSelected ? (
+                  <div className="animate-fade-in" style={{
+                    padding: "16px",
+                    backgroundColor: "rgba(245, 158, 11, 0.10)",
+                    border: "1.5px solid rgba(245, 158, 11, 0.4)",
+                    borderRadius: "8px",
+                    color: "#b45309",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    marginTop: "4px",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "20px" }}>🔒</span>
+                      <strong>{T.pendingRevision}</strong>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#92400e", lineHeight: 1.5 }}>
+                      {T.pendingRevisionTooltip}
+                    </p>
+                    <div style={{ display: "flex", gap: "16px", padding: "10px 12px", background: "rgba(245,158,11,0.08)", borderRadius: "6px", opacity: 0.7, marginTop: "4px" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.min}</div>
+                        <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(roundUp5(selectedItem.last_approved_sell_min))}</strong>
+                      </div>
+                      <span style={{ color: "var(--text-dim)" }}>—</span>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.max}</div>
+                        <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(roundUp5(selectedItem.last_approved_sell_max))}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
               <div style={{ 
                 display: "grid", 
                 gridTemplateColumns: selectedItem && selectedItem.moq > 0 && qty < selectedItem.moq ? "1fr 1fr 1.2fr" : "1fr 1fr", 
@@ -412,7 +461,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                     min="1" 
                     value={qty}
                     onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 0))}
-                    disabled={!selectedItemId}
+                    disabled={!selectedItemId || (role === "SA" && selectedItem?.approval_status !== "approved" && selectedItem?.last_approved_sell_min != null)}
                   />
                 </label>
 
@@ -424,7 +473,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                     min="0"
                     value={targetPrice}
                     onChange={(e) => setTargetPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                    disabled={!selectedItemId}
+                    disabled={!selectedItemId || (role === "SA" && selectedItem?.approval_status !== "approved" && selectedItem?.last_approved_sell_min != null)}
                   />
                 </label>
 
@@ -451,7 +500,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                 type="button" 
                 className="button button-primary button-block"
                 onClick={addQuote}
-                disabled={!selectedItem}
+                disabled={!selectedItem || (role === "SA" && selectedItem?.approval_status !== "approved" && selectedItem?.last_approved_sell_min != null)}
                 style={{ marginTop: "8px" }}
               >
                 {T.simAddQuote}
@@ -669,14 +718,19 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                   // Show tiers whenever item is configured as tiered + has buy_avg
                   // (don't require tier_pricing_enabled===1 — that flag may be 0 if item was
                   //  published before the monthly tier toggle was switched on)
-                  const isTiered = row.is_tiered === 1 && row.buy_avg != null;
+                  const isPendingRevision = role === "SA" && row.approval_status !== "approved" && row.last_approved_sell_min != null;
+                  const isTiered = !isPendingRevision && row.is_tiered === 1 && row.buy_avg != null;
                   const tierPrices = isTiered ? calcTierPrices(row) : [];
                   const TIER_COLORS = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
                   const recentChange = priceHistory?.[row.item_id];
                   // Badge shows for both SC and SA; inline old→new only for SC
-                  const hasChange = !!recentChange;
+                  const hasChange = !isPendingRevision && !!recentChange;
                   return (
-                    <tr key={row.item_id} style={hasChange ? {
+                    <tr key={row.item_id} style={isPendingRevision ? {
+                      backgroundColor: "rgba(245,158,11,0.06)",
+                      borderLeft: "3px solid var(--warning)",
+                      opacity: 0.85,
+                    } : hasChange ? {
                       backgroundColor: "rgba(245,158,11,0.04)",
                       borderLeft: "3px solid #f59e0b",
                     } : {}}>
@@ -688,6 +742,15 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                         >
                           {row.item_name}
                         </span>
+                        {isPendingRevision && (
+                          <span style={{
+                            display: "inline-block", marginInlineStart: "8px",
+                            fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                            borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                            border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                            verticalAlign: "middle",
+                          }} title={T.pendingRevisionTooltip}>{T.pendingRevision}</span>
+                        )}
                         {hasChange && (
                           <span style={{
                             display: "inline-block", marginInlineStart: "8px",
@@ -716,7 +779,23 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                       </td>
                       {/* Approved Price(s) — for SC show old→new if revised */}
                       <td>
-                        {isTiered ? (
+                        {isPendingRevision ? (
+                          /* Pending revision: show last approved price with lock */
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div style={{ display: "flex", gap: "10px", alignItems: "center", opacity: 0.7 }}>
+                              <div style={{ textAlign: "center" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.min}</div>
+                                <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(roundUp5(row.last_approved_sell_min))}</strong>
+                              </div>
+                              <span style={{ color: "var(--text-dim)" }}>—</span>
+                              <div style={{ textAlign: "center" }}>
+                                <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.max}</div>
+                                <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(roundUp5(row.last_approved_sell_max))}</strong>
+                              </div>
+                            </div>
+                            <span style={{ fontSize: "8px", color: "#b45309", fontWeight: 700 }}>🔒 {T.onHold}</span>
+                          </div>
+                        ) : isTiered ? (
                           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                             {tierPrices.map((t, i) => (
                               <div key={t.label} style={{ textAlign: "center", minWidth: "54px" }}>
@@ -732,7 +811,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                             {role === "SC" && hasChange && recentChange && recentChange.prev_sell_min !== null && (
                               <div style={{ display: "flex", gap: "6px", alignItems: "center", fontSize: "11px", color: "var(--text-muted)" }}>
                                 <span style={{ textDecoration: "line-through", opacity: 0.7 }}>
-                                  {formatCurrency(recentChange.prev_sell_min)} – {formatCurrency(recentChange.prev_sell_max)}
+                                  {formatCurrency(roundUp5(recentChange.prev_sell_min))} – {formatCurrency(roundUp5(recentChange.prev_sell_max))}
                                 </span>
                                 <span style={{ color: "#f59e0b", fontWeight: 800, fontSize: "13px" }}>→</span>
                               </div>
@@ -740,12 +819,12 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                               <div style={{ textAlign: "center" }}>
                                 <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.min}</div>
-                                <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(row.sell_min)}</strong>
+                                <strong style={{ color: "var(--success)", fontSize: "14px" }}>{formatCurrency(roundUp5(row.sell_min))}</strong>
                               </div>
                               <span style={{ color: "var(--text-dim)" }}>—</span>
                               <div style={{ textAlign: "center" }}>
                                 <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.max}</div>
-                                <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency(row.sell_max)}</strong>
+                                <strong style={{ color: "var(--primary)", fontSize: "14px" }}>{formatCurrency(roundUp5(row.sell_max))}</strong>
                               </div>
                             </div>
                             {hasChange && (

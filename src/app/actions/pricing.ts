@@ -187,6 +187,9 @@ export async function publishSellingPrice(formData: FormData) {
   const createdBy = asString(formData.get("createdBy")) || "SC";
   const changeReason = asString(formData.get("changeReason")) || undefined;
   const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
+  // Client-computed final sell prices (to avoid server-side recalculation drift)
+  const sellMinOverride = asNumber(formData.get("sellMin"));
+  const sellMaxOverride = asNumber(formData.get("sellMax"));
   // T5: SC transport override for this month
   const transportOverrideEnabled = asString(formData.get("transportOverrideEnabled")) === "1";
   const transportOverrideRaw = asNumber(formData.get("transportOverride"));
@@ -222,7 +225,8 @@ export async function publishSellingPrice(formData: FormData) {
     redirect(errorRedirect);
   }
 
-  if (markupMax < markupMin) {
+  const isInvalid = markupType === "divisor" ? (markupMax > markupMin) : (markupMax < markupMin);
+  if (isInvalid) {
     redirect(errorRedirect);
   }
 
@@ -248,6 +252,8 @@ export async function publishSellingPrice(formData: FormData) {
       tier3Max,
       tier3Discount,
       tier4Discount,
+      sellMinOverride,
+      sellMaxOverride,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
@@ -391,7 +397,8 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
 
     if (!categoryId || !month) return { ok: false, error: "Category and month are required." };
-    if (markupMax < markupMin) return { ok: false, error: "Max markup must be ≥ min markup." };
+    const isInvalid = markupType === "divisor" ? (markupMax > markupMin) : (markupMax < markupMin);
+    if (isInvalid) return { ok: false, error: markupType === "divisor" ? "Max markup divisor must be ≤ min markup divisor." : "Max markup must be ≥ min markup." };
 
     let itemsDataParsed: any[] | undefined = undefined;
     if (itemsDataRaw) {
@@ -553,6 +560,9 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     const createdBy = asString(formData.get("createdBy")) || "SC";
     const changeReason = asString(formData.get("changeReason")) || undefined;
     const otherExpenses = asNumber(formData.get("otherExpenses")) || 0;
+    // Client-computed final sell prices (to avoid server-side recalculation drift)
+    const sellMinOverride = asNumber(formData.get("sellMin"));
+    const sellMaxOverride = asNumber(formData.get("sellMax"));
     const tierPricingEnabled = asString(formData.get("tierPricingEnabled")) === "on" ? 1 : 0;
     const tier1Max = asNumber(formData.get("tier1Max"));
     const tier1Discount = asNumber(formData.get("tier1Discount"));
@@ -572,8 +582,9 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
       return { ok: false, error: "Missing required fields" };
     }
 
-    if (markupMax < markupMin) {
-      return { ok: false, error: "Max markup must be greater than or equal to min markup" };
+    const isInvalid = markupType === "divisor" ? (markupMax > markupMin) : (markupMax < markupMin);
+    if (isInvalid) {
+      return { ok: false, error: markupType === "divisor" ? "Max markup divisor must be less than or equal to min markup divisor" : "Max markup must be greater than or equal to min markup" };
     }
 
     saveSellingPrice({
@@ -594,6 +605,8 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
       tier3Max,
       tier3Discount,
       tier4Discount,
+      sellMinOverride,
+      sellMaxOverride,
     });
 
     revalidatePath("/dashboard");

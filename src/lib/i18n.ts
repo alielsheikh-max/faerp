@@ -8,7 +8,7 @@ export type Locale = "en" | "ar";
 export const translations = {
   // ── App / Brand ───────────────────────────────────────────────────────────
   "app.name":               { en: "FAERP",              ar: "FAERP" },
-  "app.tagline":            { en: "Products Pricing System", ar: "نظام تسغير المنتجات" },
+  "app.tagline":            { en: "Pricing Control System", ar: "نظام التحكم في التسعير" },
 
   // ── Nav labels ────────────────────────────────────────────────────────────
   "nav.overview":           { en: "Overview",           ar: "نظرة عامة" },
@@ -358,11 +358,12 @@ export const translations = {
   "search.latestLabel":     { en: "LATEST",                     ar: "الأحدث" },
   "search.supplierPrices":  { en: "Supplier Prices",            ar: "أسعار الموردين" },
   "search.publishedSellingPrices": { en: "Published Selling Prices", ar: "أسعار البيع المنشورة" },
-  "search.priceHistory":    { en: "Price History — Suppliers × Months", ar: "سجل الأسعار — الموردين × الأشهر" },
+  "search.priceHistory":    { en: "Price History — Months × Suppliers", ar: "سجل الأسعار — الأشهر × الموردين" },
   "search.avg":             { en: "Avg",                        ar: "المتوسط" },
   "search.best":            { en: "BEST",                       ar: "الأفضل" },
   "search.sellRange":       { en: "Sell Range",                 ar: "نطاق البيع" },
   "search.month":           { en: "Month",                      ar: "الشهر" },
+  "search.supplier":        { en: "Supplier",                   ar: "المورد" },
   "search.all":             { en: "All",                        ar: "الكل" },
   "search.activeMonths":    { en: "Active Months",              ar: "الأشهر النشطة" },
   "search.bestPriceItems":  { en: "Best-Price Items",           ar: "أصناف السعر الأفضل" },
@@ -747,6 +748,9 @@ export const translations = {
   "whapp.noRequestsDesc":   { en: "When you update a confirmed price in the Purchasing page, a request will appear here.", ar: "عند تحديث سعر مؤكد في صفحة المشتريات، سيظهر الطلب هنا." },
 
   // ── SC Approvals Page ──────────────────────────────────────────────────────
+  "scapp.incoming":         { en: "Incoming (from WH)", ar: "الواردة (من المستودع)" },
+  "scapp.outgoing":         { en: "Outgoing (to MG)", ar: "المرسلة (للاعتماد)" },
+  "scapp.noOutgoing":       { en: "No outgoing proposals found.", ar: "لا توجد مقترحات أسعار مرسلة." },
   "scapp.eyebrow":          { en: "WH → SC Workflow", ar: "سير عمل WH ← SC" },
   "scapp.title":            { en: "Price Change Approvals", ar: "الموافقة على تغيير الأسعار" },
   "scapp.desc":             { en: "Review incoming price change requests from WH. Approve to update the market data, reject with a note to inform WH.", ar: "مراجعة طلبات تغيير الأسعار الواردة من قسم المستودع (WH). وافق لتحديث بيانات السوق، أو ارفض مع إضافة ملاحظة لإبلاغهم." },
@@ -824,6 +828,10 @@ export const translations = {
   "notif.noAcksYetDesc":    { en: "SA team will confirm price updates here once you publish prices", ar: "سيؤكد فريق المبيعات تحديثات الأسعار هنا بمجرد نشر الأسعار" },
   "notif.priceRange":       { en: "Price Range", ar: "نطاق السعر" },
   "notif.seen":             { en: "✓ Seen", ar: "✓ تم الاطلاع" },
+  "notif.quickView":        { en: "Quick View", ar: "عرض سريع" },
+  "notif.viewAll":          { en: "View All", ar: "عرض الكل" },
+  "notif.noNotifications":  { en: "No new notifications", ar: "لا توجد إشعارات جديدة" },
+  "notif.markAsRead":       { en: "Mark as read", ar: "تحديد كمقروء" },
   "notif.awaitingSA":       { en: "⏳ Awaiting SA", ar: "⏳ بانتظار المبيعات" },
   "notif.priceHistory":     { en: "Price History", ar: "سجل الأسعار" },
   "notif.allPriceUpdates":  { en: "All Price Updates — {month} ({count})", ar: "كل تحديثات الأسعار — {month} ({count})" },

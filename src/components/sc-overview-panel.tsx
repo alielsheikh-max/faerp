@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -15,12 +15,71 @@ type RecentChange = {
   changed_at: string; changed_by: string; is_update: number;
 };
 
+type SalesCatalogItem = {
+  item_id: number;
+  item_name: string;
+  unit: string;
+  category_id: number;
+  category_name: string;
+  sell_min: number | null;
+  sell_max: number | null;
+  approval_status: string;
+  strategy: string | null;
+  buy_min: number | null;
+  buy_max: number | null;
+  buy_avg: number | null;
+  reconsider_note: string | null;
+  recommended_supplier_id: number | null;
+};
+
+type SupplierQuote = {
+  quoteId: number;
+  supplierId: number;
+  supplierName: string;
+  price: number;
+  recordedAt: string;
+  status: string;
+  reviewNote: string | null;
+  notes: string | null;
+  actualTransport: number | null;
+};
+
+type ReviewItem = {
+  itemId: number;
+  itemName: string;
+  unit: string;
+  categoryId: number;
+  categoryName: string;
+  suppliers: SupplierQuote[];
+  minPrice: number;
+  maxPrice: number;
+  avgPrice: number;
+  recommendedSupplierId: number | null;
+};
+
+type ReviewCategory = {
+  categoryId: number;
+  categoryName: string;
+  items: ReviewItem[];
+};
+
+type Supplier = {
+  id: number;
+  name: string;
+  fame_name: string | null;
+  represented_products: string | null;
+  category_ids: number[];
+};
+
 type Props = {
   month: string; username: string;
   pricedCount: number; totalActiveItems: number;
   pendingCount: number; quotesThisMonth: number; suppliersThisMonth: number;
   categoryStats: CategoryStat[]; supplierStats: SupplierStat[];
   recentChanges: RecentChange[];
+  salesCatalog?: SalesCatalogItem[];
+  reviewData?: ReviewCategory[];
+  suppliers?: Supplier[];
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -93,8 +152,77 @@ function CircleProgress({ pct, size = 128, stroke = 10, color = "#6366f1" }: { p
 export default function ScOverviewPanel({
   month, username, pricedCount, totalActiveItems, pendingCount,
   quotesThisMonth, suppliersThisMonth, categoryStats, supplierStats, recentChanges,
+  salesCatalog = [],
+  reviewData = [],
+  suppliers = [],
 }: Props) {
   const { t, isRTL } = useI18n();
+
+  const [activeTab, setActiveTab] = useState<"published" | "pending" | "available" | "missing">("available");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const approvedQuotesByItem = useMemo(() => {
+    const map = new Map<number, SupplierQuote[]>();
+    for (const cat of reviewData || []) {
+      for (const item of cat.items || []) {
+        const approved = (item.suppliers || []).filter(q => q.status === "approved");
+        if (approved.length > 0) {
+          map.set(item.itemId, approved);
+        }
+      }
+    }
+    return map;
+  }, [reviewData]);
+
+  const { publishedList, pendingList, availableList, missingList } = useMemo(() => {
+    const publishedList: SalesCatalogItem[] = [];
+    const pendingList: SalesCatalogItem[] = [];
+    const availableList: SalesCatalogItem[] = [];
+    const missingList: SalesCatalogItem[] = [];
+
+    for (const item of salesCatalog || []) {
+      const hasApprovedQuotes = approvedQuotesByItem.has(item.item_id);
+
+      if (item.sell_min !== null) {
+        if (item.approval_status === "approved") {
+          publishedList.push(item);
+        } else if (item.approval_status === "pending") {
+          pendingList.push(item);
+        } else if (item.approval_status === "reconsidered") {
+          availableList.push(item);
+        } else {
+          publishedList.push(item);
+        }
+      } else {
+        if (hasApprovedQuotes) {
+          availableList.push(item);
+        } else {
+          missingList.push(item);
+        }
+      }
+    }
+
+    return { publishedList, pendingList, availableList, missingList };
+  }, [salesCatalog, approvedQuotesByItem]);
+
+  const activeList = useMemo(() => {
+    switch (activeTab) {
+      case "published": return publishedList;
+      case "pending": return pendingList;
+      case "available": return availableList;
+      case "missing": return missingList;
+      default: return [];
+    }
+  }, [activeTab, publishedList, pendingList, availableList, missingList]);
+
+  const filteredActiveList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q === "") return activeList;
+    return activeList.filter(item => 
+      item.item_name.toLowerCase().includes(q) ||
+      item.category_name.toLowerCase().includes(q)
+    );
+  }, [searchQuery, activeList]);
   const coveragePct     = totalActiveItems > 0 ? Math.round(pricedCount / totalActiveItems * 100) : 0;
   const catsDone        = categoryStats.filter(c => c.pct === 100).length;
   const catsPct         = categoryStats.length > 0 ? Math.round(catsDone / categoryStats.length * 100) : 0;
@@ -322,6 +450,302 @@ export default function ScOverviewPanel({
           })}
         </div>
       </div>
+
+      {/* ── Pricing Status Board (Tabbed Item Lifecycle List) ────────────────── */}
+      <section className="panel animate-fade-in" style={{
+        padding: "20px", borderRadius: "16px",
+        background: "var(--bg-elevated)", border: "1px solid var(--border)",
+        display: "flex", flexDirection: "column", gap: "16px"
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", flexDirection: isRTL ? "row-reverse" : "row" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexDirection: isRTL ? "row-reverse" : "row", marginBottom: "4px" }}>
+              <span style={{ fontSize: "18px" }}>📋</span>
+              <h2 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
+                {isRTL ? "لوحة متابعة حالة التسعير" : "Pricing Status Board"}
+              </h2>
+            </div>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, textAlign: isRTL ? "right" : "left" }}>
+              {isRTL 
+                ? "تابع حالة تسعير الأصناف لهذا الشهر: منشور، معلق، جاهز للتسعير والتقديم، أو بحاجة لعروض أسعار." 
+                : "Track the month's pricing lifecycle: published catalog, pending approvals, items ready to submit, or missing quotes."}
+            </p>
+          </div>
+
+          {/* Search bar */}
+          <div style={{ position: "relative", width: "100%", maxWidth: "300px" }}>
+            <span style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: isRTL ? "auto" : "12px", right: isRTL ? "12px" : "auto", fontSize: "14px", color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={isRTL ? "ابحث عن صنف أو فئة..." : "Search by item or category..."}
+              style={{
+                width: "100%",
+                padding: "9px 12px 9px 34px",
+                paddingLeft: isRTL ? "12px" : "34px",
+                paddingRight: isRTL ? "34px" : "12px",
+                borderRadius: "10px",
+                border: "1.5px solid var(--border-medium)",
+                background: "var(--bg-surface)",
+                color: "var(--text-primary)",
+                fontSize: "12.5px",
+                outline: "none",
+                transition: "border-color 150ms",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Tab switcher */}
+        <div style={{
+          display: "flex",
+          borderBottom: "1px solid var(--border-light)",
+          paddingBottom: "1px",
+          gap: "16px",
+          overflowX: "auto",
+          flexDirection: isRTL ? "row-reverse" : "row"
+        }}>
+          {[
+            { id: "available", label: isRTL ? "عروض واردة (جاهز للتسعير)" : "Available to Submit", count: availableList.length, color: "#6366f1" },
+            { id: "pending", label: isRTL ? "معلق للاعتماد" : "Pending Approval", count: pendingList.length, color: "#f59e0b" },
+            { id: "published", label: isRTL ? "منشور" : "Published", count: publishedList.length, color: "#10b981" },
+            { id: "missing", label: isRTL ? "عروض مفقودة" : "Missing Quotes", count: missingList.length, color: "#ef4444" },
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: "8px 4px 12px",
+                  fontSize: "13px",
+                  fontWeight: isActive ? 800 : 600,
+                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                  borderBottom: `2.5px solid ${isActive ? tab.color : "transparent"}`,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  whiteSpace: "nowrap",
+                  transition: "all 150ms",
+                  position: "relative"
+                }}
+              >
+                <span>{tab.label}</span>
+                <span style={{
+                  fontSize: "10.5px",
+                  fontWeight: 800,
+                  padding: "2px 7px",
+                  borderRadius: "99px",
+                  background: isActive ? `${tab.color}15` : "var(--bg-subtle)",
+                  color: isActive ? tab.color : "var(--text-dim)",
+                  border: `1px solid ${isActive ? `${tab.color}35` : "var(--border-light)"}`,
+                  transition: "all 150ms"
+                }}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab Content List */}
+        <div style={{
+          maxHeight: "360px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          paddingInlineEnd: "4px"
+        }}>
+          {filteredActiveList.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: "13px", fontStyle: "italic" }}>
+              {isRTL ? "لا توجد نتائج تطابق البحث." : "No items match your search query in this list."}
+            </div>
+          ) : (
+            filteredActiveList.map((item) => {
+              const approvedQuotes = approvedQuotesByItem.get(item.item_id) || [];
+              const bestQuote = approvedQuotes.reduce((best, q) => (!best || q.price < best.price) ? q : best, null as SupplierQuote | null);
+              const recSupplier = item.recommended_supplier_id ? suppliers.find(s => s.id === item.recommended_supplier_id) : null;
+              const recSupplierName = recSupplier ? (recSupplier.fame_name || recSupplier.name) : null;
+
+              return (
+                <div
+                  key={item.item_id}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: "12px",
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-light)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    transition: "all 120ms",
+                    flexDirection: isRTL ? "row-reverse" : "row"
+                  }}
+                >
+                  {/* Left: Info */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0, textAlign: isRTL ? "right" : "left", flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 800, color: "var(--text-primary)" }}>{item.item_name}</span>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-muted)", background: "var(--bg-subtle)", padding: "1px 6px", borderRadius: "4px" }}>
+                        {item.unit}
+                      </span>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-dim)" }}>
+                        {item.category_name}
+                      </span>
+                    </div>
+
+                    {/* Meta info depending on tab */}
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      {activeTab === "published" && (
+                        <div>
+                          {isRTL ? "سعر البيع المنشور: " : "Published Sell Price: "}
+                          <strong style={{ color: "var(--success)" }}>
+                            EGP {item.sell_min} {item.sell_max && item.sell_max !== item.sell_min ? `- ${item.sell_max}` : ""}
+                          </strong>
+                        </div>
+                      )}
+                      {activeTab === "pending" && (
+                        <div>
+                          {isRTL ? "سعر البيع المقترح (معلق): " : "Proposed Sell Price: "}
+                          <strong style={{ color: "var(--warning)" }}>
+                            EGP {item.sell_min} {item.sell_max && item.sell_max !== item.sell_min ? `- ${item.sell_max}` : ""}
+                          </strong>
+                        </div>
+                      )}
+                      {activeTab === "available" && (
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                          {item.approval_status === "reconsidered" && (
+                            <span style={{
+                              background: "rgba(239,68,68,0.1)",
+                              color: "var(--danger)",
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              fontWeight: 700
+                            }}>
+                              {isRTL ? "❌ مرفوض / يحتاج تعديل" : "❌ Rejected / Rework"}
+                            </span>
+                          )}
+                          <span>
+                            {isRTL ? "أفضل عرض تكلفة: " : "Best Buy Cost: "}
+                            <strong style={{ color: "var(--text-primary)" }}>
+                              {bestQuote ? `EGP ${bestQuote.price} (${bestQuote.supplierName})` : "—"}
+                            </strong>
+                            {approvedQuotes.length > 1 && ` · +${approvedQuotes.length - 1} ${isRTL ? "عروض أخرى" : "more quotes"}`}
+                          </span>
+                        </div>
+                      )}
+                      {activeTab === "missing" && (
+                        <div>
+                          {isRTL ? "المورد الموصى به: " : "Recommended Supplier: "}
+                          <strong style={{ color: "var(--text-secondary)" }}>
+                            {recSupplierName || (isRTL ? "غير محدد" : "None assigned")}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div style={{ flexShrink: 0 }}>
+                    {activeTab === "available" && (
+                      <Link
+                        href={`/dashboard/pricing?itemId=${item.item_id}`}
+                        className="button button-primary"
+                        style={{
+                          fontSize: "11.5px",
+                          padding: "6px 12px",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          background: item.approval_status === "reconsidered" ? "var(--danger)" : "var(--primary)"
+                        }}
+                      >
+                        {item.approval_status === "reconsidered" 
+                          ? (isRTL ? "📐 تصحيح السعر" : "📐 Edit & Resubmit")
+                          : (isRTL ? "📐 تسعير الصنف" : "📐 Price Item")}
+                      </Link>
+                    )}
+                    {activeTab === "published" && (
+                      <Link
+                        href={`/dashboard/pricing?itemId=${item.item_id}`}
+                        className="button button-secondary"
+                        style={{
+                          fontSize: "11.5px",
+                          padding: "6px 12px",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          border: "1px solid var(--border-medium)"
+                        }}
+                      >
+                        {isRTL ? "📐 تعديل السعر" : "📐 Edit Price"}
+                      </Link>
+                    )}
+                    {activeTab === "pending" && (
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <span style={{
+                          fontSize: "10.5px",
+                          fontWeight: 800,
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          background: "rgba(245,158,11,0.12)",
+                          color: "#d97706",
+                          border: "1px solid rgba(245,158,11,0.25)"
+                        }}>
+                          {isRTL ? "⏳ قيد الانتظار" : "⏳ Pending"}
+                        </span>
+                        <Link
+                          href={`/dashboard/pricing?itemId=${item.item_id}`}
+                          style={{
+                            fontSize: "11.5px",
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            fontWeight: 700,
+                            color: "var(--text-secondary)",
+                            textDecoration: "none",
+                            background: "var(--bg-subtle)",
+                            border: "1px solid var(--border)"
+                          }}
+                        >
+                          {isRTL ? "تعديل" : "Edit"}
+                        </Link>
+                      </div>
+                    )}
+                    {activeTab === "missing" && (
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "4px 10px",
+                        borderRadius: "8px",
+                        background: "rgba(239,68,68,0.08)",
+                        color: "var(--danger)",
+                        border: "1px solid rgba(239,68,68,0.2)",
+                        whiteSpace: "nowrap"
+                      }}>
+                        {isRTL ? "⏳ بانتظار المشتريات" : "⏳ Waiting for WH"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
 
       {/* ── Two-column Activity Section ──────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>

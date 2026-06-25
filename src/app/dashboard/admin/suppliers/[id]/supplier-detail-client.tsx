@@ -53,6 +53,16 @@ type Props = {
   }>;
   months: string[];
   quotesHistory: QuoteRow[];
+  approvalsHistory: Array<{
+    month: string;
+    item_name: string;
+    unit: string;
+    category_name: string;
+    strategy: string;
+    cost_base: number;
+    sell_min: number;
+    sell_max: number;
+  }>;
   role: string;
 };
 
@@ -64,6 +74,7 @@ export default function SupplierDetailClient({
   monthStats,
   months,
   quotesHistory,
+  approvalsHistory,
   role,
 }: Props) {
   const [catFilter, setCatFilter] = useState("all");
@@ -398,6 +409,63 @@ export default function SupplierDetailClient({
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Confirmed Pricing History Table */}
+          <div className="panel" style={{ padding: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, textTransform: "uppercase", color: "var(--text-secondary)" }}>
+                ✅ Confirmed Pricing History
+              </h3>
+            </div>
+
+            {approvalsHistory.length === 0 ? (
+              <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
+                No confirmed pricing approvals found for this supplier.
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "var(--text-muted)" }}>Month</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "var(--text-muted)" }}>Item Name</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "var(--text-muted)" }}>Unit</th>
+                      <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: "var(--text-muted)" }}>Cost Base</th>
+                      <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, color: "var(--text-muted)" }}>Strategy</th>
+                      <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: "var(--text-muted)" }}>Approved Sell Range</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvalsHistory.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--text-primary)" }}>
+                          {formatMonthLabel(row.month)}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{row.item_name}</div>
+                          <div style={{ fontSize: "10.5px", color: "var(--text-muted)", marginTop: "1px" }}>{row.category_name}</div>
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>
+                          {row.unit}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: "var(--text-primary)" }}>
+                          {formatCurrency(row.cost_base)}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                          <span className="badge" style={{ fontSize: "11px", textTransform: "uppercase" }}>
+                            {row.strategy}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 800, color: "var(--success)" }}>
+                          {formatCurrency(row.sell_min)} - {formatCurrency(row.sell_max)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
         </div>

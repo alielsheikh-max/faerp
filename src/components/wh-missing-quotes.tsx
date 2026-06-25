@@ -2,22 +2,38 @@
 
 import { useState, useTransition, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { addPriceEntrySilent } from "@/app/actions/pricing";
 import { useI18n } from "@/lib/i18n-context";
 import { createPortal } from "react-dom";
 
-type MissingQuote = {
+type MissingSupplier = {
+  supplier_id: number;
+  supplier_name: string;
+  prev_price: number | null;
+  status: string | null;
+  review_note: string | null;
+};
+
+type SubmittedSupplier = {
+  supplier_id: number;
+  supplier_name: string;
+  prev_price: number | null;
+};
+
+type MissingItem = {
   category_name: string;
   category_id: number;
   item_name: string;
   unit: string;
-  supplier_name: string;
-  supplier_id: number;
   item_id: number;
-  prev_price: number | null;
-  status: string | null;
-  review_note: string | null;
+  submitted: SubmittedSupplier[];
+  missing: MissingSupplier[];
+};
+
+type Item = {
+  id: number;
+  recommended_supplier_id?: number | null;
 };
 
 type Supplier = {
@@ -36,19 +52,20 @@ type SupplierRow = {
 const COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 
 type Props = {
-  missing: MissingQuote[];
+  missing: MissingItem[];
   suppliers: Supplier[];
+  items: Item[];
   displayName: string;
   month: string;
 };
 
-export default function WhMissingQuotes({ missing, suppliers, displayName, month }: Props) {
+export default function WhMissingQuotes({ missing, suppliers, items, displayName, month }: Props) {
   const router = useRouter();
   const { t, locale } = useI18n();
   const isAr = locale === "ar";
 
   const [search, setSearch] = useState("");
-  const [activeQuote, setActiveQuote] = useState<MissingQuote | null>(null);
+  const [activeItem, setActiveItem] = useState<MissingItem | null>(null);
 
   // Modal form states
   const [rows, setRows] = useState<SupplierRow[]>([]);
@@ -62,46 +79,57 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
     setIsMounted(true);
   }, []);
 
-  // Filter missing quotes based on search text
-  const filteredQuotes = useMemo(() => {
+  // Filter items based on search text
+  const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return missing;
     return missing.filter(
       (m) =>
         m.item_name.toLowerCase().includes(q) ||
-        m.supplier_name.toLowerCase().includes(q) ||
-        m.category_name.toLowerCase().includes(q)
+        m.category_name.toLowerCase().includes(q) ||
+        m.missing.some(s => s.supplier_name.toLowerCase().includes(q)) ||
+        m.submitted.some(s => s.supplier_name.toLowerCase().includes(q))
     );
   }, [missing, search]);
 
-  // Allowed suppliers for the active item's category
-  const allowedSuppliers = useMemo(() => {
-    if (!activeQuote) return [];
-    return suppliers.filter((s) => s.category_ids.includes(activeQuote.category_id));
-  }, [suppliers, activeQuote]);
+  // Total missing supplier quotes count
+  const totalMissingCount = useMemo(() => {
+    return filteredItems.reduce((sum, item) => sum + item.missing.length, 0);
+  }, [filteredItems]);
 
-  const openQuickAddModal = (m: MissingQuote) => {
-    setActiveQuote(m);
-    setRows([
-      { supplierId: m.supplier_id, price: "", transport: "" }
-    ]);
+  const openModal = (item: MissingItem) => {
+    setActiveItem(item);
+    // Pre-fill with all missing suppliers
+    setRows(
+      item.missing.map(s => ({
+        supplierId: s.supplier_id,
+        price: "",
+        transport: "",
+      }))
+    );
     setNotes("");
     setErrorMsg(null);
   };
 
-  const handleQuickSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeQuote) return;
+    if (!activeItem) return;
 
-    // Validate all rows
-    for (let index = 0; index < rows.length; index++) {
-      const row = rows[index];
+    // Validate rows that have prices entered
+    const filledRows = rows.filter(r => r.price.trim() !== "");
+    if (filledRows.length === 0) {
+      setErrorMsg(isAr ? "الرجاء إدخال سعر واحد على الأقل." : "Please enter at least one price.");
+      return;
+    }
+
+    for (let index = 0; index < filledRows.length; index++) {
+      const row = filledRows[index];
       const priceNum = Number(row.price);
       if (isNaN(priceNum) || priceNum <= 0) {
         setErrorMsg(
           isAr
-            ? `الرجاء إدخال سعر صحيح أكبر من الصفر في الصف رقم ${index + 1}.`
-            : `Please enter a valid price greater than 0 in row #${index + 1}.`
+            ? `الرجاء إدخال سعر صحيح أكبر من الصفر.`
+            : `Please enter a valid price greater than 0.`
         );
         return;
       }
@@ -110,8 +138,8 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
       if (transportNum !== undefined && (isNaN(transportNum) || transportNum < 0)) {
         setErrorMsg(
           isAr
-            ? `الرجاء إدخال تكلفة نقل صحيحة في الصف رقم ${index + 1}.`
-            : `Please enter a valid transportation fee in row #${index + 1}.`
+            ? `الرجاء إدخال تكلفة نقل صحيحة.`
+            : `Please enter a valid transportation fee.`
         );
         return;
       }
@@ -121,10 +149,9 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
       let hasError = false;
       let lastError = "";
 
-      // Submit each supplier entry sequentially to prevent SQLite lockups
-      for (const row of rows) {
+      for (const row of filledRows) {
         const result = await addPriceEntrySilent({
-          itemId: activeQuote.item_id,
+          itemId: activeItem.item_id,
           supplierId: row.supplierId,
           month: month,
           price: Number(row.price),
@@ -143,7 +170,7 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
       if (hasError) {
         setErrorMsg(lastError);
       } else {
-        setActiveQuote(null);
+        setActiveItem(null);
         router.refresh();
       }
     });
@@ -155,11 +182,13 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
         <div style={{ flex: 1, minWidth: "180px" }}>
           <p className="eyebrow">{isAr ? "إجراء مطلوب" : "Action Required"}</p>
           <h2 style={{ fontSize: "16px", fontWeight: 800 }}>
-            {isAr ? "أسعار مفقودة" : "Missing Quotes"} ({filteredQuotes.length})
+            {isAr ? "أصناف تحتاج أسعار" : "Items Needing Quotes"} ({filteredItems.length})
+            <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-muted)", marginInlineStart: "8px" }}>
+              {totalMissingCount} {isAr ? "سعر مفقود" : "missing prices"}
+            </span>
           </h2>
         </div>
 
-        {/* Search input and navigation */}
         <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ position: "relative" }}>
             <input
@@ -191,109 +220,126 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
         <table className="data-table" style={{ fontSize: "12.5px" }}>
           <thead>
             <tr>
-              <th>{isAr ? "الفئة" : "Category"}</th>
+              <th style={{ width: "80px" }}>{isAr ? "الفئة" : "Category"}</th>
               <th>{isAr ? "الصنف" : "Item"}</th>
-              <th>{isAr ? "الوحدة" : "Unit"}</th>
-              <th>{isAr ? "المورد" : "Supplier"}</th>
-              <th style={{ textAlign: "right" }}>{isAr ? "السعر الشهر الماضي" : "Last Month Price"}</th>
-              <th style={{ textAlign: "center" }}>{isAr ? "إجراء" : "Actions"}</th>
+              <th style={{ width: "50px" }}>{isAr ? "الوحدة" : "Unit"}</th>
+              <th style={{ textAlign: "center", width: "80px" }}>{isAr ? "إجراء" : "Actions"}</th>
+              <th>{isAr ? "حالة الموردين" : "Supplier Status"}</th>
             </tr>
           </thead>
           <tbody>
-            {filteredQuotes.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)", fontStyle: "italic" }}>
-                  {isAr ? "لا توجد أسعار مفقودة تطابق البحث." : "No missing quotes match search."}
+                <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                  {isAr ? "لا توجد أصناف تحتاج أسعار." : "No items needing quotes."}
                 </td>
               </tr>
             ) : (
-              filteredQuotes.map((m, i) => {
-                const supplierIdx = suppliers.findIndex((s) => s.id === m.supplier_id);
-                const color = supplierIdx !== -1 ? COLORS[supplierIdx % COLORS.length] : "#3b82f6";
+              filteredItems.map((item) => {
+                const totalSuppliers = item.submitted.length + item.missing.length;
+                const hasRejected = item.missing.some(s => s.status === 'rejected');
                 return (
-                  <tr key={i}>
+                  <tr key={item.item_id}>
                     <td>
-                      <span className="badge" style={{ fontSize: "10px" }}>{m.category_name}</span>
+                      <span className="badge" style={{ fontSize: "10px" }}>{item.category_name}</span>
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                         <span
-                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: m.item_id } }))}
+                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: item.item_id } }))}
                           className="clickable-detail-trigger"
                           style={{ fontWeight: 600 }}
                         >
-                          {m.item_name}
+                          {item.item_name}
                         </span>
-                        {m.status === 'rejected' && (
-                          <div style={{
-                            fontSize: "11px",
-                            color: "var(--danger)",
-                            marginTop: "4px",
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px"
-                          }}>
-                            <span>⚠️ {isAr ? "يحتاج مراجعة (مرفوض):" : "Needs Revision (Rejected):"}</span>
-                            <span style={{ fontWeight: 400, fontStyle: "italic" }}>{m.review_note || "—"}</span>
-                          </div>
+                        {hasRejected && (
+                          <span style={{ fontSize: "10px", color: "var(--danger)", fontWeight: 700 }}>
+                            ⚠️ {isAr ? "يحتاج مراجعة" : "Has rejected quotes"}
+                          </span>
                         )}
                       </div>
                     </td>
-                    <td>{m.unit}</td>
+                    <td>{item.unit}</td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => openModal(item)}
+                        className="button button-secondary"
+                        style={{ fontSize: "11px", padding: "4px 10px", height: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      >
+                        ⚡ {isAr ? "عرض" : "View"}
+                      </button>
+                    </td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+                        {/* Submitted suppliers — green badges */}
+                        {item.submitted.map((s) => (
+                          <span
+                            key={s.supplier_id}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              padding: "2px 7px",
+                              borderRadius: "6px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              background: "rgba(16,185,129,0.10)",
+                              color: "var(--success)",
+                              border: "1px solid rgba(16,185,129,0.25)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            ✓ {s.supplier_name}
+                          </span>
+                        ))}
+                        {/* Missing suppliers — red/orange badges */}
+                        {item.missing.map((s) => {
+                          const isRejected = s.status === 'rejected';
+                          return (
+                            <span
+                              key={s.supplier_id}
+                              title={isRejected ? `${isAr ? "مرفوض" : "Rejected"}: ${s.review_note || "—"}` : undefined}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                padding: "2px 7px",
+                                borderRadius: "6px",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                background: isRejected ? "rgba(239,68,68,0.10)" : "rgba(239,68,68,0.06)",
+                                color: isRejected ? "var(--danger)" : "var(--text-muted)",
+                                border: `1px solid ${isRejected ? "rgba(239,68,68,0.30)" : "rgba(239,68,68,0.15)"}`,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {isRejected ? "⚠" : "○"} {s.supplier_name}
+                            </span>
+                          );
+                        })}
+                        {/* Progress indicator */}
                         <span style={{
-                          width: "22px",
-                          height: "22px",
-                          borderRadius: "6px",
-                          background: color + "22",
-                          border: `1.5px solid ${color}44`,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          color: color,
-                          flexShrink: 0
+                          fontSize: "9px",
+                          fontWeight: 800,
+                          color: item.submitted.length === 0 ? "var(--danger)" : "var(--text-muted)",
+                          marginInlineStart: "4px",
+                          whiteSpace: "nowrap",
                         }}>
-                          {m.supplier_name.charAt(0)}
-                        </span>
-                        <span
-                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: m.supplier_id } }))}
-                          className="clickable-detail-trigger"
-                        >
-                          {m.supplier_name}
+                          {item.submitted.length}/{totalSuppliers}
                         </span>
                       </div>
                     </td>
-                  <td style={{ textAlign: "right" }}>
-                    {m.prev_price != null ? (
-                      <span style={{ color: "var(--text-muted)" }}>{formatCurrency(m.prev_price)}</span>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{isAr ? "لا يوجد سجل" : "No history"}</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() => openQuickAddModal(m)}
-                      className="button button-secondary"
-                      style={{ fontSize: "11px", padding: "4px 10px", height: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                    >
-                      ⚡ {isAr ? "عرض" : "View"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Quick Price Add Modal */}
-      {isMounted && activeQuote && createPortal(
+      {/* Quick Price Add Modal — shows only missing suppliers */}
+      {isMounted && activeItem && createPortal(
         <div
           style={{
             position: "fixed",
@@ -309,7 +355,7 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
           <div
             style={{
               width: "100%",
-              maxWidth: "600px",
+              maxWidth: "640px",
               background: "var(--bg-surface)",
               border: "1px solid var(--border-medium)",
               borderRadius: "16px",
@@ -329,12 +375,16 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
                 borderBottom: "1px solid var(--border-light)",
               }}
             >
-              <h3 style={{ fontSize: "14px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
-                ⚡ {isAr ? "إضافة سريعة للأسعار" : "Quick Price Add"}
-              </h3>
+              <div>
+                <span className="badge" style={{ marginBottom: "4px", fontSize: "10px" }}>{activeItem.category_name}</span>
+                <h3 style={{ fontSize: "14px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
+                  {activeItem.item_name}
+                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-muted)", marginInlineStart: "8px" }}>({activeItem.unit})</span>
+                </h3>
+              </div>
               <button
                 type="button"
-                onClick={() => setActiveQuote(null)}
+                onClick={() => setActiveItem(null)}
                 style={{
                   background: "none",
                   border: "none",
@@ -349,13 +399,30 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={handleQuickSubmit} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <span className="badge" style={{ marginBottom: "6px" }}>{activeQuote.category_name}</span>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.4 }}>
-                  {activeQuote.item_name}
+            {/* Already submitted suppliers */}
+            {activeItem.submitted.length > 0 && (
+              <div style={{ padding: "12px 20px", background: "rgba(16,185,129,0.04)", borderBottom: "1px solid var(--border-light)" }}>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>
+                  ✓ {isAr ? "تم تقديم الأسعار" : "Submitted"} ({activeItem.submitted.length})
                 </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                  {activeItem.submitted.map(s => (
+                    <span key={s.supplier_id} style={{
+                      display: "inline-flex", alignItems: "center", gap: "4px",
+                      padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 600,
+                      background: "rgba(16,185,129,0.10)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
+                    }}>
+                      ✓ {s.supplier_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Form for missing suppliers */}
+            <form onSubmit={handleSubmit} style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                ○ {isAr ? "أسعار مفقودة" : "Missing Prices"} ({activeItem.missing.length})
               </div>
 
               {errorMsg && (
@@ -364,158 +431,104 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
                 </div>
               )}
 
-              {/* Multi-supplier input grid */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 40px", gap: "8px", borderBottom: "1px solid var(--border-light)", paddingBottom: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>
-                    {isAr ? "المورد" : "Supplier"}
-                  </span>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>
-                    {isAr ? "السعر المعروض (EGP)" : "Quoted Price (EGP)"}
-                  </span>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>
-                    {isAr ? "تكلفة النقل" : "Trans Fees (EGP)"}
-                  </span>
-                  <span />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "240px", overflowY: "auto", paddingRight: "4px" }}>
-                  {rows.map((row, index) => (
-                    <div key={index} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 40px", gap: "8px", alignItems: "center" }}>
-                      {/* Supplier dropdown */}
-                      <select
-                        value={row.supplierId}
-                        onChange={(e) => {
-                          const newRows = [...rows];
-                          newRows[index].supplierId = Number(e.target.value);
-                          setRows(newRows);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "8px 10px",
-                          borderRadius: "8px",
-                          border: "1px solid var(--border)",
-                          background: "var(--bg-elevated)",
-                          color: "var(--text-primary)",
-                          fontSize: "13px",
-                          outline: "none",
-                        }}
-                      >
-                        {allowedSuppliers.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.fame_name || s.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Quoted Price */}
-                      <input
-                        type="number"
-                        step="any"
-                        required
-                        placeholder="0.00"
-                        value={row.price}
-                        onChange={(e) => {
-                          const newRows = [...rows];
-                          newRows[index].price = e.target.value;
-                          setRows(newRows);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "8px 10px",
-                          borderRadius: "8px",
-                          border: "1px solid var(--border)",
-                          background: "var(--bg-elevated)",
-                          color: "var(--text-primary)",
-                          fontSize: "13px",
-                          outline: "none",
-                        }}
-                      />
-
-                      {/* Trans Fees */}
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder={isAr ? "اختياري" : "Optional"}
-                        value={row.transport}
-                        onChange={(e) => {
-                          const newRows = [...rows];
-                          newRows[index].transport = e.target.value;
-                          setRows(newRows);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "8px 10px",
-                          borderRadius: "8px",
-                          border: "1px solid var(--border)",
-                          background: "var(--bg-elevated)",
-                          color: "var(--text-primary)",
-                          fontSize: "13px",
-                          outline: "none",
-                        }}
-                      />
-
-                      {/* Delete button */}
-                      <button
-                        type="button"
-                        disabled={rows.length === 1}
-                        onClick={() => {
-                          const newRows = rows.filter((_, idx) => idx !== index);
-                          setRows(newRows);
-                        }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: rows.length === 1 ? "var(--text-muted)" : "var(--danger)",
-                          cursor: rows.length === 1 ? "not-allowed" : "pointer",
-                          fontSize: "16px",
-                          padding: "4px",
-                          opacity: rows.length === 1 ? 0.3 : 1,
-                        }}
-                        title={isAr ? "حذف" : "Remove"}
-                      >
-                        🗑️
-                      </button>
+              {/* Supplier input rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
+                {rows.map((row, index) => {
+                  const missSup = activeItem.missing[index];
+                  const supplierColor = COLORS[suppliers.findIndex(s => s.id === row.supplierId) % COLORS.length];
+                  const isRejected = missSup?.status === 'rejected';
+                  const itemData = items.find(it => it.id === activeItem.item_id);
+                  const isRecommended = itemData?.recommended_supplier_id === row.supplierId;
+                  return (
+                    <div key={row.supplierId} style={{
+                      display: "flex", flexDirection: "column", gap: "6px",
+                      padding: "10px 12px", borderRadius: "10px",
+                      background: isRejected ? "rgba(239,68,68,0.04)" : "var(--bg-elevated)",
+                      border: `1px solid ${isRejected ? "rgba(239,68,68,0.20)" : "var(--border-light)"}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{
+                            width: "20px", height: "20px", borderRadius: "50%",
+                            background: supplierColor + "15", border: `1.5px solid ${supplierColor}44`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: "9px", fontWeight: 700, color: supplierColor,
+                          }}>
+                            {missSup?.supplier_name.charAt(0) || "?"}
+                          </span>
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
+                            {missSup?.supplier_name}
+                          </span>
+                          {isRecommended && <span style={{ color: "#eab308", fontSize: "12px" }} title={isAr ? "المورد الموصى به" : "Recommended"}>⭐</span>}
+                          {isRejected && (
+                            <span className="badge badge-danger" style={{ fontSize: "9px", padding: "1px 5px" }}>
+                              {isAr ? "مرفوض" : "Rejected"}
+                            </span>
+                          )}
+                        </div>
+                        {missSup?.prev_price != null && (
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                            {isAr ? "السابق" : "Prev"}: {formatCurrency(missSup.prev_price)}
+                          </span>
+                        )}
+                      </div>
+                      {isRejected && missSup?.review_note && (
+                        <div style={{ fontSize: "10px", color: "var(--danger)", fontStyle: "italic", paddingInlineStart: "26px" }}>
+                          ⚠️ {missSup.review_note}
+                        </div>
+                      )}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder={isAr ? "السعر (EGP)" : "Price (EGP)"}
+                          value={row.price}
+                          onChange={(e) => {
+                            const newRows = [...rows];
+                            newRows[index].price = e.target.value;
+                            setRows(newRows);
+                          }}
+                          style={{
+                            width: "100%", padding: "8px 10px", borderRadius: "8px",
+                            border: "1px solid var(--border)", background: "var(--bg-surface)",
+                            color: "var(--text-primary)", fontSize: "13px", outline: "none",
+                          }}
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder={isAr ? "تكلفة النقل (اختياري)" : "Transport (optional)"}
+                          value={row.transport}
+                          onChange={(e) => {
+                            const newRows = [...rows];
+                            newRows[index].transport = e.target.value;
+                            setRows(newRows);
+                          }}
+                          style={{
+                            width: "100%", padding: "8px 10px", borderRadius: "8px",
+                            border: "1px solid var(--border)", background: "var(--bg-surface)",
+                            color: "var(--text-primary)", fontSize: "13px", outline: "none",
+                          }}
+                        />
+                      </div>
                     </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const defaultSub = allowedSuppliers[0]?.id || 0;
-                    setRows([...rows, { supplierId: defaultSub, price: "", transport: "" }]);
-                  }}
-                  className="button button-secondary"
-                  style={{ alignSelf: "flex-start", fontSize: "11.5px", padding: "6px 12px", height: "auto", display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "4px" }}
-                >
-                  ➕ {isAr ? "إضافة مورد آخر" : "Add Supplier Row"}
-                </button>
+                  );
+                })}
               </div>
 
               {/* Notes */}
               <div>
-                <label className="field" style={{ margin: 0 }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>
-                    {isAr ? "ملاحظة مشتركة لجميع الموردين" : "Shared Notes (Applied to all entered quotes)"}
-                  </span>
-                  <input
-                    type="text"
-                    placeholder={isAr ? "اكتب ملاحظة إن وجدت..." : "Write a note if needed..."}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      background: "var(--bg-elevated)",
-                      color: "var(--text-primary)",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  />
-                </label>
+                <input
+                  type="text"
+                  placeholder={isAr ? "ملاحظة مشتركة (اختياري)..." : "Shared note (optional)..."}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  style={{
+                    width: "100%", padding: "8px 10px", borderRadius: "8px",
+                    border: "1px solid var(--border)", background: "var(--bg-elevated)",
+                    color: "var(--text-primary)", fontSize: "12px", outline: "none",
+                  }}
+                />
               </div>
 
               {/* Modal Actions */}
@@ -524,20 +537,18 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginTop: "8px",
-                  paddingTop: "16px",
+                  paddingTop: "12px",
                   borderTop: "1px solid var(--border-light)",
                   flexWrap: "wrap",
                   gap: "10px",
                 }}
               >
-                {/* Redirect Link */}
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveQuote(null);
+                    setActiveItem(null);
                     router.push(
-                      `/dashboard/purchasing?categoryId=${activeQuote.category_id}&itemId=${activeQuote.item_id}`
+                      `/dashboard/purchasing?categoryId=${activeItem.category_id}&itemId=${activeItem.item_id}`
                     );
                   }}
                   className="button button-secondary"
@@ -549,7 +560,7 @@ export default function WhMissingQuotes({ missing, suppliers, displayName, month
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button
                     type="button"
-                    onClick={() => setActiveQuote(null)}
+                    onClick={() => setActiveItem(null)}
                     disabled={isPending}
                     className="button button-secondary"
                     style={{ fontSize: "12px", padding: "6px 12px" }}

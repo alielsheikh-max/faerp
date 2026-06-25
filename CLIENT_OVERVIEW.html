@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FAERP — Client Overview & Setup Guide</title>
+  <title>FAERP — Client Overview &amp; Setup Guide</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -40,6 +40,12 @@
               100: '#fee2e2',
               600: '#dc2626',
               900: '#7f1d1d',
+            },
+            manager: {
+              50: '#fefce8',
+              100: '#fef9c3',
+              600: '#ca8a04',
+              900: '#713f12',
             }
           }
         }
@@ -121,11 +127,16 @@
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary-600/30 via-transparent to-transparent"></div>
       <div class="relative z-10 space-y-4">
         <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/20 text-blue-200 border border-primary-500/30">
-          Enterprise Price &amp; Margin Management System
+          Pricing Control System
         </span>
-        <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight">FAERP Overview &amp; Guide</h1>
+        <div class="flex items-center gap-5 mt-2">
+          <div class="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg">
+            <img src="public/faerp%20logo.svg" alt="FAERP Logo" class="w-12 h-12 sm:w-14 sm:h-14" style="object-fit: contain; filter: brightness(0) invert(1);" onerror="this.parentElement.innerHTML='<span style=font-size:2rem;font-weight:800;color:white;>F</span>'" />
+          </div>
+          <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight">FAERP Overview &amp; Guide</h1>
+        </div>
         <p class="text-slate-300 max-w-2xl leading-relaxed text-sm sm:text-base">
-          FAERP is a secure, high-performance web platform designed to streamline monthly supplier price collections, enforce strict profit margin controls, and provide real-time pricing intelligence for sales agents.
+          FAERP is a secure, high-performance web platform designed to streamline monthly supplier price collections, enforce strict profit margin controls with multi-layer managerial approval, and provide real-time pricing intelligence for sales agents.
         </p>
       </div>
     </header>
@@ -138,7 +149,7 @@
       </div>
       
       <p class="text-slate-600 mb-8 text-sm leading-relaxed">
-        Below is the lifecycle showing how different roles collaborate throughout the monthly cycle to ensure price accuracy and margin protection.
+        Below is the lifecycle showing how <strong>five distinct roles</strong> (WH, SC, MG, SA, AD) collaborate throughout the monthly cycle to ensure price accuracy, margin protection, and managerial oversight.
       </p>
 
       <!-- Flowchart Container -->
@@ -149,30 +160,38 @@ flowchart TD
     classDef default fill:#f9fafb,stroke:#d1d5db,stroke-width:1.5px,color:#1f2937;
     classDef wh fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
     classDef sc fill:#f0fdf4,stroke:#10b981,stroke-width:2px,color:#064e3b;
+    classDef mg fill:#fefce8,stroke:#eab308,stroke-width:2px,color:#713f12;
     classDef sa fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#78350f;
     classDef sys fill:#faf5ff,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
 
-    Start([Month Start]) --> WH["1. WH / Purchasing collects supplier quotes"]:::wh
+    Start([Month Start]) --> WH["1. WH collects supplier quotes<br/>+ negotiated prices & transport"]:::wh
     WH --> CheckConfirmed{"Price already<br/>confirmed?"}:::sys
     
     CheckConfirmed -- Yes --> Request["Submit Price Change Request<br/>with mandatory justification"]:::wh
     CheckConfirmed -- No --> SaveDirect["Direct Save to Database"]:::sys
     
-    Request --> SCReview["2. SC Manager reviews Change Request"]:::sc
+    Request --> SCReview["2. SC reviews Change Request"]:::sc
     SCReview -- Approve --> SaveDirect
-    SCReview -- Reject --> RejectNotify["Original Price Stays Active"]:::sc
+    SCReview -- Reject --> RejectNotify["Original Price Stays Active<br/>WH notified"]:::sc
     
-    SaveDirect --> SCMargin["3. SC Manager sets Resell Margins"]:::sc
-    SCMargin --> FloorCheck{"Margin >= Floor?"}:::sys
+    SaveDirect --> SCMargin["3. SC sets Resell Margins<br/>Item or Category Pricing"]:::sc
+    SCMargin --> TierSetup["Configure Volume Tiers<br/>Standard / Bulk / Pallet"]:::sc
+    TierSetup --> FloorCheck{"Margin >= Floor?<br/>Item-level or Category-level"}:::sys
     
     FloorCheck -- No --> Block["🚫 Blocked: Floor Violation<br/>Submit Disabled"]:::sc
-    FloorCheck -- Yes --> Publish["Publish Approved Selling Catalog"]:::sc
+    FloorCheck -- Yes --> SubmitToMG["Submit to MG for Approval<br/>Status: Pending"]:::sc
     
-    Publish --> SA["4. Sales Agents view approved ranges"]:::sa
-    SA --> DealSim["Interactive Deal Simulator<br/>with real-time margin compliance"]:::sa
-    DealSim --> DealBoard["Add to Active Session Deal Board<br/>aggregates multiple quotes"]:::sa
+    SubmitToMG --> MGReview["4. MG Manager reviews<br/>proposed selling prices"]:::mg
+    MGReview -- Approve --> Publish["Publish to Sales Catalog<br/>Status: Approved"]:::mg
+    MGReview -- Reconsider --> ReturnToSC["Return to SC with note<br/>Status: Reconsidered"]:::mg
+    ReturnToSC --> SCMargin
+    
+    Publish --> SA["5. Sales Agents view<br/>approved price ranges"]:::sa
+    SA --> DealSim["Tier-Aware Deal Simulator<br/>auto-applies quantity pricing"]:::sa
+    DealSim --> DealBoard["Active Session Deal Board<br/>aggregates multiple quotes"]:::sa
     DealBoard --> CopyQuote["Copy formatted Client Quote"]:::sa
-    CopyQuote --> End([Deal Completed])
+    CopyQuote --> Ack["SA acknowledges price updates<br/>SC gets notified"]:::sa
+    Ack --> End([Deal Completed])
         </pre>
       </div>
     </section>
@@ -182,7 +201,7 @@ flowchart TD
       <div class="border-b border-slate-100 pb-4 mb-6">
         <span class="text-xs font-semibold text-primary-500 uppercase tracking-widest">Capabilities</span>
         <h2 class="text-2xl font-bold text-slate-800">2. Core Features Offered</h2>
-        <p class="text-slate-500 text-xs mt-1">Structured role-based modules for clean separation of duties.</p>
+        <p class="text-slate-500 text-xs mt-1">Structured role-based modules across five user roles for clean separation of duties.</p>
       </div>
 
       <div class="space-y-6">
@@ -192,9 +211,13 @@ flowchart TD
             <span class="text-2xl">📦</span> A. Warehouse &amp; Purchasing Module (Data Collection)
           </h3>
           <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
-            <li><strong>Guided Step-by-Step Collection:</strong> A clean, two-step wizard where users select a product category, then select specific items to record pricing.</li>
-            <li><strong>Smart Duplication Warning (Change Requests):</strong> If a purchasing officer attempts to alter a price that has already been submitted and confirmed for the month, the app forces them to submit a <strong>Price Change Request</strong> with a mandatory business justification.</li>
+            <li><strong>Guided Step-by-Step Collection:</strong> A clean, two-step wizard where users select a product category, then select specific items to record pricing. Supports <strong>multi-supplier row entry</strong> with inline transport fields and <strong>recommended supplier badges</strong> (⭐).</li>
+            <li><strong>Negotiated Price Recording</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Purchasing officers can record <strong>negotiated prices</strong> alongside raw supplier quotes, with optional notes. The pricing engine gives negotiated prices priority over raw quotes when calculating selling prices.</li>
+            <li><strong>Smart Duplication Warning (Change Requests):</strong> If a purchasing officer attempts to alter a price that has already been submitted and confirmed for the month, the app forces them to submit a <strong>Price Change Request</strong> with a mandatory business justification. Now also supports <strong>transport fee revisions</strong>.</li>
             <li><strong>Contextual Historical Matrix:</strong> While entering prices, the input screen displays a 3-month, 6-month, or full history comparison grid for each supplier so purchasing agents can immediately spot vendor inflation or anomalies.</li>
+            <li><strong>Missing Quotes Tracker</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> A dedicated panel showing all item×supplier combinations that haven't been quoted this month. Includes a <strong>quick-add modal</strong> to submit quotes directly from the missing list with inline transport fields and multi-supplier support.</li>
+            <li><strong>Collection Overview Dashboard:</strong> Visual <strong>progress bars per category</strong> showing quote completion percentages, giving WH users an at-a-glance view of the month's collection status.</li>
+            <li><strong>Rejected Quote Notifications:</strong> WH users receive notifications when their submitted quotes are rejected by SC, with a <strong>"Mark as Read"</strong> feature to manage their inbox.</li>
             <li><strong>Purchasing &amp; Collection Reports:</strong> Generate real-time reports such as the **Price Collection Log** (itemized supplier quotes) and the **WH Monthly Summary** (supplier coverage and missing quote status).</li>
           </ul>
         </div>
@@ -202,56 +225,154 @@ flowchart TD
         <!-- SC Module -->
         <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
           <h3 class="text-lg font-bold text-success-900 flex items-center gap-2 mb-3">
-            <span class="text-2xl">📊</span> B. Supply Chain Management Module (Controls &amp; Analytics)
+            <span class="text-2xl">📊</span> B. Pricing Control Module (SC — Controls &amp; Analytics)
           </h3>
           <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
-            <li><strong>Real-time Pricing Engine:</strong> Allows managers to dynamically calculate selling prices based on the cheapest, average, or highest supplier quote for the month.</li>
-            <li><strong>Flexible Margin Modes:</strong> Supports setting margins as a <strong>Percentage (%)</strong> of cost or a <strong>Fixed Amount (EGP)</strong>.</li>
-            <li><strong>Margin Floor Enforcement:</strong> Enforces a strict profit floor configured at either the Category level or Item level (which overrides the category floor). The UI blocks publishing if the proposed price drops below the minimum acceptable markup.</li>
-            <li><strong>Full System Administration CRUD:</strong> Manage items, categories, suppliers, and users dynamically from the Admin Panel, including configuring margin floors.</li>
-            <li><strong>Independent Market Intelligence:</strong> High-end charts and analytical gauges to track:
+            <li><strong>Real-time Pricing Engine:</strong> Allows SC managers to dynamically calculate selling prices based on the cheapest, average, or highest supplier quote for the month. The engine is <strong>tier-aware</strong>, automatically factoring in volume-based pricing tiers. Supports <strong>negotiated price priority</strong> — if a negotiated price exists, it takes precedence over raw quotes.</li>
+            <li>
+              <strong>Flexible Margin Modes:</strong> Supports setting margins in three modes:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>Percentage (%):</strong> Markup as a percentage of cost.</li>
+                <li><strong>Fixed Amount (EGP):</strong> Absolute markup amount.</li>
+                <li><strong>Divisor Mode</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Compute selling price by dividing cost by a factor (e.g., ÷ 0.85 = 17.6% margin).</li>
+              </ul>
+            </li>
+            <li>
+              <strong>Category-Level Bulk Pricing</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> A dedicated <strong>/pricing/category</strong> page where SC can apply uniform markup to all items in a category at once using Percent, Fixed, or Divisor modes. Includes previous-month comparison and confirmed supplier auto-detection.
+            </li>
+            <li>
+              <strong>Volume-Tiered Pricing (Pallet System)</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> SC Managers can define up to <strong>4 pricing tiers</strong> per item based on quantity breakpoints (e.g., "1–10 units", "11–50 units", "51+ units / Pallet"). Each tier carries its own discount divisor, enabling granular bulk and pallet discount strategies. Tier pricing can be <strong>enabled/disabled monthly</strong> via the Admin policy panel.
+            </li>
+            <li>
+              <strong>Granular Margin Floor Enforcement:</strong> Enforces a strict profit floor at <strong>two levels</strong>:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>Category-Level Floor:</strong> A default minimum margin applied to all items within a category.</li>
+                <li><strong>Item-Level Floor (Override):</strong> A per-item floor that <strong>overrides</strong> the category floor when configured, allowing precision control for high-value or strategic products.</li>
+                <li>Both levels support <strong>Percentage (%)</strong> and <strong>Fixed Amount (EGP)</strong> floor types. The UI dynamically indicates which floor level is active and blocks publishing if the proposed price falls below the minimum acceptable markup.</li>
+              </ul>
+            </li>
+            <li><strong>Confirmed Supplier Selection:</strong> When publishing selling prices, SC can designate a <strong>confirmed supplier</strong> for each item. Items can also have a <strong>recommended supplier</strong> (⭐ badge) configured via Admin, which the pricing engine suggests by default.</li>
+            <li>
+              <strong>SC Transport Override</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> When enabled via monthly policy, SC can override the transport fee per item/month in the pricing engine, allowing fine-tuned logistics cost control.
+            </li>
+            <li>
+              <strong>Internal &amp; SA Notes</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> SC can attach <strong>internal-only notes</strong> (visible only to SC) and <strong>SA notification notes</strong> (pushed to Sales Agents when a price is published). Both are tracked in selling price history.
+            </li>
+            <li>
+              <strong>Live USD Currency Conversion</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Real-time EGP↔USD conversion powered by a live exchange rate API. The pricing toolbar shows a compact USD rate chip, and SC can <strong>export branded PDF/XLSX reports with USD pricing columns</strong>.
+            </li>
+            <li><strong>SC Overview Panel</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Circular progress indicators for pricing coverage, category-level completion tracking, supplier activity leaderboard, and a live recent-price-changes feed with percentage-diff indicators.</li>
+            <li><strong>Independent Market Intelligence:</strong> High-end charts and analytical gauges on a dedicated <strong>/manager/analytics</strong> page:
               <ul class="list-circle pl-5 mt-1 space-y-1">
                 <li><strong>Supplier Scorecard:</strong> Identifies cost leaders and vendor participation/coverage rates.</li>
                 <li><strong>Month-over-Month Breakdowns:</strong> Visualizes volatility spread (Min, Max, Avg) per month.</li>
                 <li><strong>Markup Strategy Advisor:</strong> Suggests markup strategies based on calculated volatility levels.</li>
+                <li><strong>Price Trend Charts:</strong> SVG-based interactive price history visualization per item.</li>
               </ul>
             </li>
-            <li><strong>Consolidated SC Manager Reports:</strong> Export dynamic reports such as **Published Selling Prices** (with custom month range selectors), **Monthly Market Overview** (market trend and min/avg/max spreads), **Supplier Price Comparison** (highlighting the cheapest rates), and **Price Volatility Alerts** (warning of multi-revision price changes).</li>
-            <li><strong>Approval Dashboard:</strong> An inbox containing all price changes submitted by the warehouse. The SC Manager can approve or reject with a custom review note.</li>
-            <li><strong>Inline Monthly Review:</strong> A collapsible, side-by-side dashboard modal showing every item in the catalog. Managers can quickly inspect all supplier quotes and submit selling prices item-by-item without leaving the screen.</li>
+            <li><strong>Consolidated SC Reports:</strong> Export dynamic reports such as **Published Selling Prices** (with custom month range selectors), **Monthly Market Overview** (market trend and min/avg/max spreads), **Supplier Price Comparison** (highlighting the cheapest rates), and **Price Volatility Alerts** (warning of multi-revision price changes).</li>
+            <li><strong>Approval Dashboard:</strong> An inbox containing all price changes submitted by the warehouse. The SC Manager can approve or reject with a custom review note. Features tabbed views for <strong>Incoming Quotes</strong> and <strong>Pending Revisions</strong>.</li>
+            <li><strong>Inline Monthly Review:</strong> A collapsible, side-by-side dashboard modal showing every item in the catalog. Managers can quickly inspect all supplier quotes (including negotiated prices) and submit selling prices item-by-item without leaving the screen.</li>
+            <li><strong>Reconsidered Items Notifications:</strong> When the MG Manager returns items for reconsideration, SC receives them in the <strong>Notifications Center</strong> with the manager's reconsideration note, enabling a feedback loop between SC and MG.</li>
+          </ul>
+        </div>
+
+        <!-- MG Module -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-amber-200/50" style="background: linear-gradient(135deg, rgba(254,252,232,0.4), rgba(249,250,251,0.5));">
+          <h3 class="text-lg font-bold text-amber-900 flex items-center gap-2 mb-3">
+            <span class="text-2xl">👔</span> C. Manager Approval Module (MG — Oversight &amp; Final Approval)
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">NEW ROLE</span>
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Pricing Approvals Workstation:</strong> A full-featured dashboard where the Manager reviews all selling prices proposed by the SC team. The workstation displays <strong>status pills</strong> (Approved / Pending / Reconsidered / No Quote) with live counts, category filtering, search, and status-based filtering.</li>
+            <li>
+              <strong>Three-State Approval Workflow:</strong>
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>Approve Single Item:</strong> Approves one specific item's selling price, making it visible in the Sales Catalog.</li>
+                <li><strong>Approve All (Category):</strong> Bulk-approves all pending items within a category with one click.</li>
+                <li><strong>Reconsider:</strong> Returns the item to SC with a <strong>mandatory reconsideration note</strong>, explaining why the proposed price needs revision. The item reverts to "reconsidered" status.</li>
+              </ul>
+            </li>
+            <li><strong>SA Price Hold:</strong> While a selling price is pending MG approval or has been returned for reconsideration, <strong>Sales Agents see the last-approved prices</strong> with a visible "⏳ Pending Revision 🔒" badge. Quoting on held items uses the previous approved range, ensuring business continuity.</li>
+            <li><strong>Buying &amp; Selling History:</strong> Each item row is expandable to reveal historical buying and selling price trends, giving the Manager full context before approving.</li>
+            <li><strong>MG Reports:</strong> The Manager has access to published selling price reports and sales catalog exports for oversight purposes.</li>
+            <li><strong>Notifications Center:</strong> Receives alerts when SC submits new pricing proposals for review, with pending count badges in the navigation.</li>
           </ul>
         </div>
 
         <!-- SA Module -->
         <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
           <h3 class="text-lg font-bold text-warning-900 flex items-center gap-2 mb-3">
-            <span class="text-2xl">🏷</span> C. Sales Agent Module (Quoting &amp; Deal Simulation)
+            <span class="text-2xl">🏷</span> D. Sales Agent Module (SA — Quoting &amp; Deal Simulation)
           </h3>
           <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
-            <li><strong>Secure Price Catalog:</strong> Agents can view approved min/max selling prices for the month. To protect purchasing leverage, <strong>raw buy costs are completely hidden</strong> from sales agents.</li>
-            <li><strong>Interactive Deal Simulator:</strong> Agents can select any approved item, type in a target client quantity and unit price, and see the total contract value immediately. Warns the agent if the price is below the min allowed or above the max.</li>
-            <li><strong>Visual Compliance Indicators:</strong> Displays green (compliant), yellow (above maximum), and red (below minimum allowed margin) warnings in real-time as agents type their pricing.</li>
+            <li><strong>Secure Price Catalog:</strong> Agents can view <strong>MG-approved</strong> min/max selling prices for the month. To protect purchasing leverage, <strong>raw buy costs are completely hidden</strong> from sales agents. When tier pricing is enabled, the catalog also displays tier-based price breakdowns.</li>
+            <li><strong>Tier-Aware Deal Simulator:</strong> Agents select any approved item, type a target client quantity and unit price, and see the total contract value immediately. The simulator <strong>automatically detects and applies the correct pricing tier</strong> based on the entered quantity (Standard, Bulk, or Pallet), dynamically adjusting the allowed price range. Warns the agent if the price falls below the tier's minimum or above its maximum.</li>
+            <li><strong>Visual Compliance Indicators:</strong> Displays green (compliant), yellow (above maximum), and red (below minimum allowed margin) warnings in real-time as agents type their pricing. Indicators reflect <strong>tier-specific</strong> price boundaries.</li>
+            <li><strong>Pending Revision Handling</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Items awaiting MG approval display a <strong>"⏳ Pending Revision 🔒"</strong> badge. Agents can still view and quote using the <strong>last-approved price range</strong>, ensuring uninterrupted business operations while prices are under review.</li>
+            <li><strong>Price Update Alerts &amp; Acknowledgments</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Sales Agents receive banner alerts when selling prices are revised. They can <strong>acknowledge</strong> price changes, and the SC team is notified of acknowledgment status — creating a two-way confirmation loop.</li>
             <li><strong>Active Session Deal Board:</strong> Allows agents to combine multiple item quotes into a single deal board, check total profitability, and copy a formatted text summary to their clipboard for instant WhatsApp/email delivery to clients.</li>
             <li><strong>Sales Reports:</strong> Generate client-ready reports such as the **Approved Selling Price List** and the **Sales Price Catalog** (displaying dynamic stats cards for active periods, categories count, and catalog status).</li>
+          </ul>
+        </div>
+
+        <!-- AD Module -->
+        <div class="bg-slate-50/50 p-5 rounded-2xl border border-violet-200/50" style="background: linear-gradient(135deg, rgba(245,243,255,0.4), rgba(249,250,251,0.5));">
+          <h3 class="text-lg font-bold text-violet-900 flex items-center gap-2 mb-3">
+            <span class="text-2xl">⚙️</span> E. System Administration Module (AD — Master Data &amp; Policy)
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">NEW ROLE</span>
+          </h3>
+          <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
+            <li><strong>Full CRUD Admin Panel:</strong> Manage <strong>items</strong> (with MOQ, transport per unit, recommended supplier), <strong>categories</strong>, <strong>suppliers</strong> (with extended contact fields: job title, email, region, address, represented products, fame name), and <strong>users</strong> (create/edit/delete with role assignment) from a dedicated admin interface.</li>
+            <li>
+              <strong>Monthly Pricing Policy Configuration</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Toggleable monthly settings:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>Tier Pricing Toggle:</strong> Enable or disable volume-tiered pricing system-wide for the active month.</li>
+                <li><strong>SC Transport Override Toggle:</strong> Allow or restrict SC from overriding transport fees per item.</li>
+              </ul>
+            </li>
+            <li><strong>CSV Import System</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Import items and suppliers via CSV with drag-and-drop support, client-side CSV parsing with BOM handling, 8-row file preview before import, progress bars, and downloadable CSV templates.</li>
+            <li><strong>Margin Floors Configuration:</strong> Dedicated interfaces for configuring margin floors per category and per individual item, including the override hierarchy (item-level overrides category-level).</li>
+            <li><strong>Bulk Operations:</strong> Activate/deactivate items, move items between categories, and bulk delete with confirmation dialogs.</li>
+            <li>
+              <strong>Activity Log Viewer</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> A full browsable audit log at <strong>/admin/activity</strong> with pagination (60 events/page), filterable by role (AD/SC/WH/SA/MG) and event type. Tracks 20+ event types including sign-in/out, quote submissions, price changes, CRUD operations, and purge actions. Timestamped and color-coded.
+            </li>
+            <li><strong>Supplier Directory &amp; Detail Pages</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Full supplier listing with search, region filter, and quote status filter. Click any supplier to open a rich <strong>detail modal</strong> with contact info, SVG line chart showing price history per item, quote history, and confirmed pricing tabs.</li>
+            <li><strong>Item Detail Pages</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Individual item pages showing supplier history chart, pricing grid, and recommended supplier configuration.</li>
+            <li><strong>About Page:</strong> System capabilities grid (8 modules), tech stack display (Next.js 14, React Server Components, TypeScript, SQLite), version info, and edition details.</li>
+            <li><strong>Database Purge:</strong> Password-protected purge in the "Dangerous Zone" to clean the system for a fresh pricing cycle while retaining user records.</li>
           </ul>
         </div>
 
         <!-- Core Utilities -->
         <div class="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
           <h3 class="text-lg font-bold text-slate-850 flex items-center gap-2 mb-3">
-            <span class="text-2xl">🌐</span> D. Core System Utilities
+            <span class="text-2xl">🌐</span> F. Core System Utilities
           </h3>
           <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2 leading-relaxed">
             <li><strong>Multilingual RTL Support:</strong> Fully localized in English and Arabic. RTL layout adjustments (aligned grids, padding, and font sizes) are applied automatically on language toggle.</li>
             <li><strong>Theme Customizer:</strong> Toggle between clean light mode and premium dark mode interfaces.</li>
+            <li>
+              <strong>Universal Smart Search</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> Global search across <strong>items and suppliers</strong> with fuzzy matching on name, code, contact, region, and products. Opens rich inline detail cards showing recommended supplier badges, price history grids, and selling price history. Accessible via keyboard shortcut.
+            </li>
+            <li>
+              <strong>Role-Based Notifications Center</strong> <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1">NEW</span><strong>:</strong> A unified, role-specific notifications hub:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li><strong>WH:</strong> Rejected quote notifications with "Mark as Read".</li>
+                <li><strong>SC:</strong> Price acknowledgments from SA, pending change requests, negotiated price alerts, reconsidered items from MG.</li>
+                <li><strong>MG:</strong> Pending pricing submissions from SC awaiting approval.</li>
+                <li><strong>SA:</strong> Price update alerts with acknowledgment buttons.</li>
+              </ul>
+            </li>
             <li><strong>Zero-Dependency PDF &amp; Excel Generation:</strong>
               <ul class="list-circle pl-5 mt-1 space-y-1">
                 <li>Export dynamic price requests for vendors with zebra-striped, auto-fitting columns.</li>
                 <li>Export manager spreadsheets using `xlsx-js-style` with custom emerald headers, formatted currencies, and highlighted input fields.</li>
+                <li>USD pricing columns in exports when currency conversion is enabled.</li>
                 <li>On-screen print layouts optimized for physical archiving.</li>
               </ul>
             </li>
-            <li><strong>Automated Audit History:</strong> Collapsible visual timeline showing every past price modification, who made it, and the stated reason.</li>
+            <li><strong>Automated Audit History:</strong> Collapsible visual timeline showing every past price modification, who made it, and the stated reason. Enhanced with a <strong>dedicated activity log viewer</strong> tracking 20+ event types across all roles.</li>
           </ul>
         </div>
       </div>
@@ -402,22 +523,34 @@ flowchart TD
               </thead>
               <tbody>
                 <tr class="border-b border-slate-100">
-                  <td class="p-2.5 font-medium text-primary-900">Supply Chain Manager (SC)</td>
+                  <td class="p-2.5 font-medium text-primary-900">Pricing Control (SC)</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`sc`</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`sc123`</td>
-                  <td class="p-2.5 text-slate-600">Full control. Review pricing requests, set selling rates/margins, configure floors, manage system CRUD, execute database purges.</td>
+                  <td class="p-2.5 text-slate-600">Pricing engine. Review WH change requests, set selling rates/margins via item or category pricing, configure pricing tiers, submit prices to MG for approval, access analytics and reports.</td>
+                </tr>
+                <tr class="border-b border-slate-100">
+                  <td class="p-2.5 font-medium text-amber-800">Manager (MG)</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`mg`</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`mg123`</td>
+                  <td class="p-2.5 text-slate-600">Final pricing authority. Approve or reconsider selling prices proposed by SC. View buying/selling history. Only MG-approved prices appear in the Sales Catalog.</td>
                 </tr>
                 <tr class="border-b border-slate-100">
                   <td class="p-2.5 font-medium text-success-900">Warehouse / Purchasing (WH)</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`wh`</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`wh123`</td>
-                  <td class="p-2.5 text-slate-600">Supplier collections. Input new monthly costs, view cost history comparison, submit price change requests with justifications.</td>
+                  <td class="p-2.5 text-slate-600">Supplier collections. Input monthly costs and negotiated prices, view cost history, track missing quotes, submit price change requests with justifications.</td>
                 </tr>
                 <tr class="border-b border-slate-100">
                   <td class="p-2.5 font-medium text-warning-900">Sales Agent (SA)</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`sa`</td>
                   <td class="p-2.5 font-mono bg-slate-50/50">`sa123`</td>
-                  <td class="p-2.5 text-slate-600">Client quoting. Search monthly active selling rates, run calculations on Deal Simulator, copy formatted quotes. Cost prices are hidden.</td>
+                  <td class="p-2.5 text-slate-600">Client quoting. View MG-approved selling rates (with tier pricing when enabled), run Deal Simulator, copy formatted quotes, acknowledge price updates. Cost prices are hidden.</td>
+                </tr>
+                <tr class="border-b border-slate-100">
+                  <td class="p-2.5 font-medium text-violet-800">System Admin (AD)</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`admin`</td>
+                  <td class="p-2.5 font-mono bg-slate-50/50">`admin123`</td>
+                  <td class="p-2.5 text-slate-600">Full system administration. Manage users, items, categories, suppliers (CRUD). Configure monthly pricing policies, margin floors, CSV import, activity log viewer, and database purge.</td>
                 </tr>
               </tbody>
             </table>
@@ -434,7 +567,7 @@ flowchart TD
           <div class="bg-danger-50 border border-danger-100 p-4 rounded-xl text-xs space-y-2">
             <p class="text-danger-900 font-semibold">To execute a database wipe:</p>
             <ol class="list-decimal pl-5 text-danger-900/80 space-y-1">
-              <li>Log in with the Supply Chain Manager account (<code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">sc</code> / <code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">sc123</code>).</li>
+              <li>Log in with the System Admin account (<code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">admin</code> / <code class="bg-danger-100/50 px-1 py-0.5 rounded font-mono">admin123</code>).</li>
               <li>Navigate to the Admin Panel (<a href="http://localhost:3000/dashboard/admin" target="_blank" class="underline hover:text-danger-900">/dashboard/admin</a>).</li>
               <li>Scroll to the bottom of the page to find the <strong>Dangerous Zone</strong>.</li>
               <li>Type the purge confirmation password: <strong class="bg-danger-100/70 px-1.5 py-0.5 rounded font-mono border border-danger-200/50">17012911</strong></li>
@@ -447,7 +580,7 @@ flowchart TD
 
     <!-- FOOTER -->
     <footer class="no-print text-center text-xs text-slate-400 py-6 border-t border-slate-200">
-      FAERP Price &amp; Margin Management Engine &bull; Confidential Client Presentation Guide
+      FAERP Pricing Control System &bull; Confidential Client Presentation Guide
     </footer>
   </div>
 </body>

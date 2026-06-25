@@ -39,7 +39,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
   // ── SA: read-only approved catalog ──
   if (role === "SA") {
     const catalog = getSalesCatalog(month);
-    const published = catalog.filter(r => r.sell_min !== null && r.approval_status === "approved");
+    const published = catalog.filter(r => r.sell_min !== null && (r.approval_status === "approved" || r.last_approved_sell_min !== null));
     const grouped: Record<string, typeof published> = {};
     for (const row of published) {
       if (!grouped[row.category_name]) grouped[row.category_name] = [];
@@ -56,6 +56,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
     }
 
     // Tier price calculator using unified formula (divisor/percentage markup, including transport & expenses)
+    const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
     function calcTierPrices(row: typeof published[0]) {
       const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
       const buyAvg = baseCost;
@@ -74,7 +75,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
       }
 
       return [
-        { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin ?? getPriceForDiscount(row.tier1_discount) },
+        { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin !== null ? roundUp5(sellMin) : getPriceForDiscount(row.tier1_discount) },
         { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: getPriceForDiscount(row.tier2_discount) },
         { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: getPriceForDiscount(row.tier3_discount) },
         { label: "T4", range: `>${row.tier3_max}`, price: getPriceForDiscount(row.tier4_discount) },
@@ -126,11 +127,18 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                   </thead>
                   <tbody>
                     {rows.map(row => {
-                      const isTiered = row.is_tiered === 1 && row.buy_avg != null;
+                      const isPendingRevision = row.approval_status !== "approved" && row.last_approved_sell_min !== null;
+                      const displaySellMin = isPendingRevision ? row.last_approved_sell_min : row.sell_min;
+                      const displaySellMax = isPendingRevision ? row.last_approved_sell_max : row.sell_max;
+                      const isTiered = !isPendingRevision && row.is_tiered === 1 && row.buy_avg != null;
                       const tierPrices = isTiered ? calcTierPrices(row) : [];
                       const isRevised = !!priceHistoryMap[row.item_id];
                       return (
-                        <tr key={row.item_id} style={isRevised ? {
+                        <tr key={row.item_id} style={isPendingRevision ? {
+                          backgroundColor: "rgba(245,158,11,0.06)",
+                          borderLeft: "3px solid var(--warning)",
+                          opacity: 0.85,
+                        } : isRevised ? {
                           backgroundColor: "rgba(245,158,11,0.04)",
                           borderLeft: "3px solid #f59e0b",
                         } : {}}>
@@ -142,7 +150,18 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                             >
                               {row.item_name}
                             </ClickableDetailTrigger>
-                            {isRevised && (
+                            {isPendingRevision && (
+                              <span style={{
+                                display: "inline-block", marginInlineStart: "8px",
+                                fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                                borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                                border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                                verticalAlign: "middle",
+                              }} title={getServerLocale() === "ar" ? "السعر قيد المراجعة من المدير - العروض متوقفة مؤقتاً" : "Price is being revised and is awaiting MG approval — quoting is on hold"}>
+                                {getServerLocale() === "ar" ? "⏳ مراجعة معلقة 🔒" : "⏳ Pending Revision 🔒"}
+                              </span>
+                            )}
+                            {!isPendingRevision && isRevised && (
                               <span style={{
                                 display: "inline-block", marginInlineStart: "8px",
                                 fontSize: "9px", fontWeight: 800, padding: "2px 7px",
@@ -168,7 +187,23 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                             </span>
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            {isTiered ? (
+                            {isPendingRevision ? (
+                              /* Pending revision: show last approved price with lock */
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                                <div style={{ display: "flex", gap: "16px", justifyContent: "center", alignItems: "center", opacity: 0.7 }}>
+                                  <div style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأدنى" : "Min"}</div>
+                                    <strong style={{ fontSize: "15px", color: "var(--text-muted)" }}>{formatCurrency(roundUp5(displaySellMin))}</strong>
+                                  </div>
+                                  <span style={{ color: "var(--text-dim)" }}>—</span>
+                                  <div style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأقصى" : "Max"}</div>
+                                    <strong style={{ fontSize: "15px", color: "var(--text-muted)" }}>{formatCurrency(roundUp5(displaySellMax))}</strong>
+                                  </div>
+                                </div>
+                                <span style={{ fontSize: "8px", color: "#b45309", fontWeight: 700 }}>🔒 {getServerLocale() === "ar" ? "معلق" : "ON HOLD"}</span>
+                              </div>
+                            ) : isTiered ? (
                               /* Tier price grid */
                               <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
                                 {tierPrices.map((t, i) => (
@@ -184,12 +219,12 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                               <div style={{ display: "flex", gap: "16px", justifyContent: "center", alignItems: "center" }}>
                                 <div style={{ textAlign: "center" }}>
                                   <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأدنى" : "Min"}</div>
-                                  <strong style={{ fontSize: "15px", color: "var(--success)" }}>{formatCurrency(row.sell_min)}</strong>
+                                  <strong style={{ fontSize: "15px", color: "var(--success)" }}>{formatCurrency(roundUp5(row.sell_min))}</strong>
                                 </div>
                                 <span style={{ color: "var(--text-dim)" }}>—</span>
                                 <div style={{ textAlign: "center" }}>
                                   <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{getServerLocale() === "ar" ? "الأقصى" : "Max"}</div>
-                                  <strong style={{ fontSize: "15px", color: "var(--primary)" }}>{formatCurrency(row.sell_max)}</strong>
+                                  <strong style={{ fontSize: "15px", color: "var(--primary)" }}>{formatCurrency(roundUp5(row.sell_max))}</strong>
                                 </div>
                               </div>
                             )}
@@ -219,18 +254,42 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
     const mgItems = getMGItemsView(month);
     return (
       <div className="page-stack">
-        <SectionIntro
-          eyebrow={formatMonthLabel(month)}
-          title={isAr ? "مركز الاعتمادات والرقابة" : "Pricing Approvals Workstation"}
-          description={isAr ? `جلسة نشطة: ${session.displayName} — مراجعة واعتماد أسعار البيع المقترحة` : `Active Session: ${session.displayName} — Review & approve proposed selling prices`}
-          actions={
-            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-              <ReportGenerator role="MG" username={session.displayName} dashboardMonth={month} />
-              <span className="badge badge-success">{mgItems.filter(item => item.currentSp?.approvalStatus === "approved").length} {isAr ? "معتمد" : "Approved"}</span>
-              <span className="badge badge-warning">{mgItems.filter(item => item.currentSp?.approvalStatus === "pending").length} {isAr ? "معلق" : "Pending"}</span>
-            </div>
-          }
-        />
+        {(() => {
+          const approvedCount = mgItems.filter(item => item.currentSp?.approvalStatus === "approved").length;
+          const pendingCount = mgItems.filter(item => item.currentSp?.approvalStatus === "pending").length;
+          const reconsideredCount = mgItems.filter(item => item.currentSp?.approvalStatus === "reconsidered").length;
+          const noQuoteCount = mgItems.filter(item => item.currentSp === null).length;
+          return (
+            <SectionIntro
+              eyebrow={formatMonthLabel(month)}
+              title={isAr ? "مركز الاعتمادات والرقابة" : "Pricing Approvals Workstation"}
+              description={isAr ? `جلسة نشطة: ${session.displayName} — مراجعة واعتماد أسعار البيع المقترحة` : `Active Session: ${session.displayName} — Review & approve proposed selling prices`}
+              actions={
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                  {/* Compact stat pills */}
+                  {[
+                    { count: approvedCount,     label: isAr ? "معتمد" : "Approved",     color: "#16a34a", bg: "rgba(34,197,94,0.10)",  border: "rgba(34,197,94,0.3)"  },
+                    { count: pendingCount,      label: isAr ? "معلق" : "Pending",       color: "#b45309", bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.3)" },
+                    { count: reconsideredCount, label: isAr ? "مرفوض" : "Reconsidered", color: "#dc2626", bg: "rgba(239,68,68,0.10)",  border: "rgba(239,68,68,0.3)"  },
+                    { count: noQuoteCount,      label: isAr ? "بدون سعر" : "No Quote",  color: "#6b7280", bg: "rgba(107,114,128,0.08)", border: "rgba(107,114,128,0.2)" },
+                  ].filter(s => s.count > 0).map(s => (
+                    <span key={s.label} style={{
+                      display: "inline-flex", alignItems: "center", gap: "5px",
+                      padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: 700,
+                      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
+                    }}>
+                      <strong style={{ fontSize: "13px" }}>{s.count}</strong> {s.label}
+                    </span>
+                  ))}
+                  {/* Divider */}
+                  <span style={{ width: "1px", height: "20px", background: "var(--border-medium)", margin: "0 2px" }} />
+                  {/* Compact PDF Reports button */}
+                  <ReportGenerator role="MG" username={session.displayName} dashboardMonth={month} />
+                </div>
+              }
+            />
+          );
+        })()}
         
         <MGWorkstationClient
           items={mgItems}
@@ -362,6 +421,9 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
               changed_by: u.changed_by,
               is_update: u.is_update ?? 0,
             }))}
+            salesCatalog={salesCatalog}
+            reviewData={reviewData}
+            suppliers={suppliers}
           />
         </>
       )}
@@ -436,6 +498,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                 <WhMissingQuotes
                   missing={whOverview.missing}
                   suppliers={suppliers}
+                  items={items}
                   displayName={session.displayName}
                   month={month}
                 />

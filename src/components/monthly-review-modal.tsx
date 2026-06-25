@@ -97,6 +97,7 @@ type ReviewItem = {
   tier3_discount: number;
   tier4_max: number;
   tier4_discount: number;
+  recommendedSupplierId: number | null;
 };
 
 type ReviewCategory = {
@@ -121,6 +122,7 @@ function SupplierQuoteCard({
   username,
   color,
   isBest,
+  isRecommended,
 }: {
   q: SupplierQuote;
   itemId: number;
@@ -128,6 +130,7 @@ function SupplierQuoteCard({
   username: string;
   color: string;
   isBest: boolean;
+  isRecommended: boolean;
 }) {
   const { t, locale } = useI18n();
   const [reviewNote, setReviewNote] = useState("");
@@ -269,6 +272,7 @@ function SupplierQuoteCard({
           >
             {q.supplierName}
           </span>
+          {isRecommended && <span style={{ color: "#eab308", fontSize: "13px", flexShrink: 0 }} title={locale === "ar" ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>}
         </div>
         <div style={{ display: "flex", gap: "4px", alignItems: "center", flexShrink: 0 }}>
           {isBest && (
@@ -283,6 +287,21 @@ function SupplierQuoteCard({
               }}
             >
               {t("gen.best")}
+            </span>
+          )}
+          {isRecommended && (
+            <span
+              style={{
+                fontSize: "8px",
+                fontWeight: 800,
+                background: "rgba(234, 179, 8, 0.15)",
+                color: "#ca8a04",
+                padding: "1px 5px",
+                borderRadius: "4px",
+                border: "1px solid rgba(234, 179, 8, 0.3)",
+              }}
+            >
+              {locale === "ar" ? "موصى" : "REC"}
             </span>
           )}
           {renderStatusBadge()}
@@ -406,11 +425,13 @@ function ItemRow({
   month,
   username,
   supplierColorMap,
+  allSuppliers,
 }: {
   item: ReviewItem;
   month: string;
   username: string;
   supplierColorMap: Map<string, string>;
+  allSuppliers: SupplierQuote[];
 }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -490,6 +511,16 @@ function ItemRow({
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>
             {item.unit} · {item.suppliers.length} supplier{item.suppliers.length !== 1 ? "s" : ""}
           </div>
+          {item.recommendedSupplierId && !item.suppliers.some(q => q.supplierId === item.recommendedSupplierId) && (
+            <div style={{
+              fontSize: "9px", fontWeight: 800, color: "#ca8a04",
+              background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.25)",
+              padding: "1px 6px", borderRadius: "4px", marginTop: "3px",
+              display: "inline-flex", alignItems: "center", gap: "3px",
+            }}>
+              ⭐ {locale === "ar" ? "الموصى لم يسعّر" : "Rec. Not Quoted"}
+            </div>
+          )}
         </div>
 
         {/* Supplier color dots */}
@@ -621,6 +652,7 @@ function ItemRow({
                           username={username}
                           color={color}
                           isBest={isBest}
+                          isRecommended={item.recommendedSupplierId === q.supplierId}
                         />
                       </div>
                     );
@@ -964,6 +996,66 @@ function ItemRow({
                           <div style={{ fontSize: "11px", color: "var(--text-dim)", fontStyle: "italic", marginTop: "2px" }}>—</div>
                         )}
                       </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Other Supplier Quotes for this Item ──────────── */}
+              {(() => {
+                // Use the full unfiltered supplier list to show ALL quotes regardless of status filter
+                const otherQuotes = allSuppliers.filter(s => s.supplierId !== selectedSupplierId);
+                if (otherQuotes.length === 0) return null;
+
+                const statusStyle = (status: string) => {
+                  switch (status) {
+                    case "approved": return { bg: "rgba(5,150,105,0.10)", color: "#059669", label: locale === "ar" ? "معتمد" : "Approved" };
+                    case "published": return { bg: "rgba(5,150,105,0.10)", color: "#047857", label: locale === "ar" ? "منشور" : "Published" };
+                    case "rejected": return { bg: "rgba(239,68,68,0.10)", color: "#dc2626", label: locale === "ar" ? "مرفوض" : "Rejected" };
+                    case "negotiated": return { bg: "rgba(217,119,6,0.10)", color: "#b45309", label: locale === "ar" ? "تم التفاوض" : "Negotiated" };
+                    case "reconsidered": return { bg: "rgba(245,158,11,0.10)", color: "#d97706", label: locale === "ar" ? "مُعاد النظر" : "Reconsidered" };
+                    default: return { bg: "rgba(107,114,128,0.10)", color: "#6b7280", label: locale === "ar" ? "قيد المراجعة" : "Pending" };
+                  }
+                };
+
+                return (
+                  <div style={{
+                    padding: "12px 14px", borderRadius: "12px",
+                    border: "1.5px solid var(--border-light)",
+                    background: "var(--bg-elevated)",
+                  }}>
+                    <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-muted)", marginBottom: "8px" }}>
+                      📋 {locale === "ar" ? "أسعار الموردين الآخرين لنفس الصنف" : "Other Supplier Quotes for This Item"}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {otherQuotes.map(q => {
+                        const st = statusStyle(q.status);
+                        return (
+                          <div key={q.quoteId} style={{
+                            display: "flex", alignItems: "center", gap: "8px",
+                            padding: "7px 10px", borderRadius: "8px",
+                            background: "var(--bg-subtle)", border: "1px solid var(--border-light)",
+                            fontSize: "12px",
+                          }}>
+                            <span style={{
+                              width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0,
+                              background: SUPPLIER_COLORS[item.suppliers.indexOf(q) % SUPPLIER_COLORS.length],
+                            }} />
+                            <span style={{ flex: 1, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                              {q.supplierName}
+                            </span>
+                            <strong style={{ fontSize: "13px", fontWeight: 800, color: "var(--text-primary)", flexShrink: 0 }}>
+                              {formatCurrency(q.price)}
+                            </strong>
+                            <span style={{
+                              fontSize: "8px", fontWeight: 800, padding: "2px 6px", borderRadius: "4px",
+                              background: st.bg, color: st.color, flexShrink: 0, textTransform: "uppercase",
+                            }}>
+                              {st.label}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1814,6 +1906,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
                                 month={month}
                                 username={username}
                                 supplierColorMap={supplierColorMap}
+                                allSuppliers={data.flatMap(c => c.items).find(i => i.itemId === item.itemId)?.suppliers ?? item.suppliers}
                               />
                             ))}
                           </div>

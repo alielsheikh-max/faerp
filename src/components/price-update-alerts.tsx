@@ -5,6 +5,8 @@ import { formatCurrency, formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import { acknowledgeAlertAction } from "@/app/actions/notifications";
 
+const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
+
 type PriceUpdateAlertsProps = {
   recentUpdates: {
     id: number;
@@ -138,8 +140,8 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
                 </span>
               </div>
               
-              {/* Top dismiss — hidden for SC (read-only monitoring feed) */}
-              {role !== "SC" && (
+              {/* Top dismiss — only for AD, not SA or SC */}
+              {role === "AD" && (
                 <button
                   type="button"
                   onClick={() => handleDismiss(update.id)}
@@ -157,7 +159,7 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
                   onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
                   onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
                 >
-                  {isAr ? "إخفاء التنبيه" : "Acknowledge Alert"}
+                  {isAr ? "إخفاء التنبيه" : "Dismiss"}
                 </button>
               )}
             </div>
@@ -172,7 +174,7 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
               <div>
                 <span style={{ color: "var(--text-muted)" }}>{isAr ? "الأسعار الجديدة:" : "New Pricing:"} </span>
                 <strong style={{ color: "var(--danger)", fontSize: "14px" }}>
-                  {formatCurrency(update.new_sell_min)} ~ {formatCurrency(update.new_sell_max)}
+                  {formatCurrency(roundUp5(update.new_sell_min))} ~ {formatCurrency(roundUp5(update.new_sell_max))}
                 </strong>
               </div>
               
@@ -180,7 +182,7 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
                 <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                   <span>{isAr ? "كانت:" : "Was:"} </span>
                   <span style={{ textDecoration: "line-through" }}>
-                    {formatCurrency(update.prev_sell_min!)} ~ {formatCurrency(update.prev_sell_max!)}
+                    {formatCurrency(roundUp5(update.prev_sell_min!))} ~ {formatCurrency(roundUp5(update.prev_sell_max!))}
                   </span>
                 </div>
               )}
@@ -236,8 +238,8 @@ export default function PriceUpdateAlerts({ recentUpdates, role }: PriceUpdateAl
                     ✓ Acknowledge
                   </button>
                 )}
-                {/* Bottom dismiss — hidden for SC */}
-                {role !== "SC" && (
+                {/* Bottom dismiss — only for AD */}
+                {role === "AD" && (
                   <button
                     onClick={() => handleDismiss(update.id)}
                     style={{

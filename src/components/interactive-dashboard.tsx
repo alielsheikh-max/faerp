@@ -11,7 +11,7 @@ import { ItemCombobox } from "./item-combobox";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Category  = { id: number; name: string; description: string | null };
-type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number; transportation_per_unit?: number; moq?: number; is_tiered?: number; tier1_max?: number; tier1_discount?: number; tier2_max?: number; tier2_discount?: number; tier3_max?: number; tier3_discount?: number; tier4_max?: number; tier4_discount?: number };
+type Item      = { id: number; category_id: number; name: string; unit: string; description: string | null; active: number; transportation_per_unit?: number; moq?: number; is_tiered?: number; tier1_max?: number; tier1_discount?: number; tier2_max?: number; tier2_discount?: number; tier3_max?: number; tier3_discount?: number; tier4_max?: number; tier4_discount?: number; recommended_supplier_id?: number | null };
 type Supplier  = { id: number; name: string; fame_name?: string | null; contact_person: string | null; phone: string | null };
 type PriceEntry = {
   id: number; item_id: number; supplier_id: number; month: string; price: number;
@@ -93,6 +93,9 @@ export default function InteractiveDashboard({
     }
   }, [initialCategoryId]);
 
+  // WH role should stay on /dashboard; SC/AD navigate to /dashboard/pricing
+  const basePath = role === "WH" ? "/dashboard" : "/dashboard/pricing";
+
   const handleItemChange = (newItemId: string) => {
     const idNum = Number(newItemId);
     setItemId(idNum);
@@ -100,7 +103,7 @@ export default function InteractiveDashboard({
     const params = new URLSearchParams(globalThis.window?.location.search || "");
     if (catId) params.set("categoryId", String(catId));
     params.set("itemId", String(idNum));
-    router.push(`/dashboard/pricing?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`, { scroll: false });
   };
 
   const handleCategoryChange = (newCatId: number | "") => {
@@ -115,7 +118,7 @@ export default function InteractiveDashboard({
     if (firstItemId) params.set("itemId", String(firstItemId));
     else params.delete("itemId");
     
-    router.push(`/dashboard/pricing?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`, { scroll: false });
   };
 
 
@@ -156,13 +159,20 @@ export default function InteractiveDashboard({
     }).filter(Boolean) as { supplierId: number; price: number }[];
     if (quotes.length === 0) return null;
     const prices = quotes.map(q => q.price);
+
+    const recomSupplierId = selectedItem?.recommended_supplier_id ?? null;
+    const favQuote = recomSupplierId ? quotes.find(q => q.supplierId === recomSupplierId) : null;
+    const buyFav = favQuote ? favQuote.price : null;
+
     return {
       quotes: quotes.length,
       buyMin: Math.min(...prices),
       buyMax: Math.max(...prices),
       buyAvg: prices.reduce((a, b) => a + b, 0) / prices.length,
+      buyFav,
+      recommendedSupplierId: recomSupplierId,
     };
-  }, [latestBySupplierMonth, suppliers, month, latestMonth]);
+  }, [latestBySupplierMonth, suppliers, month, latestMonth, selectedItem]);
 
   const existingSell = useMemo(() => {
     // First try salesCatalog (used when component is embedded in overview dashboard)
@@ -467,9 +477,10 @@ export default function InteractiveDashboard({
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {[...latestSupplierPrices].sort((a, b) => a.price - b.price).map((row) => {
                     const isBest = row.price === cheapestPrice;
+                    const isRecommended = selectedItem?.recommended_supplier_id === row.supplier.id;
                     const diffPct = avgCurrentPrice ? ((row.price - avgCurrentPrice) / avgCurrentPrice * 100) : 0;
                     return (
-                      <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}`, transition: "all 150ms" }}>
+                      <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : isRecommended ? "rgba(234,179,8,0.06)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : isRecommended ? "rgba(234,179,8,0.35)" : "var(--border-light)"}`, transition: "all 150ms" }}>
                         <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
                         <span
                           onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier.id } }))}
@@ -478,6 +489,7 @@ export default function InteractiveDashboard({
                         >
                           {row.supplier.fame_name || row.supplier.name}
                         </span>
+                        {isRecommended && <span style={{ color: "var(--warning)", cursor: "help", flexShrink: 0 }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>}
                         {isBest && <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px", flexShrink: 0 }}>{t("idash.best")}</span>}
                         <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
                           {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
@@ -488,6 +500,18 @@ export default function InteractiveDashboard({
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* Warning: no recommended supplier */}
+              {selectedItem && !selectedItem.recommended_supplier_id && latestSupplierPrices.length > 0 && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  padding: "8px 14px", borderRadius: "8px", marginTop: "10px",
+                  background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)",
+                  fontSize: "11.5px", color: "#92400e", fontWeight: 600,
+                }}>
+                  <span style={{ fontSize: "14px" }}>⚠️</span>
+                  <span>{isAr ? "لم يتم تحديد مورد موصى به لهذا الصنف. يرجى تعيينه من الإدارة ← الأصناف." : "No recommended supplier set for this item. Please set one via Admin → Items & Categories."}</span>
                 </div>
               )}
 
@@ -615,6 +639,8 @@ export default function InteractiveDashboard({
                 buyMin={currentMonthQuotes.buyMin}
                 buyMax={currentMonthQuotes.buyMax}
                 buyAvg={currentMonthQuotes.buyAvg}
+                buyFav={currentMonthQuotes.buyFav ?? undefined}
+                recommendedSupplierId={currentMonthQuotes.recommendedSupplierId}
                 floorPct={floorPct}
                 history={priceHistory}
                 existing={existingSell}
@@ -673,11 +699,19 @@ export default function InteractiveDashboard({
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {[...latestSupplierPrices].sort((a, b) => a.price - b.price).map((row) => {
                   const isBest = row.price === cheapestPrice;
+                  const isRecommended = selectedItem?.recommended_supplier_id === row.supplier.id;
                   const diffPct = avgCurrentPrice ? ((row.price - avgCurrentPrice) / avgCurrentPrice * 100) : 0;
                   return (
-                    <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : "var(--border-light)"}` }}>
+                    <div key={row.supplier.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "var(--radius)", background: isBest ? "var(--info-light)" : isRecommended ? "rgba(234,179,8,0.06)" : "var(--bg-elevated)", border: `1.5px solid ${isBest ? "rgba(2,132,199,0.35)" : isRecommended ? "rgba(234,179,8,0.35)" : "var(--border-light)"}`, transition: "all 150ms" }}>
                       <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: row.colorVal, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.supplier.fame_name || row.supplier.name}</span>
+                      <span
+                        onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: row.supplier.id } }))}
+                        className="clickable-detail-trigger"
+                        style={{ flex: 1, fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {row.supplier.fame_name || row.supplier.name}
+                      </span>
+                      {isRecommended && <span style={{ color: "var(--warning)", cursor: "help", flexShrink: 0 }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>}
                       {isBest && <span style={{ fontSize: "9px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "2px 6px", borderRadius: "4px" }}>{t("idash.best")}</span>}
                       <span style={{ fontSize: "10px", fontWeight: 700, color: diffPct < -0.5 ? "var(--success)" : diffPct > 0.5 ? "var(--danger)" : "var(--text-muted)" }}>
                         {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
@@ -803,7 +837,14 @@ export default function InteractiveDashboard({
                     <td style={{ padding: "10px 16px", position: "sticky", [isAr ? "right" : "left"]: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: `${isAr ? "-1px" : "1px"} 0 0 var(--border-light)`, whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: supColor, flexShrink: 0 }} />
-                        <span style={{ fontWeight: 700, fontSize: "13px" }}>{sup.fame_name || sup.name}</span>
+                        <span
+                          onClick={() => globalThis.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: sup.id } }))}
+                          className="clickable-detail-trigger"
+                          style={{ fontWeight: 700, fontSize: "13px" }}
+                        >
+                          {sup.fame_name || sup.name}
+                        </span>
+                        {selectedItem?.recommended_supplier_id === sup.id && <span style={{ color: "#eab308", fontSize: "12px", cursor: "help", flexShrink: 0 }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>}
                       </div>
                     </td>
                     {matrixMonths.map((m, mi) => {

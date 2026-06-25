@@ -265,7 +265,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
     }
     case "market_overview": {
       const { metrics, comparisonRows, suppliers } = data;
-      const supplierCols = suppliers.map((s: any) => `<th class="num">${s.name}</th>`).join("");
+      const supplierCols = suppliers.map((s: any) => `<th class="num">${s.fame_name || s.name}</th>`).join("");
       const rows = comparisonRows.map((row: any) => {
         const prices = suppliers.map((s: any) => {
           const q = row.quotes[String(s.id)];
@@ -335,7 +335,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
 
     case "supplier_comparison": {
       const { comparisonRows, suppliers } = data;
-      const supplierCols = suppliers.map((s: any) => `<th class="num">${s.name}</th>`).join("");
+      const supplierCols = suppliers.map((s: any) => `<th class="num">${s.fame_name || s.name}</th>`).join("");
       const rows = comparisonRows.map((row: any) => {
         const prices = suppliers.map((s: any) => {
           const q = row.quotes[String(s.id)];
@@ -542,7 +542,7 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           isAr ? "الفئة" : "Category",
           isAr ? "الصنف" : "Item",
           isAr ? "الوحدة" : "Unit",
-          ...suppliers.map((s: any) => s.name),
+          ...suppliers.map((s: any) => s.fame_name || s.name),
           isAr ? "المتوسط" : "Market Avg"
         ];
         rows = comparisonRows.map((row: any) => {
@@ -600,7 +600,7 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
           isAr ? "الفئة" : "Category",
           isAr ? "الصنف" : "Item",
           isAr ? "الوحدة" : "Unit",
-          ...suppliers.map((s: any) => s.name),
+          ...suppliers.map((s: any) => s.fame_name || s.name),
           isAr ? "الفارق" : "Spread"
         ];
         rows = comparisonRows.map((row: any) => {
@@ -840,65 +840,40 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
         type="button"
         onClick={() => setOpen(true)}
         style={{
-          width: "100%",
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
-          gap: "16px",
-          padding: "16px 20px",
-          borderRadius: "14px",
-          border: "1.5px solid rgba(30,58,138,0.25)",
+          gap: "8px",
+          padding: "7px 14px",
+          borderRadius: "10px",
+          border: "1.5px solid rgba(30,58,138,0.2)",
           background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)",
           cursor: "pointer",
-          transition: "all 220ms ease",
-          textAlign: "left",
-          boxShadow: "0 2px 8px rgba(30,58,138,0.08)",
-          position: "relative",
-          overflow: "hidden",
+          transition: "all 180ms ease",
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#1e3a8a",
+          boxShadow: "0 1px 4px rgba(30,58,138,0.06)",
+          whiteSpace: "nowrap" as const,
         }}
         onMouseEnter={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(59,130,246,0.6)";
-          b.style.boxShadow = "0 6px 20px rgba(30,58,138,0.18)";
-          b.style.transform = "translateY(-2px)";
-          b.style.background = "linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)";
+          b.style.borderColor = "rgba(59,130,246,0.5)";
+          b.style.boxShadow = "0 3px 12px rgba(30,58,138,0.14)";
+          b.style.transform = "translateY(-1px)";
         }}
         onMouseLeave={e => {
           const b = e.currentTarget as HTMLButtonElement;
-          b.style.borderColor = "rgba(30,58,138,0.25)";
-          b.style.boxShadow = "0 2px 8px rgba(30,58,138,0.08)";
+          b.style.borderColor = "rgba(30,58,138,0.2)";
+          b.style.boxShadow = "0 1px 4px rgba(30,58,138,0.06)";
           b.style.transform = "translateY(0)";
-          b.style.background = "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)";
         }}
       >
-        {/* Icon block */}
-        <div style={{
-          width: "46px", height: "46px", borderRadius: "12px", flexShrink: 0,
-          background: "linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(30,58,138,0.25)",
-          fontSize: "20px",
-        }}>
-          📄
-        </div>
-        {/* Text */}
-        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-          <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a8a", letterSpacing: "-0.01em" }}>
-            {locale === "ar" ? "تقارير PDF" : "PDF Reports"}
-          </div>
-          <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px", fontWeight: 500 }}>
-            {locale === "ar" ? "إنشاء تقارير السوق وقوائم الأسعار" : `${visiblePresets.length} report types · market data, prices, logs`}
-          </div>
-        </div>
-        {/* Arrow */}
-        <div style={{
-          width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-          background: "rgba(30,58,138,0.10)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "14px", color: "#1e3a8a", fontWeight: 800,
-          transition: "transform 220ms ease",
-        }}>
-          →
-        </div>
+        <span style={{ fontSize: "14px", lineHeight: 1 }}>📄</span>
+        <span>{locale === "ar" ? "تقارير PDF" : "PDF Reports"}</span>
+        <span style={{
+          fontSize: "10px", fontWeight: 600, padding: "1px 5px", borderRadius: "5px",
+          background: "rgba(30,58,138,0.08)", color: "#3b5998",
+        }}>{visiblePresets.length}</span>
       </button>
     );
   }

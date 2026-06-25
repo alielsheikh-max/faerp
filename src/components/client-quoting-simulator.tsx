@@ -25,6 +25,10 @@ type CatalogItem = {
   tier4_discount?: number;
   moq: number;
   transportation_per_unit: number;
+  // MG Approval: pending revision hold
+  approval_status?: string;
+  last_approved_sell_min?: number | null;
+  last_approved_sell_max?: number | null;
 };
 
 /** Round up to nearest 5 EGP — matches SC pricing engine */
@@ -144,7 +148,8 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
   }, [isDropdownOpen]);
 
   const selectedItem = initialRows.find((row) => String(row.item_id) === selectedItemId);
-  const isPublished = selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null;
+  const isPendingRevision = !!(selectedItem && selectedItem.approval_status !== "approved" && selectedItem.last_approved_sell_min != null);
+  const isPublished = selectedItem && selectedItem.sell_min !== null && selectedItem.sell_max !== null && !isPendingRevision;
   const isItemTiered = !!(selectedItem && selectedItem.is_tiered === 1 && selectedItem.buy_avg);
 
   // When item changes: reset qty to MOQ so SA starts from a valid quantity
@@ -511,7 +516,7 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
               document.body
             )}
 
-            {selectedItemId && !isPublished && (
+            {selectedItemId && !isPublished && !isPendingRevision && (
               <div style={{ 
                 padding: "12px 16px", 
                 backgroundColor: "rgba(239, 68, 68, 0.1)", 
@@ -523,6 +528,41 @@ export default function ClientQuotingSimulator({ initialRows, month }: ClientQuo
                 marginTop: "4px"
               }}>
                 {t.notPublishedWarning}
+              </div>
+            )}
+
+            {isPendingRevision && (
+              <div className="animate-fade-in" style={{
+                padding: "16px",
+                backgroundColor: "rgba(245, 158, 11, 0.10)",
+                border: "1.5px solid rgba(245, 158, 11, 0.4)",
+                borderRadius: "8px",
+                color: "#b45309",
+                fontSize: "13px",
+                fontWeight: 600,
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                marginTop: "4px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "20px" }}>🔒</span>
+                  <strong>{locale === "ar" ? "⏳ مراجعة معلقة 🔒" : "⏳ Pending Revision 🔒"}</strong>
+                </div>
+                <p style={{ margin: 0, fontSize: "12px", color: "#92400e", lineHeight: 1.5 }}>
+                  {locale === "ar" ? "السعر قيد المراجعة من المدير - العروض متوقفة مؤقتاً" : "Price is being revised and is awaiting MG approval — quoting is on hold"}
+                </p>
+                <div style={{ display: "flex", gap: "16px", padding: "10px 12px", background: "rgba(245,158,11,0.08)", borderRadius: "6px", opacity: 0.7, marginTop: "4px" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{locale === "ar" ? "الأدنى" : "Min"}</div>
+                    <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(selectedItem?.last_approved_sell_min)}</strong>
+                  </div>
+                  <span style={{ color: "var(--text-dim)" }}>—</span>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{locale === "ar" ? "الأقصى" : "Max"}</div>
+                    <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(selectedItem?.last_approved_sell_max)}</strong>
+                  </div>
+                </div>
               </div>
             )}
 

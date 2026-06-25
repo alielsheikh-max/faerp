@@ -300,12 +300,18 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                           <td style={{ padding: "8px 12px", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : "var(--text-primary)", minWidth: "130px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                               {isBest && <span>🏆</span>}
-                              <span
+                          <span
                                 onClick={() => window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: e.supplier_id } }))}
                                 className="clickable-detail-trigger"
                               >
                                 {e.supplier_display_name}
                               </span>
+                              {(() => {
+                                const item = items.find(it => it.id === e.item_id);
+                                return item?.recommended_supplier_id === e.supplier_id ? (
+                                  <span style={{ color: "#eab308", fontSize: "12px", cursor: "help", flexShrink: 0 }} title={isAr ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>
+                                ) : null;
+                              })()}
                               {e.status === 'pending' && (
                                 <span className="badge badge-warning" style={{ fontSize: '9px', padding: '1px 6px', lineHeight: 1 }}>
                                   {isAr ? "معلق" : "Pending"}

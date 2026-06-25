@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useI18n } from "@/lib/i18n-context";
-import { getSupplierQuotesHistoryAction } from "@/app/actions/admin";
+import { getSupplierQuotesHistoryAction, getSupplierConfirmedPricesAction } from "@/app/actions/admin";
 
 type Supplier = {
   id: number;
@@ -256,13 +256,20 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
   const { locale } = useI18n();
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "chart" | "history">("overview");
+  const [confirmedHistory, setConfirmedHistory] = useState<any[]>([]);
+  const [confirmedLoading, setConfirmedLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"overview" | "chart" | "history" | "confirmed">("overview");
 
   useEffect(() => {
     setLoading(true);
+    setConfirmedLoading(true);
     getSupplierQuotesHistoryAction(supplier.id).then((res) => {
       if (res.success && res.quotes) setQuotes(res.quotes as QuoteRow[]);
       setLoading(false);
+    });
+    getSupplierConfirmedPricesAction(supplier.id).then((res) => {
+      if (res.success && res.history) setConfirmedHistory(res.history);
+      setConfirmedLoading(false);
     });
   }, [supplier.id]);
 
@@ -290,6 +297,7 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
     { id: "overview" as const, label: locale === "ar" ? "نظرة عامة" : "Overview", icon: "🏢" },
     { id: "chart"    as const, label: locale === "ar" ? "سجل الأسعار" : "Price Chart", icon: "📈" },
     { id: "history"  as const, label: locale === "ar" ? "جميع العروض" : "All Quotes", icon: "🧾" },
+    { id: "confirmed" as const, label: locale === "ar" ? "الاعتمادات المؤكدة" : "Confirmed Prices", icon: "✅" },
   ];
 
   const handlePrint = () => {
@@ -991,6 +999,94 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
                               </td>
                               <td style={{ padding: "10px 14px", color: "var(--text-muted)", whiteSpace: "nowrap", fontSize: "11px" }}>
                                 {formatDate(q.recorded_at)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ═══════ CONFIRMED PRICING TAB ═══════ */}
+            {activeTab === "confirmed" && (
+              <div>
+                {confirmedLoading ? (
+                  <div style={{ padding: "70px", textAlign: "center", color: "var(--text-muted)" }}>
+                    ⏳ {locale === "ar" ? "جارٍ تحميل السجل..." : "Loading history..."}
+                  </div>
+                ) : confirmedHistory.length === 0 ? (
+                  <div style={{ padding: "60px", textAlign: "center", color: "var(--text-muted)", backgroundColor: "var(--bg-subtle)", borderRadius: "12px", border: "1px solid var(--border-light)" }}>
+                    <div style={{ fontSize: "40px", marginBottom: "12px" }}>📭</div>
+                    <div style={{ fontWeight: "700" }}>
+                      {locale === "ar" ? "لا توجد أسعار معتمدة مؤكدة." : "No confirmed approved prices."}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ margin: "0 0 14px", fontSize: "12px", color: "var(--text-muted)" }}>
+                      {locale === "ar"
+                        ? `${confirmedHistory.length} أسعار معتمدة — مرتبة من الأحدث إلى الأقدم`
+                        : `${confirmedHistory.length} approved prices — sorted newest first`}
+                    </p>
+                    <div style={{ overflowX: "auto", borderRadius: "10px", border: "1px solid var(--border-light)" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                        <thead>
+                          <tr style={{ backgroundColor: "var(--bg-elevated)" }}>
+                            {[
+                              locale === "ar" ? "الشهر"               : "Month",
+                              locale === "ar" ? "المنتج"               : "Item",
+                              locale === "ar" ? "القسم"                : "Category",
+                              locale === "ar" ? "السعر الأساسي"       : "Cost Base",
+                              locale === "ar" ? "الاستراتيجية"         : "Strategy",
+                              locale === "ar" ? "النطاق المعتمد"       : "Approved Sell Range",
+                            ].map((h) => (
+                              <th key={h} style={{
+                                padding: "11px 14px", textAlign: locale === "ar" ? "right" : "left", fontWeight: "700",
+                                fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase",
+                                letterSpacing: "0.07em", borderBottom: "2px solid var(--border-medium)",
+                                whiteSpace: "nowrap",
+                              }}>
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {confirmedHistory.map((row, i) => (
+                            <tr key={i} style={{
+                              backgroundColor: i % 2 === 0 ? "transparent" : "var(--bg-subtle)",
+                              borderBottom: "1px solid var(--border-light)",
+                            }}>
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap", fontWeight: "700", color: "var(--text-primary)" }}>
+                                {formatMonth(row.month)}
+                              </td>
+                              <td style={{ padding: "10px 14px", maxWidth: "200px" }}>
+                                <span style={{ display: "block", fontWeight: "600", color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                  title={row.item_name}>
+                                  {row.item_name}
+                                </span>
+                                <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>
+                                  {row.unit}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 14px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                {row.category_name}
+                              </td>
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                                <strong style={{ color: "var(--text-primary)", fontSize: "13px" }}>
+                                  EGP {row.cost_base.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </strong>
+                              </td>
+                              <td style={{ padding: "10px 14px", textAlign: "center" }}>
+                                <span className="badge" style={{ fontSize: "11px", textTransform: "uppercase" }}>
+                                  {row.strategy}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap", fontWeight: "800", color: "var(--success)" }}>
+                                EGP {row.sell_min.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - EGP {row.sell_max.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                             </tr>
                           ))}

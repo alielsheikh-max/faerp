@@ -6,6 +6,7 @@ import {
   getItemSupplierPurchasingHistory,
   getItemSellingPriceHistory,
   getPreviousApprovedPrice,
+  database,
 } from "@/lib/db";
 import { SectionIntro, StatCard } from "@/components/app-shell";
 import ApprovalsHistory from "@/components/approvals-history";
@@ -41,6 +42,17 @@ export default function SCApprovalsPage() {
   const rejectedRevisionsCount = allRevisions.filter((r) => r.status === "rejected").length;
 
   const totalPending = pendingQuotes.length + pendingRevisions.length;
+
+  // Load outgoing proposals from SC to MG
+  const outgoingProposals = database().prepare(`
+    SELECT sp.*, i.name as item_name, i.unit, c.name as category_name,
+           s.name as supplier_name, s.fame_name as supplier_fame_name
+    FROM selling_prices sp
+    JOIN items i ON sp.item_id = i.id
+    JOIN categories c ON i.category_id = c.id
+    LEFT JOIN suppliers s ON sp.confirmed_supplier_id = s.id
+    ORDER BY sp.month DESC, sp.created_at DESC, i.name ASC
+  `).all() as any[];
 
   return (
     <div className="page-stack">
@@ -109,6 +121,7 @@ export default function SCApprovalsPage() {
         <ApprovalsCenterClient
           pendingQuotes={pendingQuotesWithHistory}
           pendingRevisions={pendingRevisions}
+          outgoingProposals={outgoingProposals}
           username={session.displayName}
           month={month}
         />

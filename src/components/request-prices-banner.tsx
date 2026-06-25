@@ -50,6 +50,7 @@ type Item = {
   active: number;
   category_id: number;
   category_name: string;
+  recommended_supplier_id?: number | null;
 };
 
 type Supplier = {
@@ -107,6 +108,7 @@ export default function RequestPricesBanner({
 
   const filteredCategoryItems = currentCategoryItems.filter((item) => {
     if (selectedSupplierId === "") return true; // General
+    if (item.recommended_supplier_id === selectedSupplierId) return true;
     const supplier = suppliers.find(s => s.id === selectedSupplierId);
     if (!supplier) return true;
     return isItemRelatedToSupplier(item.name, supplier.represented_products);
@@ -134,6 +136,7 @@ export default function RequestPricesBanner({
     const initialChecked: Record<number, boolean> = {};
     const visibleItems = currentCategoryItems.filter((item) => {
       if (supId === "") return true;
+      if (item.recommended_supplier_id === supId) return true;
       const supplier = suppliers.find(s => s.id === supId);
       if (!supplier) return true;
       return isItemRelatedToSupplier(item.name, supplier.represented_products);

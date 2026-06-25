@@ -58,6 +58,7 @@ type Item = {
   category_name: string;
   quote_count: number;
   pending_request_count?: number;
+  recommended_supplier_id?: number | null;
 };
 
 type AdminPanelProps = {
@@ -689,9 +690,24 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                   <span>{t("admin.unit")}</span>
                   <input name="unit" type="text" placeholder="Piece / Box / Roll" required />
                 </label>
+                <label className="field">
+                  <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+                  <select name="recommendedSupplierId" defaultValue="">
+                    <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.fame_name || supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="field field-wide">
                   <span>{t("admin.spec")}</span>
                   <input name="description" type="text" placeholder={t("admin.description")} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
+                  <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
                 </label>
                 <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
                   <button type="submit" className="button button-primary button-block">
@@ -783,86 +799,105 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                   </div>
                 ))
               ) : (
-                filteredItems.map((item) => (
+                filteredItems.map((item, idx) => (
                   <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide"
-                    style={{ position: "relative" }}>
+                    style={{ position: "relative", flexDirection: "column", gap: "0", background: idx % 2 === 0 ? "var(--bg-elevated)" : "rgba(99,102,241,0.04)" }}>
                     {/* T2: Bulk select checkbox */}
                     {bulkItemMode && (
-                      <div style={{ display: "flex", alignItems: "center", marginInlineEnd: "4px" }}>
+                      <div style={{ position: "absolute", top: "14px", insetInlineStart: "14px", zIndex: 1 }}>
                         <input type="checkbox" checked={selectedItemIds.has(item.id)}
                           onChange={() => toggleItem(item.id)}
                           style={{ width: "16px", height: "16px", accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
                       </div>
                     )}
                     <input type="hidden" name="id" value={item.id} />
-                    <label className="field">
-                      <span>{t("admin.category")}</span>
-                      <select name="categoryId" defaultValue={item.category_id} required>
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {(item.pending_request_count ?? 0) > 0 && (
-                      <span className="badge badge-warning" style={{ fontSize: "10px", alignSelf: "center", marginTop: "18px" }}>⏳ {item.pending_request_count} {t("admin.pending")}</span>
-                    )}
-                    <label className="field" style={{ minWidth: "140px" }}>
-                      <span>{t("admin.name")}</span>
-                      <input name="name" defaultValue={item.name} required />
-                    </label>
-                    <label className="field" style={{ minWidth: "70px" }}>
-                      <span>{t("admin.unit")}</span>
-                      <input name="unit" defaultValue={item.unit} required />
-                    </label>
-                    <label className="field">
-                      <span>{t("admin.description")}</span>
-                      <input name="description" defaultValue={item.description} />
-                    </label>
-                    <label className="checkbox-row checkbox-inline" style={{ marginTop: "24px" }}>
-                      <input type="checkbox" name="active" defaultChecked={item.active === 1} />
-                      <span>{t("admin.active")}</span>
-                    </label>
-                    <span className="mini-stat" style={{ paddingBottom: "10px", fontSize: "11px" }}>
-                      {item.quote_count} {t("admin.quotes")}
-                    </span>
-                    <div className="inline-editor-actions">
-                      <button type="submit" className="button button-primary" style={{ padding: "10px 12px" }}>
-                        {t("admin.save")}
-                      </button>
+                    
+                    {/* Row 1: Item name — dedicated full-width row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", paddingBottom: "8px", borderBottom: "1px solid var(--border-light)", marginBottom: "10px" }}>
+                      <label className="field" style={{ flex: 1, minWidth: 0, marginBottom: 0 }}>
+                        <span>{t("admin.name")}</span>
+                        <input name="name" defaultValue={item.name} required style={{ fontSize: "14px", fontWeight: 700 }} />
+                      </label>
+                      {(item.pending_request_count ?? 0) > 0 && (
+                        <span className="badge badge-warning" style={{ fontSize: "10px", alignSelf: "flex-end", marginBottom: "4px" }}>⏳ {item.pending_request_count} {t("admin.pending")}</span>
+                      )}
                     </div>
-                    {confirmDeleteId?.type === "item" && confirmDeleteId.id === item.id ? (
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        <button
-                          type="submit"
-                          formAction={deleteItemAction}
-                          className="button button-danger"
-                          style={{ padding: "10px 12px" }}
-                          name="id"
-                          value={item.id}
-                        >
-                          {t("admin.confirm")}
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          style={{ padding: "10px 12px" }}
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          {t("admin.cancel")}
+
+                    {/* Row 2: All other fields */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-end", width: "100%" }}>
+                      <label className="field">
+                        <span>{t("admin.category")}</span>
+                        <select name="categoryId" defaultValue={item.category_id} required>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field" style={{ minWidth: "70px" }}>
+                        <span>{t("admin.unit")}</span>
+                        <input name="unit" defaultValue={item.unit} required />
+                      </label>
+                      <label className="field" style={{ minWidth: "120px" }}>
+                        <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+                        <select name="recommendedSupplierId" defaultValue={item.recommended_supplier_id ?? ""}>
+                          <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                          {suppliers.map((supplier) => (
+                            <option key={supplier.id} value={supplier.id}>
+                              {supplier.fame_name || supplier.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>{t("admin.description")}</span>
+                        <input name="description" defaultValue={item.description} />
+                      </label>
+                      <label className="checkbox-row checkbox-inline" style={{ marginTop: "24px" }}>
+                        <input type="checkbox" name="active" defaultChecked={item.active === 1} />
+                        <span>{t("admin.active")}</span>
+                      </label>
+                      <span className="mini-stat" style={{ paddingBottom: "10px", fontSize: "11px" }}>
+                        {item.quote_count} {t("admin.quotes")}
+                      </span>
+                      <div className="inline-editor-actions">
+                        <button type="submit" className="button button-primary" style={{ padding: "10px 12px" }}>
+                          {t("admin.save")}
                         </button>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="button button-secondary button-danger"
-                        style={{ padding: "10px 12px" }}
-                        onClick={() => setConfirmDeleteId({ type: "item", id: item.id })}
-                      >
-                        {t("admin.delete")}
-                      </button>
-                    )}
+                      {confirmDeleteId?.type === "item" && confirmDeleteId.id === item.id ? (
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            type="submit"
+                            formAction={deleteItemAction}
+                            className="button button-danger"
+                            style={{ padding: "10px 12px" }}
+                            name="id"
+                            value={item.id}
+                          >
+                            {t("admin.confirm")}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            style={{ padding: "10px 12px" }}
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            {t("admin.cancel")}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="button button-secondary button-danger"
+                          style={{ padding: "10px 12px" }}
+                          onClick={() => setConfirmDeleteId({ type: "item", id: item.id })}
+                        >
+                          {t("admin.delete")}
+                        </button>
+                      )}
+                    </div>
                   </form>
                 ))
               )}
@@ -1376,9 +1411,24 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               <span>{t("admin.unit")}</span>
               <input name="unit" type="text" placeholder="Piece / Box / Roll" required />
             </label>
+            <label className="field">
+              <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+              <select name="recommendedSupplierId" defaultValue="">
+                <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.fame_name || supplier.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="field field-wide">
               <span>{t("admin.spec")}</span>
               <input name="description" type="text" placeholder={t("admin.description")} />
+            </label>
+            <label className="field">
+              <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
+              <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
             </label>
             <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
               <button type="submit" className="button button-primary button-block">
@@ -1436,6 +1486,17 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                   <label className="field" style={{ minWidth: "70px" }}>
                     <span>{t("admin.unit")}</span>
                     <input name="unit" defaultValue={item.unit} required />
+                  </label>
+                  <label className="field" style={{ minWidth: "120px" }}>
+                    <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+                    <select name="recommendedSupplierId" defaultValue={item.recommended_supplier_id ?? ""}>
+                      <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.fame_name || supplier.name}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="field">
                     <span>{t("admin.description")}</span>

@@ -41,6 +41,25 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
             <span className="badge">{t("search.suppliersCount").replace("{count}", String(supplierStats.length))}</span>
             <span className="badge">{t("search.monthsCount").replace("{count}", String(months.length))}</span>
           </div>
+          {item.recommended_supplier_name && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              marginTop: "8px", padding: "7px 12px", borderRadius: "8px",
+              background: "rgba(234,179,8,0.08)", border: "1.5px solid rgba(234,179,8,0.30)",
+            }}>
+              <span style={{ fontSize: "14px", flexShrink: 0 }}>⭐</span>
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#92400e" }}>
+                {locale === "ar" ? "المورد الموصى به" : "Recommended Supplier"}
+              </span>
+              <span style={{
+                fontSize: "12px", fontWeight: 800, color: "#b45309",
+                padding: "2px 8px", borderRadius: "6px",
+                background: "rgba(234,179,8,0.12)",
+              }}>
+                {item.recommended_supplier_name}
+              </span>
+            </div>
+          )}
         </div>
         <Link
           href={`/dashboard/admin/items/${item.id}`}
@@ -59,21 +78,33 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
             {months[0] ? formatMonthLabel(months[0]) : t("search.latest")} — {t("search.supplierPrices")}
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px" }}>
-            {supplierStats.map((sup, idx) => {
-              const color = COLORS[idx % COLORS.length];
-              const isBest = idx === 0;
-              return (
-                <div key={sup.name} style={{ padding: "12px 14px", borderRadius: "var(--radius)", border: `1.5px solid ${isBest ? "var(--info)" : color + "44"}`, background: isBest ? "var(--info-light)" : color + "0a", position: "relative" }}>
-                  {isBest && <span style={{ position: "absolute", top: "5px", insetInlineEnd: "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>{t("search.best")}</span>}
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
-                    <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
-                    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sup.name}</span>
+            {(() => {
+              // Resolve recommended supplier name from priceRows
+              const recSupName = item.recommended_supplier_id
+                ? data.priceRows.find(r => r.supplier_id === item.recommended_supplier_id)?.supplier_name ?? null
+                : null;
+              return supplierStats.map((sup, idx) => {
+                const color = COLORS[idx % COLORS.length];
+                const isBest = idx === 0;
+                const isRecommended = recSupName !== null && sup.name === recSupName;
+                return (
+                  <div key={sup.name} style={{
+                    padding: "12px 14px", borderRadius: "var(--radius)", position: "relative",
+                    border: `1.5px solid ${isRecommended ? "rgba(234,179,8,0.5)" : isBest ? "var(--info)" : color + "44"}`,
+                    background: isRecommended ? "rgba(234,179,8,0.06)" : isBest ? "var(--info-light)" : color + "0a",
+                  }}>
+                    {isBest && <span style={{ position: "absolute", top: "5px", insetInlineEnd: isRecommended ? "30px" : "6px", fontSize: "8px", fontWeight: 800, background: "var(--info)", color: "#fff", padding: "1px 5px", borderRadius: "4px" }}>{t("search.best")}</span>}
+                    {isRecommended && <span style={{ position: "absolute", top: "5px", insetInlineEnd: "6px", fontSize: "12px", cursor: "help" }} title={locale === "ar" ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>}
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
+                      <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sup.name}</span>
+                    </div>
+                    <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
+                    <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>{t("search.avg").toLowerCase()} {formatCurrency(sup.avg)}</div>
                   </div>
-                  <div style={{ fontSize: "17px", fontWeight: 800, color: isBest ? "var(--info)" : "var(--text-primary)" }}>{formatCurrency(sup.latestPrice)}</div>
-                  <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "3px" }}>{t("search.avg").toLowerCase()} {formatCurrency(sup.avg)}</div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
 
@@ -112,50 +143,65 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
               <thead>
                 <tr style={{ background: "var(--bg-elevated)" }}>
-                  <th style={{ padding: "7px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, insetInlineStart: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>{t("search.month")}</th>
-                  {supplierNames.map((s, i) => (
-                    <th key={s} style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: COLORS[i % COLORS.length], borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: COLORS[i % COLORS.length], display: "inline-block" }} />{s}
-                      </span>
-                    </th>
-                  ))}
+                  <th style={{ padding: "7px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, insetInlineStart: 0, background: "var(--bg-elevated)", zIndex: 3, whiteSpace: "nowrap", boxShadow: "1px 0 0 var(--border-light), 0 1px 0 var(--border)" }}>{t("search.supplier")}</th>
+                  {visibleMonths.map((m, mi) => {
+                    const isLatest = mi === 0;
+                    return (
+                      <th key={m} style={{ padding: "7px 12px", textAlign: "center", fontWeight: isLatest ? 800 : 700, fontSize: "10px", color: isLatest ? "var(--primary)" : "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>
+                        {formatMonthLabel(m)}
+                        {isLatest && <span style={{ fontSize: "7px", fontWeight: 800, marginInlineStart: "4px", color: "var(--primary)", verticalAlign: "super" }}>{t("search.latestLabel")}</span>}
+                      </th>
+                    );
+                  })}
                   <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--primary)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{t("search.avg")}</th>
-                  {role === "SC" && <th style={{ padding: "7px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", color: "var(--warning)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2, whiteSpace: "nowrap", boxShadow: "0 1px 0 var(--border)" }}>{t("search.sellRange")}</th>}
                 </tr>
               </thead>
               <tbody>
-                {visibleMonths.map((m, mi) => {
-                  const monthRow = grid.get(m);
-                  const mPrices = supplierNames.map(s => monthRow?.get(s)?.price).filter((p): p is number => p !== undefined);
-                  const avg = mPrices.length ? mPrices.reduce((a, b) => a + b, 0) / mPrices.length : null;
-                  const minP = mPrices.length ? Math.min(...mPrices) : null;
-                  const sell = role === "SC" ? sellingRows.find(s => s.month === m) : null;
-                  const isLatest = mi === 0;
+                {supplierNames.map((sName, si) => {
+                  const color = COLORS[si % COLORS.length];
+                  const allPrices = visibleMonths.map(m => grid.get(m)?.get(sName)?.price).filter((p): p is number => p !== undefined);
+                  const avg = allPrices.length ? allPrices.reduce((a, b) => a + b, 0) / allPrices.length : null;
                   return (
-                    <tr key={m} style={{ borderBottom: "1px solid var(--border-light)", background: isLatest ? "rgba(99,102,241,0.03)" : "transparent" }}>
-                      <td style={{ padding: "8px 12px", position: "sticky", insetInlineStart: 0, background: isLatest ? "rgba(99,102,241,0.05)" : "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
-                        <span style={{ fontSize: "11px", fontWeight: isLatest ? 800 : 600, color: isLatest ? "var(--primary)" : "var(--text-secondary)" }}>{formatMonthLabel(m)}</span>
-                        {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, marginInlineStart: "5px", color: "var(--primary)" }}>{t("search.latestLabel")}</span>}
+                    <tr key={sName} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                      <td style={{ padding: "8px 12px", position: "sticky", insetInlineStart: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                          <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>{sName}</span>
+                        </span>
                       </td>
-                      {supplierNames.map(s => {
-                        const entry = monthRow?.get(s);
+                      {visibleMonths.map(m => {
+                        const entry = grid.get(m)?.get(sName);
+                        // Find the cheapest price in this month across all suppliers
+                        const monthPrices = supplierNames.map(s => grid.get(m)?.get(s)?.price).filter((p): p is number => p !== undefined);
+                        const minP = monthPrices.length ? Math.min(...monthPrices) : null;
                         const isBest = entry && minP !== null && entry.price === minP;
                         return (
-                          <td key={s} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(2,132,199,0.08)" : "transparent" }}>
+                          <td key={m} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontWeight: isBest ? 800 : 400, color: isBest ? "var(--info)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(2,132,199,0.08)" : "transparent" }}>
                             {entry ? formatCurrency(entry.price) : "—"}
                           </td>
                         );
                       })}
                       <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap" }}>{avg !== null ? formatCurrency(avg) : "—"}</td>
-                      {role === "SC" && (
-                        <td style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontSize: "11px" }}>
-                          {sell ? <><span style={{ color: "var(--success)", fontWeight: 700 }}>{formatCurrency(sell.sell_min)}</span><span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span><span style={{ color: "var(--primary)", fontWeight: 700 }}>{formatCurrency(sell.sell_max)}</span></> : <span style={{ color: "var(--text-dim)" }}>—</span>}
-                        </td>
-                      )}
                     </tr>
                   );
                 })}
+                {/* SC: Sell Range row */}
+                {role === "SC" && sellingRows.length > 0 && (
+                  <tr style={{ borderTop: "2px solid var(--border)", background: "rgba(245,158,11,0.04)" }}>
+                    <td style={{ padding: "8px 12px", position: "sticky", insetInlineStart: 0, background: "var(--bg-surface)", zIndex: 1, boxShadow: "1px 0 0 var(--border-light)", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--warning)", textTransform: "uppercase" }}>{t("search.sellRange")}</span>
+                    </td>
+                    {visibleMonths.map(m => {
+                      const sell = sellingRows.find(s => s.month === m);
+                      return (
+                        <td key={m} style={{ padding: "8px 12px", textAlign: "center", whiteSpace: "nowrap", fontSize: "11px" }}>
+                          {sell ? <><span style={{ color: "var(--success)", fontWeight: 700 }}>{formatCurrency(sell.sell_min)}</span><span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span><span style={{ color: "var(--primary)", fontWeight: 700 }}>{formatCurrency(sell.sell_max)}</span></> : <span style={{ color: "var(--text-dim)" }}>—</span>}
+                        </td>
+                      );
+                    })}
+                    <td style={{ padding: "8px 12px" }}></td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

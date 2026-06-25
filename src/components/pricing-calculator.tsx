@@ -65,6 +65,8 @@ type PricingCalculatorProps = {
   scTransportOverrideEnabled?: boolean;
   /** Admin has enabled tier pricing for this month — SC can switch strategy per item */
   tierEnabled?: boolean;
+  buyFav?: number;
+  recommendedSupplierId?: number | null;
 };
 
 export default function PricingCalculator({
@@ -94,6 +96,8 @@ export default function PricingCalculator({
   suppliers = [],
   scTransportOverrideEnabled = false,
   tierEnabled = false,
+  buyFav = 0,
+  recommendedSupplierId = null,
 }: PricingCalculatorProps) {
   const [sellMinStr, setSellMinStr] = useState<string>("");
   const [sellMaxStr, setSellMaxStr] = useState<string>("");
@@ -116,7 +120,7 @@ export default function PricingCalculator({
 
   // ── Markup Assistant state ─────────────────────────────────────────
   const [useMarkup, setUseMarkup]       = useState(true);
-  const [markupRef, setMarkupRef]       = useState<"min" | "avg" | "max">("max");
+  const [markupRef, setMarkupRef]       = useState<"min" | "avg" | "max" | "fav">("max");
   const [markupType, setMarkupType]     = useState<"pct" | "fixed" | "div">("pct");
   const [markupMinVal, setMarkupMinVal] = useState<string>("");
   const [markupMaxVal, setMarkupMaxVal] = useState<string>("");
@@ -220,6 +224,9 @@ export default function PricingCalculator({
     };
   }, [priceEntries, itemId, month, buyMin, tierEnabled, isTiered, floorPct, tier2Discount, tier3Discount, tier4Discount, transportOverrideEnabled, transportOverrideAmount, transportation, otherExpenses]);
 
+  // Effective transport: use override if enabled, else use the item's fixed transportation
+  const effectiveTransport = transportOverrideEnabled ? (parseFloat(transportOverrideAmount) || 0) : transportation;
+
   const { locale } = useI18n();
   const router = useRouter();
 
@@ -270,6 +277,39 @@ export default function PricingCalculator({
     });
   }, [priceEntries, suppliers, itemId, last3Months]);
 
+  // ── Recommended Supplier ↔ Min/Max detection ──────────────────────
+  const { isRecommendedMin, isRecommendedMax, recommendedSupplierName } = useMemo(() => {
+    if (!recommendedSupplierId || !priceEntries || !suppliers) {
+      return { isRecommendedMin: false, isRecommendedMax: false, recommendedSupplierName: "" };
+    }
+    // Get current-month quotes for this item
+    const currentMonthEntries = priceEntries.filter(
+      (pe) => pe.item_id === itemId && pe.month === month
+    );
+    // Build latest price per supplier for current month
+    const latestBySupplier = new Map<number, number>();
+    for (const pe of currentMonthEntries) {
+      latestBySupplier.set(pe.supplier_id, pe.price);
+    }
+    // Find which suppliers have min/max
+    let minSupplierId: number | null = null;
+    let maxSupplierId: number | null = null;
+    let minPrice = Infinity;
+    let maxPrice = -Infinity;
+    for (const [sid, price] of latestBySupplier) {
+      if (price < minPrice) { minPrice = price; minSupplierId = sid; }
+      if (price > maxPrice) { maxPrice = price; maxSupplierId = sid; }
+    }
+    // Get recommended supplier name
+    const recSup = suppliers.find(s => s.id === recommendedSupplierId);
+    const name = recSup ? (recSup.fame_name || recSup.name) : "";
+    return {
+      isRecommendedMin: minSupplierId === recommendedSupplierId,
+      isRecommendedMax: maxSupplierId === recommendedSupplierId,
+      recommendedSupplierName: name,
+    };
+  }, [recommendedSupplierId, priceEntries, suppliers, itemId, month]);
+
   // Group history by month, latest record per month, up to 3 most recent months
   const publishedPriceHistory = useMemo(() => {
     const byMonth = new Map<string, typeof history[0]>();
@@ -292,7 +332,7 @@ export default function PricingCalculator({
       if (type === "div") return v > 0 ? ref / v : ref;
       return type === "pct" ? ref * (1 + v / 100) : ref + v;
     };
-    const _muRef = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
+    const _muRef = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : markupRef === "fav" ? buyFav : buyMax;
     const sellMinVal = useMarkup
       ? _applyMu(_muRef, markupMinVal, markupType)
       : (parseFloat(sellMinStr) || 0);
@@ -311,8 +351,8 @@ export default function PricingCalculator({
       return;
     }
 
-    const baseMin = sellMinVal - transportation - otherExpenses;
-    const baseMax = sellMaxVal - transportation - otherExpenses;
+    const baseMin = sellMinVal - effectiveTransport - otherExpenses;
+    const baseMax = sellMaxVal - effectiveTransport - otherExpenses;
     const calculatedMarkupMin = buyAvg > 0 ? ((baseMin / buyAvg) - 1) * 100 : 0;
     const calculatedMarkupMax = buyAvg > 0 ? ((baseMax / buyAvg) - 1) * 100 : 0;
 
@@ -329,6 +369,9 @@ export default function PricingCalculator({
     formData.set("markupMax", useMarkup ? (usesTierStrategy ? markupMinVal : markupMaxVal) : String(Math.max(0, calculatedMarkupMax)));
     formData.set("tierPricingEnabled", usesTierStrategy ? "on" : "off");
     formData.set("otherExpenses", String(otherExpenses));
+    // Send the final computed sell prices so the server stores exactly what the SC sees in the preview
+    formData.set("sellMin", String(finalSellMin));
+    formData.set("sellMax", String(finalSellMax));
     formData.set("changeReason", internalNote);
     formData.set("tier1Max", t1Max);
     formData.set("tier1Discount", t1Disc);
@@ -361,11 +404,11 @@ export default function PricingCalculator({
     // Load existing values when active item or quotes change
     const existingExpenses = existing?.other_expenses ?? 0;
     const baseSellMinVal = existing?.sell_min
-      ? (existing.sell_min - transportation - existingExpenses)
+      ? (existing.sell_min - effectiveTransport - existingExpenses)
       : buyAvg;
 
     const baseSellMaxVal = existing?.sell_max
-      ? (existing.sell_max - transportation - existingExpenses)
+      ? (existing.sell_max - effectiveTransport - existingExpenses)
       : (usesTierStrategy ? baseSellMinVal : (buyAvg * 1.1));
 
     setSellMinStr(String(parseFloat(baseSellMinVal.toFixed(2))));
@@ -405,8 +448,8 @@ export default function PricingCalculator({
     setMarkupRef("max"); // Always default Reference Cost to Max buy price
     setMarkupType("div"); // Always default Type to ÷ Divisor
 
-    const defaultDivMin = resolvedT1Disc;
-    const defaultDivMax = resolvedT2Disc;
+    const defaultDivMin = usesTierStrategy ? resolvedT1Disc : 0.82;
+    const defaultDivMax = usesTierStrategy ? resolvedT2Disc : 0.77;
 
     if (existing && existing.markup_type === "divisor") {
       setMarkupMinVal(getValidDivisor(existing.markup_min, defaultDivMin).toFixed(2));
@@ -419,7 +462,7 @@ export default function PricingCalculator({
     } else {
       setMarkupMaxVal(defaultDivMax.toFixed(2));
     }
-  }, [itemId, existing, buyMin, buyMax, buyAvg, transportation, usesTierStrategy, recommendationData.recMarkup, recommendationData.recMaxMarkup, tier1Max, tier1Discount, tier2Max, tier2Discount, tier3Max, tier3Discount, tier4Discount]);
+  }, [itemId, existing, buyMin, buyMax, buyAvg, effectiveTransport, usesTierStrategy, recommendationData.recMarkup, recommendationData.recMaxMarkup, tier1Max, tier1Discount, tier2Max, tier2Discount, tier3Max, tier3Discount, tier4Discount]);
 
   // Reset success and confirmation state ONLY when the active itemId changes
   useEffect(() => {
@@ -440,7 +483,7 @@ export default function PricingCalculator({
   // ── T8: Round up to nearest 5 EGP ───────────────────────────────────
   const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
 
-  const markupRefPrice = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : buyMax;
+  const markupRefPrice = markupRef === "min" ? buyMin : markupRef === "avg" ? buyAvg : markupRef === "fav" ? buyFav : buyMax;
 
   const convertMarkupValue = (currentValStr: string, fromType: "pct" | "fixed" | "div", toType: "pct" | "fixed" | "div"): string => {
     const val = parseFloat(currentValStr) || 0;
@@ -478,8 +521,8 @@ export default function PricingCalculator({
     : (usesTierStrategy ? effectiveSellMin : (parseFloat(sellMaxStr) || 0));
 
   // Published prices = base + transport + other expenses, rounded up to nearest 5 EGP
-  const finalSellMin = roundUp5(effectiveSellMin + transportation + otherExpenses);
-  const finalSellMax = usesTierStrategy ? finalSellMin : roundUp5(effectiveSellMax + transportation + otherExpenses);
+  const finalSellMin = roundUp5(effectiveSellMin + effectiveTransport + otherExpenses);
+  const finalSellMax = usesTierStrategy ? finalSellMin : roundUp5(effectiveSellMax + effectiveTransport + otherExpenses);
 
   // Aliases kept for legacy display labels
   const liveSellMin = effectiveSellMin;
@@ -544,6 +587,9 @@ export default function PricingCalculator({
                         >
                           {row.supplierName}
                         </span>
+                        {row.supplierId === recommendedSupplierId && (
+                          <span style={{ marginInlineStart: "4px", color: "var(--warning)", cursor: "help" }} title={locale === "ar" ? "المورد الموصى به" : "Recommended Supplier"}>⭐</span>
+                        )}
                       </td>
                       {row.quotes.map((price, idx) => (
                         <td key={idx} style={{ padding: "8px 4px", textAlign: "right" }}>
@@ -770,129 +816,6 @@ export default function PricingCalculator({
         </div>
       )}
 
-      {publishSuccess ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {/* Animated Success Banner */}
-          <div style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "40px 16px",
-            textAlign: "center",
-            background: "var(--bg-elevated)",
-            borderRadius: "12px",
-            border: "1.5px solid var(--success)",
-            boxShadow: "var(--shadow-sm)",
-            animation: "scaleIn 0.3s ease-out-back"
-          }}>
-            <div style={{
-              width: "64px",
-              height: "64px",
-              borderRadius: "50%",
-              background: "var(--success-light)",
-              border: "2px solid var(--success)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: "20px",
-              boxShadow: "var(--glow-success)",
-            }}>
-              <span style={{ fontSize: "32px", color: "var(--success)", fontWeight: "bold" }}>✓</span>
-            </div>
-
-            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "8px" }}>
-              {locale === "ar" ? "تم نشر الأسعار بنجاح!" : "Selling Prices Published!"}
-            </h3>
-            
-            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "340px", margin: "0 auto 20px", lineHeight: 1.6 }}>
-              {locale === "ar" 
-                ? "تم تحديث أسعار البيع وتعميمها على جميع مندوبي المبيعات في النظام فوراً."
-                : "The new selling prices have been successfully published and are now live for all Sales Agents."
-              }
-            </p>
-
-            {/* Price Summary Panel */}
-            {usesTierStrategy ? (
-              <div style={{
-                background: "var(--bg-subtle)", border: "1px solid var(--border)",
-                borderRadius: "10px", padding: "12px 16px", width: "100%",
-                maxWidth: "340px", marginBottom: "24px",
-              }}>
-                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Published Tier Prices</div>
-                {[
-                  { label: `Tier 1  (1 – ${numT1Max} units)`, price: finalSellMin },
-                  { label: `Tier 2  (${numT1Max + 1} – ${numT2Max} units)`, price: numT2Disc > 0 && numT2Disc < 1 ? roundUp5(markupRefPrice / numT2Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT2Disc / 100) + transportation + otherExpenses) },
-                  { label: `Tier 3  (${numT2Max + 1} – ${numT3Max} units)`, price: numT3Disc > 0 && numT3Disc < 1 ? roundUp5(markupRefPrice / numT3Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT3Disc / 100) + transportation + otherExpenses) },
-                  ...(numT4Disc > 0 ? [{ label: `Tier 4  (${numT3Max + 1}+ units)`, price: numT4Disc < 1 ? roundUp5(markupRefPrice / numT4Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT4Disc / 100) + transportation + otherExpenses) }] : []),
-                ].map(({ label, price }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px dashed var(--border-light)", fontSize: "12px" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>{label}</span>
-                    <strong style={{ color: "var(--success)" }}>{formatCurrency(price)}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{
-                background: "var(--bg-subtle)",
-                border: "1px solid var(--border)",
-                borderRadius: "10px",
-                padding: "12px 20px",
-                width: "100%",
-                maxWidth: "320px",
-                marginBottom: "24px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
-                <div style={{ textAlign: "left" }}>
-                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Min Price</span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)", marginTop: "2px" }}>
-                    {formatCurrency(finalSellMin)}
-                  </div>
-                </div>
-                <div style={{ height: "32px", borderLeft: "1px solid var(--border-medium)", margin: "0 12px" }} />
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Max Price</span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)", marginTop: "2px" }}>
-                    {formatCurrency(finalSellMax)}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Success Actions */}
-            <div style={{ display: "flex", gap: "10px", width: "100%", maxWidth: "320px" }}>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => {
-                  setPublishSuccess(false);
-                  setInternalNote("");
-                  setSaNote("");
-                }}
-                style={{ flex: 1, padding: "8px", fontSize: "12px", cursor: "pointer" }}
-              >
-                {locale === "ar" ? "تعديل التسعير" : "Edit Pricing"}
-              </button>
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={() => {
-                  setPublishSuccess(false);
-                  if (onSuccess) onSuccess();
-                }}
-                style={{ flex: 1, padding: "8px", fontSize: "12px", cursor: "pointer" }}
-              >
-                {locale === "ar" ? "تم" : "Done"}
-              </button>
-            </div>
-          </div>
-
-          {/* Full Card Width Reference details in success view */}
-          {historyAndQuotes}
-        </div>
-      ) : (
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           
           {/* Strategy Switcher — only visible when admin has enabled tier pricing for this month */}
@@ -977,28 +900,86 @@ export default function PricingCalculator({
                 </button>
                 {useMarkup && (
                   <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "10px" }}>
+
+                    {/* ── Recommended supplier info banner ─────────────── */}
+                    {recommendedSupplierId && recommendedSupplierName && (
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap",
+                        padding: "10px 14px", borderRadius: "8px",
+                        background: "linear-gradient(135deg, rgba(234,179,8,0.08), rgba(245,158,11,0.05))",
+                        border: "1px solid rgba(234,179,8,0.25)",
+                      }}>
+                        <span style={{ fontSize: "16px" }}>⭐</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "11px", fontWeight: 700, color: "#92400e" }}>
+                            {locale === "ar" ? "المورد الموصى به" : "Recommended Supplier"}
+                          </div>
+                          <div style={{ fontSize: "13px", fontWeight: 800, color: "#78350f", marginTop: "1px" }}>
+                            {recommendedSupplierName}
+                          </div>
+                        </div>
+                        {buyFav ? (
+                          <div style={{ textAlign: "right", flexShrink: 0 }}>
+                            <div style={{ fontSize: "9px", fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
+                              {locale === "ar" ? "سعره" : "Their Price"}
+                            </div>
+                            <div style={{ fontSize: "15px", fontWeight: 800, color: "#78350f" }}>
+                              {formatCurrency(buyFav)}
+                            </div>
+                            {(() => {
+                              if (isRecommendedMin) return <span style={{ fontSize: "9px", fontWeight: 700, color: "#059669", background: "rgba(5,150,105,0.1)", padding: "1px 6px", borderRadius: "4px" }}>{locale === "ar" ? "= الأدنى" : "= Min"}</span>;
+                              if (isRecommendedMax) return <span style={{ fontSize: "9px", fontWeight: 700, color: "#dc2626", background: "rgba(220,38,38,0.1)", padding: "1px 6px", borderRadius: "4px" }}>{locale === "ar" ? "= الأقصى" : "= Max"}</span>;
+                              if (buyFav === buyAvg) return <span style={{ fontSize: "9px", fontWeight: 700, color: "#6366f1", background: "rgba(99,102,241,0.1)", padding: "1px 6px", borderRadius: "4px" }}>{locale === "ar" ? "= المتوسط" : "= Avg"}</span>;
+                              return <span style={{ fontSize: "9px", fontWeight: 700, color: "#a16207", background: "rgba(234,179,8,0.1)", padding: "1px 6px", borderRadius: "4px" }}>{locale === "ar" ? "سعر مختلف" : "Unique Price"}</span>;
+                            })()}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "#92400e", fontStyle: "italic" }}>
+                            {locale === "ar" ? "لا يوجد سعر هذا الشهر" : "No quote this month"}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {/* Reference price selector */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                       <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         {locale === "ar" ? "السعر المرجعي" : "Reference Buy Cost"}
                       </span>
                       <div style={{ display: "flex", gap: "6px" }}>
-                        {(["min", "avg", "max"] as const).map(key => {
-                          const val = key === "min" ? buyMin : key === "avg" ? buyAvg : buyMax;
-                          const label = key === "min" ? "Min" : key === "avg" ? "Avg ⌀" : "Max ★";
+                        {((() => {
+                          // Build cards dynamically based on recommended supplier detection
+                          const showFavCard = recommendedSupplierId && !isRecommendedMin && !isRecommendedMax && buyFav && buyFav !== buyAvg;
+                          const cards: Array<{ key: "min" | "avg" | "max" | "fav"; label: string; val: number; isFav?: boolean }> = [
+                            { key: "min", label: isRecommendedMin ? "Min ⭐" : "Min", val: buyMin },
+                            { key: "avg", label: "Avg ⌀", val: buyAvg },
+                            { key: "max", label: isRecommendedMax ? "Max ⭐" : "Max ★", val: buyMax },
+                          ];
+                          if (showFavCard) {
+                            cards.push({ key: "fav", label: recommendedSupplierName ? `⭐ ${recommendedSupplierName}` : "Fav ⭐", val: buyFav!, isFav: true });
+                          }
+                          return cards;
+                        })()).map(card => {
+                          const isStarCard = (card.key === "min" && isRecommendedMin) || (card.key === "max" && isRecommendedMax);
+                          const isFavCard = card.isFav === true;
                           return (
-                            <button key={key} type="button"
-                              onClick={() => setMarkupRef(key)}
+                            <button key={card.key} type="button"
+                              onClick={() => setMarkupRef(card.key)}
                               style={{
                                 flex: 1, padding: "7px 4px", borderRadius: "7px",
-                                border: `1.5px solid ${markupRef === key ? "var(--primary)" : "var(--border)"}`,
-                                background: markupRef === key ? "var(--primary-light)" : "var(--bg-elevated)",
-                                color: markupRef === key ? "var(--primary)" : "var(--text-secondary)",
+                                border: `1.5px solid ${markupRef === card.key ? (isFavCard ? "#d97706" : "var(--primary)") : isStarCard ? "rgba(234,179,8,0.5)" : isFavCard ? "rgba(217,119,6,0.4)" : "var(--border)"}`,
+                                background: markupRef === card.key
+                                  ? (isFavCard ? "rgba(217,119,6,0.15)" : "var(--primary-light)")
+                                  : isStarCard ? "rgba(234,179,8,0.08)"
+                                  : isFavCard ? "rgba(217,119,6,0.06)"
+                                  : "var(--bg-elevated)",
+                                color: markupRef === card.key ? (isFavCard ? "#92400e" : "var(--primary)") : isFavCard ? "#a16207" : "var(--text-secondary)",
                                 fontSize: "11px", fontWeight: 700, cursor: "pointer", textAlign: "center",
                               }}
+                              title={isStarCard || isFavCard ? (locale === "ar" ? "المورد الموصى به" : "Recommended Supplier") : undefined}
                             >
-                              <div style={{ fontSize: "9px", opacity: 0.8, marginBottom: "2px" }}>{label}</div>
-                              <div>{formatCurrency(val)}</div>
+                              <div style={{ fontSize: "9px", opacity: isFavCard ? 1 : 0.8, marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.label}</div>
+                              <div>{formatCurrency(card.val)}</div>
                             </button>
                           );
                         })}
@@ -1293,9 +1274,10 @@ export default function PricingCalculator({
                 </span>
                 <div style={{ display: "flex", gap: "20px", marginTop: "8px", flexWrap: "wrap" }}>
                   {[
-                    { label: locale === "ar" ? "أقل سعر" : "Min Cost", val: buyMin, color: "var(--success)" },
+                    { label: locale === "ar" ? (isRecommendedMin ? "أقل سعر ⭐" : "أقل سعر") : (isRecommendedMin ? "Min Cost ⭐" : "Min Cost"), val: buyMin, color: "var(--success)" },
                     { label: locale === "ar" ? "متوسط السعر" : "Avg Cost", val: buyAvg, color: "var(--primary)" },
-                    { label: locale === "ar" ? "أعلى سعر" : "Max Cost", val: buyMax, color: "var(--danger)" },
+                    { label: locale === "ar" ? (isRecommendedMax ? "أعلى سعر ⭐" : "أعلى سعر") : (isRecommendedMax ? "Max Cost ⭐" : "Max Cost"), val: buyMax, color: "var(--danger)" },
+                    ...((recommendedSupplierId && !isRecommendedMin && !isRecommendedMax && buyFav) ? [{ label: locale === "ar" ? "التكلفة الموصى بها ⭐" : "Recom. Cost ⭐", val: buyFav || 0, color: "var(--warning)" }] : []),
                   ].map((s) => (
                     <div key={s.label} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                       <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>
@@ -1646,7 +1628,7 @@ export default function PricingCalculator({
                     style={{ width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
                   />
                   <span style={{ fontSize: "11.5px", color: "var(--text-primary)", lineHeight: "1.4", userSelect: "none" }}>
-                    I confirm that I want to overwrite the previously published selling prices for this month.
+                    {locale === "ar" ? "أؤكد رغبتي في تعديل الأسعار وتقديمها للاعتماد مرة أخرى." : "I confirm that I want to resubmit prices for approval."}
                   </span>
                 </label>
               </div>
@@ -1662,7 +1644,7 @@ export default function PricingCalculator({
                   display: "flex", alignItems: "center", gap: "8px", fontWeight: 600,
                 }}>
                   <span>📭</span>
-                  <span>{locale === "ar" ? "لا يمكن نشر الأسعار — لا توجد عروض أسعار موردين لهذا الشهر." : "Cannot publish — no supplier quotes exist for this month."}</span>
+                  <span>{locale === "ar" ? "لا يمكن تقديم الأسعار — لا توجد عروض أسعار موردين لهذا الشهر." : "Cannot submit — no supplier quotes exist for this month."}</span>
                 </div>
               )}
               <button
@@ -1673,9 +1655,9 @@ export default function PricingCalculator({
                   padding: "10px", fontSize: "13px", cursor: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim())) || (buyMin === 0 && buyMax === 0 && buyAvg === 0)) ? "not-allowed" : "pointer",
                   opacity: (floorViolated || maxViolated || isPending || (isUpdate && (!confirmUpdate || !internalNote.trim())) || (buyMin === 0 && buyMax === 0 && buyAvg === 0)) ? 0.5 : 1,
                 }}
-                title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : maxViolated ? "Cannot save: max markup is less than min markup" : (buyMin === 0 && buyMax === 0 && buyAvg === 0) ? "No supplier quotes — cannot publish" : undefined}
+                title={floorViolated ? `Cannot save: below minimum margin floor of ${floorPct}%` : maxViolated ? "Cannot save: max markup is less than min markup" : (buyMin === 0 && buyMax === 0 && buyAvg === 0) ? "No supplier quotes — cannot submit" : undefined}
               >
-                {isPending ? "Publishing..." : isUpdate ? "Update Selling Prices" : "Publish Selling Prices to Sales"}
+                {isPending ? (locale === "ar" ? "جاري التقديم..." : "Submitting...") : isUpdate ? (locale === "ar" ? "تقديم التحديثات للاعتماد" : "Submit Updates for Approval") : (locale === "ar" ? "تقديم أسعار البيع للاعتماد" : "Submit Selling Prices for Approval")}
               </button>
               {floorViolated && (
                 <p style={{ textAlign: "center", fontSize: "11px", color: "var(--danger)", marginTop: "6px", fontWeight: 600 }}>
@@ -1685,6 +1667,125 @@ export default function PricingCalculator({
             </div>
           </div>
         </form>
+
+      {/* Success Modal Overlay */}
+      {publishSuccess && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+        }}>
+          <div className="animate-scale-in" style={{
+            background: "var(--bg-elevated)",
+            borderRadius: "16px",
+            border: "1.5px solid var(--success)",
+            boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            padding: "40px 32px",
+            width: "100%",
+            maxWidth: "420px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+          }}>
+            {/* Animated Checkmark */}
+            <div style={{
+              width: "64px", height: "64px", borderRadius: "50%",
+              background: "var(--success-light)", border: "2px solid var(--success)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: "20px", boxShadow: "var(--glow-success)",
+            }}>
+              <span style={{ fontSize: "32px", color: "var(--success)", fontWeight: "bold" }}>✓</span>
+            </div>
+
+            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "8px" }}>
+              {locale === "ar" ? "تم التقديم للاعتماد" : "Submitted for Approval"}
+            </h3>
+
+            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "340px", margin: "0 auto 20px", lineHeight: 1.6 }}>
+              {locale === "ar"
+                ? "تم تقديم أسعار البيع الجديدة للاعتماد بنجاح، وهي بانتظار موافقة المدير لتصبح معتمدة."
+                : "The new selling prices have been successfully submitted for approval and are now pending manager review."
+              }
+            </p>
+
+            {/* Price Summary */}
+            {usesTierStrategy ? (
+              <div style={{
+                background: "var(--bg-subtle)", border: "1px solid var(--border)",
+                borderRadius: "10px", padding: "12px 16px", width: "100%",
+                maxWidth: "340px", marginBottom: "24px",
+              }}>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>
+                  {locale === "ar" ? "أسعار الشرائح المقدمة" : "Submitted Tier Prices"}
+                </div>
+                {[
+                  { label: `Tier 1  (1 – ${numT1Max} units)`, price: finalSellMin },
+                  { label: `Tier 2  (${numT1Max + 1} – ${numT2Max} units)`, price: numT2Disc > 0 && numT2Disc < 1 ? roundUp5(markupRefPrice / numT2Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT2Disc / 100) + transportation + otherExpenses) },
+                  { label: `Tier 3  (${numT2Max + 1} – ${numT3Max} units)`, price: numT3Disc > 0 && numT3Disc < 1 ? roundUp5(markupRefPrice / numT3Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT3Disc / 100) + transportation + otherExpenses) },
+                  ...(numT4Disc > 0 ? [{ label: `Tier 4  (${numT3Max + 1}+ units)`, price: numT4Disc < 1 ? roundUp5(markupRefPrice / numT4Disc + transportation + otherExpenses) : roundUp5(effectiveSellMin * (1 - numT4Disc / 100) + transportation + otherExpenses) }] : []),
+                ].map(({ label, price }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px dashed var(--border-light)", fontSize: "12px" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+                    <strong style={{ color: "var(--success)" }}>{formatCurrency(price)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                background: "var(--bg-subtle)", border: "1px solid var(--border)",
+                borderRadius: "10px", padding: "12px 20px", width: "100%",
+                maxWidth: "320px", marginBottom: "24px",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+              }}>
+                <div style={{ textAlign: locale === "ar" ? "right" : "left" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>
+                    {locale === "ar" ? "الحد الأدنى" : "Min Price"}
+                  </span>
+                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--success)", marginTop: "2px" }}>
+                    {formatCurrency(finalSellMin)}
+                  </div>
+                </div>
+                <div style={{ height: "32px", borderLeft: "1px solid var(--border-medium)", margin: "0 12px" }} />
+                <div style={{ textAlign: locale === "ar" ? "left" : "right" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>
+                    {locale === "ar" ? "الحد الأقصى" : "Max Price"}
+                  </span>
+                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--primary)", marginTop: "2px" }}>
+                    {formatCurrency(finalSellMax)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: "10px", width: "100%", maxWidth: "320px" }}>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  setPublishSuccess(false);
+                  setInternalNote("");
+                  setSaNote("");
+                }}
+                style={{ flex: 1, padding: "8px", fontSize: "12px", cursor: "pointer" }}
+              >
+                {locale === "ar" ? "تعديل التسعير" : "Edit Pricing"}
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => {
+                  setPublishSuccess(false);
+                  if (onSuccess) onSuccess();
+                }}
+                style={{ flex: 1, padding: "8px", fontSize: "12px", cursor: "pointer" }}
+              >
+                {locale === "ar" ? "تم" : "Done"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Floating B2B Recommendation Modal */}

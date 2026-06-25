@@ -6,6 +6,7 @@ import { ReactNode, useState, useEffect } from "react";
 import { ROLE_PROFILES, RoleCode } from "@/lib/constants";
 import UniversalSearch from "@/components/universal-search";
 import { useI18n } from "@/lib/i18n-context";
+import { getUnreadNotificationsAction, markSingleNotificationReadAction } from "@/app/actions/notifications";
 
 type SearchIndex = {
   items: Array<{ id: number; name: string; unit: string; active: number; category_name: string; category_id: number }>;
@@ -40,6 +41,64 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
     document.documentElement.setAttribute("data-theme", next);
   };
 
+  // Quick notifications states and handlers
+  const [showQuickNotifications, setShowQuickNotifications] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState<any[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [localAckCount, setLocalAckCount] = useState(ackCount);
+
+  useEffect(() => {
+    setLocalAckCount(ackCount);
+  }, [ackCount]);
+
+  useEffect(() => {
+    if (!showQuickNotifications) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".quick-notifications-container")) {
+        setShowQuickNotifications(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [showQuickNotifications]);
+
+  const handleToggleQuickNotifications = async () => {
+    if (!showQuickNotifications) {
+      setLoadingNotifications(true);
+      setShowQuickNotifications(true);
+      try {
+        const res = await getUnreadNotificationsAction();
+        if (res.ok && res.notifications) {
+          setUnreadNotifications(res.notifications);
+          setLocalAckCount(res.notifications.length);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingNotifications(false);
+      }
+    } else {
+      setShowQuickNotifications(false);
+    }
+  };
+
+  const handleMarkAsRead = async (id: number, type: "acknowledgment" | "rejection", e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setUnreadNotifications(prev => prev.filter(n => !(n.id === id && n.type === type)));
+    setLocalAckCount(prev => Math.max(0, prev - 1));
+
+    try {
+      const res = await markSingleNotificationReadAction(id, type);
+      if (!res.ok) {
+        // failed
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Nav items defined here so they pick up translations
   type NavLabelKey = "nav.overview"|"nav.priceCollection"|"nav.analytics"|"nav.salesView"|"nav.reports"|"nav.admin"|"nav.approvedPriceList"|"nav.approvals"|"nav.suppliers"|"nav.items"|"nav.notifications"|"nav.pricing"|"nav.categoryPricing"|"nav.itemPricing"|"nav.referenceData"|"nav.about"|"nav.activityLog";
   type NavItem = {
@@ -57,7 +116,6 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       { href: "/dashboard",                        labelKey: "nav.overview",        icon: "⊞",  exact: true },
       { href: "/dashboard/purchasing",             labelKey: "nav.priceCollection", icon: "📋", exact: true },
       { href: "/dashboard/purchasing/approvals",   labelKey: "nav.approvals",       icon: "🔔", pendingKey: "whApprovals" },
-      { href: "/dashboard/notifications",          labelKey: "nav.notifications",   icon: "📨", pendingKey: "ackCount" },
       { href: "/dashboard/admin/suppliers",        labelKey: "nav.suppliers",       icon: "🏭" },
       { href: "/dashboard/admin/items",            labelKey: "nav.items",           icon: "📦" },
     ],
@@ -93,7 +151,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
     ],
     SA: [
       { href: "/dashboard",               labelKey: "nav.approvedPriceList", icon: "💰", exact: true },
-      { href: "/dashboard/notifications", labelKey: "nav.notifications",     icon: "📨", pendingKey: "ackCount" },
+      { href: "/dashboard/notifications", labelKey: "nav.notifications",     icon: "📨", pendingKey: "ackCount", iconOnly: true },
     ],
     AD: [
       { href: "/dashboard/admin",           labelKey: "nav.admin",       icon: "⚙️", exact: true },
@@ -103,9 +161,8 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       { href: "/dashboard/admin/about",     labelKey: "nav.about",       icon: "ℹ️", exact: true },
     ],
     MG: [
-      { href: "/dashboard/notifications", labelKey: "nav.notifications", icon: "📨", pendingKey: "ackCount", iconOnly: true },
-      { href: "/dashboard",               labelKey: "nav.overview",        icon: "⊞", pendingKey: "scApprovals", exact: true },
-      { href: "/dashboard/notifications", labelKey: "nav.notifications",    icon: "📨", pendingKey: "ackCount" },
+      { href: "/dashboard/notifications", labelKey: "nav.notifications", icon: "🔔", pendingKey: "scApprovals", iconOnly: true },
+      { href: "/dashboard",               labelKey: "nav.overview",        icon: "⊞", exact: true },
     ],
   };
 
@@ -116,55 +173,316 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
   return (
     <div className="app-shell">
 
-      {/* ── Floating alert pills — fixed top-right (RTL: top-left), always visible when pending ── */}
-      {(pendingRequests > 0 || ackCount > 0) && (
+      {/* ── Floating alert chips — compact, non-overlapping ── */}
+      {/* ── Floating alert chips — compact, non-overlapping ── */}
+      {(pendingRequests > 0 || localAckCount > 0) && (
         <div className="no-print" style={{
-          position: "fixed", top: "14px", insetInlineEnd: "20px",
-          display: "flex", gap: "8px", zIndex: 600,
-          pointerEvents: "auto",
+          position: "fixed", bottom: "16px", insetInlineEnd: "20px",
+          display: "flex", flexDirection: "column", gap: "6px", zIndex: 600,
+          pointerEvents: "auto", alignItems: "flex-end",
         }}>
           {pendingRequests > 0 && (role === "SC" || role === "WH" || role === "MG") && (
-            <Link
-              href={role === "WH" ? "/dashboard/purchasing/approvals" : role === "MG" ? "/dashboard" : "/dashboard/approvals"}
-              style={{
-                display: "flex", alignItems: "center", gap: "7px",
-                padding: "8px 16px", borderRadius: "99px",
-                background: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
-                color: "#fff", fontWeight: 800, fontSize: "12px",
-                textDecoration: "none", boxShadow: "0 4px 18px rgba(245,158,11,0.55)",
-                animation: "pulse-ring-danger 1.8s infinite",
-                border: "1.5px solid rgba(255,255,255,0.25)",
-                backdropFilter: "blur(4px)",
-                transition: "transform 150ms, box-shadow 150ms",
-                direction: "ltr",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(245,158,11,0.7)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(245,158,11,0.55)"; }}
-            >
-              <span style={{ fontSize: "14px" }}>🔔</span>
-              <span>{pendingRequests} {t("shell.approvalsPending")}</span>
-            </Link>
+            role === "MG" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("filter-pending-approvals"));
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  padding: "6px 14px", borderRadius: "10px",
+                  background: "var(--bg-elevated)",
+                  color: "#b45309", fontWeight: 700, fontSize: "11.5px",
+                  textDecoration: "none",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)",
+                  border: "1.5px solid rgba(245,158,11,0.35)",
+                  backdropFilter: "blur(8px)",
+                  transition: "transform 150ms, box-shadow 150ms",
+                  direction: "ltr",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(245,158,11,0.4)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"; }}
+              >
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: "20px", height: "20px", borderRadius: "6px",
+                  background: "rgba(245,158,11,0.15)", fontSize: "11px",
+                }}>⏳</span>
+                <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
+              </button>
+            ) : (
+              <Link
+                href={role === "WH" ? "/dashboard/purchasing/approvals" : "/dashboard/approvals"}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  padding: "6px 14px", borderRadius: "10px",
+                  background: "var(--bg-elevated)",
+                  color: "#b45309", fontWeight: 700, fontSize: "11.5px",
+                  textDecoration: "none",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)",
+                  border: "1.5px solid rgba(245,158,11,0.35)",
+                  backdropFilter: "blur(8px)",
+                  transition: "transform 150ms, box-shadow 150ms",
+                  direction: "ltr",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(245,158,11,0.4)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"; }}
+              >
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: "20px", height: "20px", borderRadius: "6px",
+                  background: "rgba(245,158,11,0.15)", fontSize: "11px",
+                }}>⏳</span>
+                <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
+              </Link>
+            )
           )}
-          {ackCount > 0 && (
-            <Link
-              href="/dashboard/notifications"
-              style={{
-                display: "flex", alignItems: "center", gap: "7px",
-                padding: "8px 16px", borderRadius: "99px",
-                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-                color: "#fff", fontWeight: 800, fontSize: "12px",
-                textDecoration: "none", boxShadow: "0 4px 18px rgba(99,102,241,0.5)",
-                animation: "pulse-ring-warning 1.8s infinite",
-                border: "1.5px solid rgba(255,255,255,0.25)",
-                transition: "transform 150ms, box-shadow 150ms",
-                direction: "ltr",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(99,102,241,0.7)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 18px rgba(99,102,241,0.5)"; }}
-            >
-              <span style={{ fontSize: "14px" }}>📨</span>
-              <span>{ackCount} {t("shell.newNotifications")}</span>
-            </Link>
+          {localAckCount > 0 && (
+            <div className="quick-notifications-container" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", position: "relative" }}>
+              {showQuickNotifications && (
+                <div style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 8px)",
+                  insetInlineEnd: "0",
+                  width: "350px",
+                  maxHeight: "450px",
+                  background: "var(--bg-glass)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  borderRadius: "var(--radius-lg)",
+                  border: "1px solid var(--border)",
+                  boxShadow: "var(--shadow-xl)",
+                  display: "flex",
+                  flexDirection: "column",
+                  zIndex: 1000,
+                  overflow: "hidden",
+                  animation: "slideUpFade 0.25s var(--ease-spring)",
+                }} onClick={e => e.stopPropagation()}>
+                  
+                  {/* Header */}
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--border)",
+                    background: "rgba(99, 102, 241, 0.08)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "16px" }}>📨</span>
+                      <strong style={{ fontSize: "13.5px", color: "var(--text-primary)" }}>{t("notif.quickView")}</strong>
+                      <span style={{
+                        background: "#6366f1",
+                        color: "#fff",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: "99px",
+                      }}>{localAckCount}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickNotifications(false)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-secondary)",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        padding: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: "50%",
+                        transition: "background 150ms",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.06)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "none"}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Body/List */}
+                  <div style={{
+                    flex: 1,
+                    overflowY: "auto",
+                    padding: "8px 0",
+                    minHeight: "120px",
+                    maxHeight: "320px",
+                  }}>
+                    {loadingNotifications ? (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "32px", gap: "8px" }}>
+                        <span style={{
+                          width: "18px",
+                          height: "18px",
+                          border: "2px solid rgba(99,102,241,0.2)",
+                          borderTopColor: "#6366f1",
+                          borderRadius: "50%",
+                          animation: "spin 0.8s linear infinite",
+                        }} />
+                        <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Loading...</span>
+                      </div>
+                    ) : unreadNotifications.length === 0 ? (
+                      <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
+                        {t("notif.noNotifications")}
+                      </div>
+                    ) : (
+                      unreadNotifications.map(n => {
+                        let formattedTime = "";
+                        try {
+                          formattedTime = new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        } catch (err) {
+                          formattedTime = String(n.time);
+                        }
+                        return (
+                          <div key={`${n.type}-${n.id}`} style={{
+                            display: "flex",
+                            gap: "10px",
+                            padding: "10px 16px",
+                            borderBottom: "1px solid var(--border-light)",
+                            position: "relative",
+                          }} className="quick-notif-item">
+                            <div style={{ flex: 1, minWidth: 0, textAlign: isRTL ? "right" : "left" }}>
+                              <div style={{
+                                fontWeight: 600,
+                                fontSize: "12px",
+                                color: "var(--text-primary)",
+                                marginBottom: "2px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                flexDirection: isRTL ? "row-reverse" : "row",
+                              }}>
+                                <span>{n.title}</span>
+                                <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 400 }}>
+                                  {formattedTime}
+                                </span>
+                              </div>
+                              <p style={{
+                                margin: 0,
+                                fontSize: "11px",
+                                color: "var(--text-secondary)",
+                                lineHeight: "1.4",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                              }}>{n.message}</p>
+                              
+                              {/* Action Link to the Item */}
+                              {n.itemId && (
+                                <Link
+                                  href={`/dashboard/pricing?searchId=${n.itemId}`}
+                                  onClick={() => setShowQuickNotifications(false)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    marginTop: "6px",
+                                    fontSize: "11px",
+                                    color: "#6366f1",
+                                    textDecoration: "none",
+                                    fontWeight: 600,
+                                    gap: "3px",
+                                  }}
+                                >
+                                  {t("notif.priceHistory")} ➔
+                                </Link>
+                              )}
+                            </div>
+                            
+                            {/* Check Button to Mark Read */}
+                            <button
+                              type="button"
+                              title={t("notif.markAsRead")}
+                              onClick={(e) => handleMarkAsRead(n.id, n.type, e)}
+                              style={{
+                                alignSelf: "center",
+                                background: "rgba(99,102,241,0.06)",
+                                border: "1px solid rgba(99,102,241,0.15)",
+                                borderRadius: "6px",
+                                width: "26px",
+                                height: "26px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                color: "#6366f1",
+                                transition: "all 150ms",
+                                flexShrink: 0,
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.background = "#6366f1";
+                                e.currentTarget.style.color = "#fff";
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.background = "rgba(99,102,241,0.06)";
+                                e.currentTarget.style.color = "#6366f1";
+                              }}
+                            >
+                              ✓
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{
+                    padding: "10px 16px",
+                    borderTop: "1px solid var(--border)",
+                    background: "var(--bg-elevated)",
+                    textAlign: "center",
+                  }}>
+                    <Link
+                      href="/dashboard/notifications"
+                      onClick={() => setShowQuickNotifications(false)}
+                      style={{
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        color: "#4f46e5",
+                        textDecoration: "none",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      {t("notif.viewAll")} ➔
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* The Floating Notifications Button itself */}
+              <button
+                type="button"
+                onClick={handleToggleQuickNotifications}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  padding: "6px 14px", borderRadius: "10px",
+                  background: "var(--bg-elevated)",
+                  color: "#4f46e5", fontWeight: 700, fontSize: "11.5px",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(99,102,241,0.2)",
+                  border: "1.5px solid rgba(99,102,241,0.3)",
+                  backdropFilter: "blur(8px)",
+                  transition: "transform 150ms, box-shadow 150ms",
+                  direction: "ltr",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(99,102,241,0.35)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(99,102,241,0.2)"; }}
+              >
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: "20px", height: "20px", borderRadius: "6px",
+                  background: "rgba(99,102,241,0.12)", fontSize: "11px",
+                }}>📨</span>
+                <span><strong>{localAckCount}</strong> {t("shell.newNotifications")}</span>
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -208,13 +526,15 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 item.pendingKey === "ackCount"    ? ackCount : 0;
               const isActive = pathname.startsWith(item.href);
               const badgeBg  = item.pendingKey === "scApprovals" || item.pendingKey === "whApprovals" ? "#ef4444" : "#6366f1";
+              const iconOnlyCount = navItems.filter(i => i.iconOnly).length;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   title={t(item.labelKey)}
                   style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    ...(iconOnlyCount > 1 ? { flex: 1 } : { width: "44px", flexShrink: 0 }),
+                    display: "flex", alignItems: "center", justifyContent: "center",
                     height: "42px", borderRadius: "12px", position: "relative",
                     textDecoration: "none",
                     background: isActive

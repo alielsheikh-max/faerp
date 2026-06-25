@@ -237,11 +237,24 @@ export function ItemCombobox({
                         {" "}({item.unit})
                       </span>
                     )}
-                    {item.category && (
-                      <span style={{ color: "var(--text-muted, #9ca3af)", fontSize: "10px", marginInlineStart: "6px", opacity: 0.75 }}>
-                        {" "}[{item.category}]
-                      </span>
-                    )}
+                    {item.category && (() => {
+                      // Deterministic hue from category name
+                      let hash = 0;
+                      for (let i = 0; i < item.category.length; i++) hash = item.category.charCodeAt(i) + ((hash << 5) - hash);
+                      const hue = ((hash % 360) + 360) % 360;
+                      return (
+                        <span style={{
+                          fontSize: "9px", fontWeight: 700, marginInlineStart: "6px",
+                          padding: "1px 6px", borderRadius: "5px",
+                          background: `hsla(${hue}, 65%, 50%, 0.12)`,
+                          color: `hsl(${hue}, 55%, 38%)`,
+                          border: `1px solid hsla(${hue}, 60%, 50%, 0.25)`,
+                          whiteSpace: "nowrap",
+                        }}>
+                          {item.category}
+                        </span>
+                      );
+                    })()}
                   </span>
 
                   {/* Right-side badges */}

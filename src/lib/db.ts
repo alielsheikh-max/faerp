@@ -57,6 +57,7 @@ function initializeSchema(db: Db) {
       active INTEGER NOT NULL DEFAULT 1,
       transportation_per_unit REAL NOT NULL DEFAULT 0.0,
       moq INTEGER NOT NULL DEFAULT 0,
+      recommended_supplier_id INTEGER REFERENCES suppliers(id),
       UNIQUE(category_id, name),
       FOREIGN KEY (category_id) REFERENCES categories(id)
     );
@@ -125,6 +126,7 @@ function initializeSchema(db: Db) {
       transportation REAL NOT NULL DEFAULT 0.0,
       other_expenses REAL NOT NULL DEFAULT 0.0,
       tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
+      confirmed_supplier_id INTEGER REFERENCES suppliers(id),
       UNIQUE(item_id, month),
       FOREIGN KEY (item_id) REFERENCES items(id)
     );
@@ -144,6 +146,7 @@ function initializeSchema(db: Db) {
       prev_strategy   TEXT,
       prev_transportation REAL,
       prev_other_expenses REAL,
+      prev_confirmed_supplier_id INTEGER REFERENCES suppliers(id),
       -- new values being written
       new_sell_min  REAL    NOT NULL,
       new_sell_max  REAL    NOT NULL,
@@ -155,6 +158,7 @@ function initializeSchema(db: Db) {
       new_transportation REAL NOT NULL DEFAULT 0.0,
       new_other_expenses REAL NOT NULL DEFAULT 0.0,
       new_tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
+      new_confirmed_supplier_id INTEGER REFERENCES suppliers(id),
       -- who / when
       changed_by    TEXT    NOT NULL,
       changed_at    TEXT    NOT NULL,
@@ -263,6 +267,17 @@ function initializeSchema(db: Db) {
     "ALTER TABLE selling_prices ADD COLUMN reconsider_note TEXT",
     "ALTER TABLE selling_price_history ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'",
     "ALTER TABLE selling_price_history ADD COLUMN reconsider_note TEXT",
+    "ALTER TABLE items ADD COLUMN recommended_supplier_id INTEGER REFERENCES suppliers(id)",
+    "ALTER TABLE selling_prices ADD COLUMN confirmed_supplier_id INTEGER REFERENCES suppliers(id)",
+    "ALTER TABLE selling_price_history ADD COLUMN prev_confirmed_supplier_id INTEGER REFERENCES suppliers(id)",
+    "ALTER TABLE selling_price_history ADD COLUMN new_confirmed_supplier_id INTEGER REFERENCES suppliers(id)",
+    // SA Price Hold – snapshot the last-approved values before overwriting
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_sell_min REAL",
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_sell_max REAL",
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_strategy TEXT",
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_at TEXT",
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_transportation REAL",
+    "ALTER TABLE selling_prices ADD COLUMN last_approved_other_expenses REAL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -296,6 +311,7 @@ function initializeSchema(db: Db) {
       prev_markup_min REAL,
       prev_markup_max REAL,
       prev_strategy   TEXT,
+      prev_confirmed_supplier_id INTEGER REFERENCES suppliers(id),
       new_sell_min    REAL    NOT NULL,
       new_sell_max    REAL    NOT NULL,
       new_markup_min  REAL    NOT NULL,
@@ -303,6 +319,7 @@ function initializeSchema(db: Db) {
       new_strategy    TEXT    NOT NULL,
       new_markup_type TEXT    NOT NULL,
       new_buy_avg     REAL    NOT NULL,
+      new_confirmed_supplier_id INTEGER REFERENCES suppliers(id),
       changed_by      TEXT    NOT NULL,
       changed_at      TEXT    NOT NULL,
       change_reason   TEXT,
@@ -750,6 +767,13 @@ export function setSupplierCategories(supplierId: number, categoryIds: number[],
   })();
 }
 
+/** Add a single supplier-category link if it doesn't already exist (non-destructive). */
+export function ensureSupplierCategory(supplierId: number, categoryId: number, assignedBy: string): void {
+  database().prepare(
+    "INSERT OR IGNORE INTO supplier_categories (supplier_id, category_id, assigned_by) VALUES (?, ?, ?)"
+  ).run(supplierId, categoryId, assignedBy);
+}
+
 export function getUsers() {
   return database()
     .prepare(`
@@ -857,6 +881,7 @@ export function getItems(categoryId?: number) {
         c.name as category_name,
         i.transportation_per_unit,
         i.moq,
+        i.recommended_supplier_id,
         IFNULL(it.is_tiered, 0) as is_tiered,
         IFNULL(it.tier1_max, 100) as tier1_max,
         IFNULL(it.tier1_discount, 0.0) as tier1_discount,
@@ -882,6 +907,7 @@ export function getItems(categoryId?: number) {
       category_name: string;
       transportation_per_unit: number;
       moq: number;
+      recommended_supplier_id: number | null;
       is_tiered: number;
       tier1_max: number;
       tier1_discount: number;
@@ -1087,11 +1113,12 @@ export function createItem(input: {
   description: string;
   transportationPerUnit: number;
   moq: number;
+  recommendedSupplierId?: number | null;
 }) {
   database()
     .prepare(`
-      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq)
-      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq)
+      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq, recommended_supplier_id)
+      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq, @recommended_supplier_id)
     `)
     .run({
       category_id: input.categoryId,
@@ -1099,7 +1126,8 @@ export function createItem(input: {
       unit: input.unit,
       description: input.description,
       transportation_per_unit: input.transportationPerUnit,
-      moq: input.moq
+      moq: input.moq,
+      recommended_supplier_id: input.recommendedSupplierId ?? null
     });
 }
 
@@ -1112,6 +1140,7 @@ export function updateItem(input: {
   active: boolean;
   transportationPerUnit: number;
   moq: number;
+  recommendedSupplierId?: number | null;
 }) {
   database()
     .prepare(`
@@ -1123,7 +1152,8 @@ export function updateItem(input: {
         description = @description,
         active = @active,
         transportation_per_unit = @transportation_per_unit,
-        moq = @moq
+        moq = @moq,
+        recommended_supplier_id = @recommended_supplier_id
       WHERE id = @id
     `)
     .run({
@@ -1134,7 +1164,8 @@ export function updateItem(input: {
       description: input.description,
       active: input.active ? 1 : 0,
       transportation_per_unit: input.transportationPerUnit,
-      moq: input.moq
+      moq: input.moq,
+      recommended_supplier_id: input.recommendedSupplierId ?? null
     });
 }
 
@@ -1622,6 +1653,19 @@ export function getRecommendation(month: string, itemId: number) {
     buy_avg: number | null;
   };
 
+  const itemRow = db.prepare("SELECT recommended_supplier_id FROM items WHERE id = ?").get(itemId) as { recommended_supplier_id: number | null } | undefined;
+  const recommendedSupplierId = itemRow?.recommended_supplier_id ?? null;
+
+  let buyFav: number | null = null;
+  if (recommendedSupplierId !== null) {
+    const favQuote = db.prepare(`
+      SELECT price FROM price_entries
+      WHERE month = ? AND item_id = ? AND supplier_id = ? AND status = 'approved'
+      ORDER BY recorded_at DESC, id DESC LIMIT 1
+    `).get(month, itemId, recommendedSupplierId) as { price: number } | undefined;
+    buyFav = favQuote ? favQuote.price : null;
+  }
+
   const existing = db.prepare(`
     SELECT
       strategy,
@@ -1658,6 +1702,8 @@ export function getRecommendation(month: string, itemId: number) {
     buyMin: stats.buy_min,
     buyMax: stats.buy_max,
     buyAvg: stats.buy_avg,
+    buyFav,
+    recommendedSupplierId,
     existing
   };
 }
@@ -1681,7 +1727,7 @@ export function getManagerSnapshot(filters: FilterInput) {
 export function saveSellingPrice(input: {
   itemId: number;
   month: string;
-  strategy: "min" | "max" | "avg";
+  strategy: "min" | "max" | "avg" | "fav";
   markupType: "percent" | "amount" | "divisor";
   markupMin: number;
   markupMax: number;
@@ -1704,6 +1750,9 @@ export function saveSellingPrice(input: {
   tier4Discount?: number | null;
   approvalStatus?: "pending" | "approved" | "reconsidered";
   reconsiderNote?: string | null;
+  /** Pre-computed sell prices from the client to ensure MG sees exactly what SC submitted */
+  sellMinOverride?: number | null;
+  sellMaxOverride?: number | null;
 }) {
   const db = database();
   const recommendation = getRecommendation(input.month, input.itemId);
@@ -1716,12 +1765,38 @@ export function saveSellingPrice(input: {
     throw new Error("No supplier quotes found for this item and month.");
   }
 
-  const strategyBase =
+  if (input.strategy === "fav" && recommendation.buyFav === null) {
+    throw new Error("No supplier quote found for the recommended supplier for this item and month.");
+  }
+
+  const strategyBase = (
     input.strategy === "min"
       ? recommendation.buyMin
       : input.strategy === "max"
         ? recommendation.buyMax
-        : recommendation.buyAvg;
+        : input.strategy === "fav"
+          ? recommendation.buyFav
+          : recommendation.buyAvg
+  ) as number;
+
+  let confirmedSupplierId: number | null = null;
+  if (input.strategy === "min" && recommendation.buyMin !== null) {
+    const row = db.prepare(`
+      SELECT supplier_id FROM price_entries
+      WHERE month = ? AND item_id = ? AND price = ? AND status = 'approved'
+      ORDER BY recorded_at DESC, id DESC LIMIT 1
+    `).get(input.month, input.itemId, recommendation.buyMin) as { supplier_id: number } | undefined;
+    confirmedSupplierId = row ? row.supplier_id : null;
+  } else if (input.strategy === "max" && recommendation.buyMax !== null) {
+    const row = db.prepare(`
+      SELECT supplier_id FROM price_entries
+      WHERE month = ? AND item_id = ? AND price = ? AND status = 'approved'
+      ORDER BY recorded_at DESC, id DESC LIMIT 1
+    `).get(input.month, input.itemId, recommendation.buyMax) as { supplier_id: number } | undefined;
+    confirmedSupplierId = row ? row.supplier_id : null;
+  } else if (input.strategy === "fav") {
+    confirmedSupplierId = recommendation.recommendedSupplierId;
+  }
 
   // Retrieve the item's fixed transportation cost, or use SC override (T5)
   const itemRow = db.prepare("SELECT transportation_per_unit FROM items WHERE id = ?").get(input.itemId) as { transportation_per_unit: number } | undefined;
@@ -1738,12 +1813,18 @@ export function saveSellingPrice(input: {
 
   const baseSellMax =
     input.markupType === "amount"  ? strategyBase + input.markupMax :
-    input.markupType === "divisor" ? (input.markupMin > 0 ? strategyBase / input.markupMin : strategyBase) :
+    input.markupType === "divisor" ? (input.markupMax > 0 ? strategyBase / input.markupMax : strategyBase) :
     strategyBase * (1 + input.markupMax / 100);
 
-  // The final prices to be published to SA:
-  const sellMin = baseSellMin + transportation + input.otherExpenses;
-  const sellMax = baseSellMax + transportation + input.otherExpenses;
+  // The final prices to be published to SA (rounded up to nearest 5 EGP):
+  const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
+  // Use client-provided sell prices when available (ensures MG sees exactly what SC submitted)
+  const sellMin = (input.sellMinOverride != null && input.sellMinOverride > 0)
+    ? input.sellMinOverride
+    : roundUp5(baseSellMin + transportation + input.otherExpenses);
+  const sellMax = (input.sellMaxOverride != null && input.sellMaxOverride > 0)
+    ? input.sellMaxOverride
+    : roundUp5(baseSellMax + transportation + input.otherExpenses);
 
   // ── Improvement #3: Margin floor enforcement ──────────────────────────────
   // Resolve effective floor: item-level overrides category-level
@@ -1793,7 +1874,7 @@ export function saveSellingPrice(input: {
   }
 
   const existingRow = db.prepare(`
-    SELECT sell_min, sell_max, markup_min, markup_max, strategy, transportation, other_expenses, tier_pricing_enabled
+    SELECT sell_min, sell_max, markup_min, markup_max, strategy, transportation, other_expenses, tier_pricing_enabled, confirmed_supplier_id
     FROM selling_prices WHERE item_id = ? AND month = ?
   `).get(input.itemId, input.month) as {
     sell_min: number; sell_max: number;
@@ -1802,6 +1883,7 @@ export function saveSellingPrice(input: {
     transportation: number;
     other_expenses: number;
     tier_pricing_enabled: number;
+    confirmed_supplier_id: number | null;
   } | undefined;
 
   const now = new Date().toISOString();
@@ -1815,20 +1897,24 @@ export function saveSellingPrice(input: {
       item_id, month,
       prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
       prev_transportation, prev_other_expenses, prev_tier_pricing_enabled,
+      prev_confirmed_supplier_id,
       new_sell_min, new_sell_max, new_markup_min, new_markup_max,
       new_strategy, new_markup_type, new_buy_avg,
       new_transportation, new_other_expenses, new_tier_pricing_enabled,
       new_transport_override_enabled, new_transport_override_amount,
+      new_confirmed_supplier_id,
       changed_by, changed_at, change_reason, is_update,
       approval_status, reconsider_note
     ) VALUES (
       @item_id, @month,
       @prev_sell_min, @prev_sell_max, @prev_markup_min, @prev_markup_max, @prev_strategy,
       @prev_transportation, @prev_other_expenses, @prev_tier_pricing_enabled,
+      @prev_confirmed_supplier_id,
       @new_sell_min, @new_sell_max, @new_markup_min, @new_markup_max,
       @new_strategy, @new_markup_type, @new_buy_avg,
       @new_transportation, @new_other_expenses, @new_tier_pricing_enabled,
       @new_transport_override_enabled, @new_transport_override_amount,
+      @new_confirmed_supplier_id,
       @changed_by, @changed_at, @change_reason, @is_update,
       @approval_status, @reconsider_note
     )
@@ -1843,6 +1929,7 @@ export function saveSellingPrice(input: {
     prev_transportation: existingRow?.transportation ?? null,
     prev_other_expenses: existingRow?.other_expenses ?? null,
     prev_tier_pricing_enabled: existingRow?.tier_pricing_enabled ?? null,
+    prev_confirmed_supplier_id: existingRow?.confirmed_supplier_id ?? null,
     new_sell_min:     sellMin,
     new_sell_max:     sellMax,
     new_markup_min:   input.markupMin,
@@ -1855,6 +1942,7 @@ export function saveSellingPrice(input: {
     new_tier_pricing_enabled: input.tierPricingEnabled ?? 0,
     new_transport_override_enabled: transportOverrideEnabled,
     new_transport_override_amount: (input.transportOverride != null && input.transportOverride >= 0) ? input.transportOverride : 0,
+    new_confirmed_supplier_id: confirmedSupplierId,
     changed_by:       input.createdBy,
     changed_at:       now,
     change_reason:    input.changeReason ?? null,
@@ -1875,7 +1963,10 @@ export function saveSellingPrice(input: {
         tier2_max, tier2_discount,
         tier3_max, tier3_discount,
         tier4_max, tier4_discount,
-        approval_status, reconsider_note
+        approval_status, reconsider_note,
+        confirmed_supplier_id,
+        last_approved_sell_min, last_approved_sell_max, last_approved_strategy, last_approved_at,
+        last_approved_transportation, last_approved_other_expenses
       ) VALUES (
         @item_id, @month, @strategy, @markup_type, @buy_min, @buy_max, @buy_avg, @markup_min, @markup_max,
         @sell_min, @sell_max, @created_by, @created_at,
@@ -1886,7 +1977,9 @@ export function saveSellingPrice(input: {
         @tier2_max, @tier2_discount,
         @tier3_max, @tier3_discount,
         @tier4_max, @tier4_discount,
-        @approval_status, @reconsider_note
+        @approval_status, @reconsider_note,
+        @confirmed_supplier_id,
+        NULL, NULL, NULL, NULL, NULL, NULL
       )
       ON CONFLICT(item_id, month) DO UPDATE SET
         strategy = excluded.strategy,
@@ -1916,7 +2009,38 @@ export function saveSellingPrice(input: {
         tier4_max = excluded.tier4_max,
         tier4_discount = excluded.tier4_discount,
         approval_status = excluded.approval_status,
-        reconsider_note = excluded.reconsider_note
+        reconsider_note = excluded.reconsider_note,
+        confirmed_supplier_id = excluded.confirmed_supplier_id,
+        last_approved_sell_min = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.sell_min
+          ELSE selling_prices.last_approved_sell_min
+        END,
+        last_approved_sell_max = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.sell_max
+          ELSE selling_prices.last_approved_sell_max
+        END,
+        last_approved_strategy = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.strategy
+          ELSE selling_prices.last_approved_strategy
+        END,
+        last_approved_at = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.created_at
+          ELSE selling_prices.last_approved_at
+        END,
+        last_approved_transportation = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.transportation
+          ELSE selling_prices.last_approved_transportation
+        END,
+        last_approved_other_expenses = CASE
+          WHEN selling_prices.approval_status = 'approved'
+          THEN selling_prices.other_expenses
+          ELSE selling_prices.last_approved_other_expenses
+        END
     `)
     .run({
       item_id: input.itemId,
@@ -1949,6 +2073,7 @@ export function saveSellingPrice(input: {
       tier4_discount: (input.tierPricingEnabled && input.tier4Discount !== undefined && input.tier4Discount !== null) ? input.tier4Discount : null,
       approval_status: approvalStatus,
       reconsider_note: reconsiderNote,
+      confirmed_supplier_id: confirmedSupplierId
     });
 }
 
@@ -1994,7 +2119,13 @@ export function getSalesCatalog(month: string, categoryId?: number) {
         i.transportation_per_unit,
         i.moq,
         COALESCE(sp.approval_status, 'approved') as approval_status,
-        sp.reconsider_note
+        sp.reconsider_note,
+        i.recommended_supplier_id,
+        sp.confirmed_supplier_id,
+        sp.last_approved_sell_min,
+        sp.last_approved_sell_max,
+        sp.last_approved_strategy,
+        sp.last_approved_at
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = @month
@@ -2035,6 +2166,12 @@ export function getSalesCatalog(month: string, categoryId?: number) {
       moq: number;
       approval_status: string;
       reconsider_note: string | null;
+      recommended_supplier_id: number | null;
+      confirmed_supplier_id: number | null;
+      last_approved_sell_min: number | null;
+      last_approved_sell_max: number | null;
+      last_approved_strategy: string | null;
+      last_approved_at: string | null;
     }>;
 }
 
@@ -2131,6 +2268,7 @@ export function getAdminSnapshot() {
       c.name as category_name,
       i.transportation_per_unit,
       i.moq,
+      i.recommended_supplier_id,
       (SELECT COUNT(*) FROM price_entries pe WHERE pe.item_id = i.id) as quote_count,
       (SELECT sp.sell_min FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_min,
       (SELECT sp.sell_max FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_max,
@@ -2149,6 +2287,7 @@ export function getAdminSnapshot() {
     category_name: string;
     transportation_per_unit: number;
     moq: number;
+    recommended_supplier_id: number | null;
     quote_count: number;
     sell_min: number | null;
     sell_max: number | null;
@@ -2212,12 +2351,9 @@ export function getWHCollectionOverview(month: string): {
     category_id: number;
     item_name: string;
     unit: string;
-    supplier_name: string;
-    supplier_id: number;
     item_id: number;
-    prev_price: number | null;
-    status: string | null;
-    review_note: string | null;
+    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null }>;
+    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null }>;
   }>;
 } {
   const db = database();
@@ -2229,7 +2365,7 @@ export function getWHCollectionOverview(month: string): {
       COUNT(DISTINCT i.id || '_' || sc.supplier_id) AS possible,
       COUNT(DISTINCT le.item_id || '_' || le.supplier_id) AS submitted
     FROM categories c
-    JOIN items i ON i.category_id = c.id
+    JOIN items i ON i.category_id = c.id AND i.active = 1
     JOIN supplier_categories sc ON sc.category_id = c.id
     LEFT JOIN (
       SELECT item_id, supplier_id
@@ -2255,20 +2391,21 @@ export function getWHCollectionOverview(month: string): {
     categories: categoriesWithPct.length,
   };
 
-  // Missing quotes: item × supplier combos with no entry this month, OR rejected entries
+  // All item × supplier combos with submission status for this month
   const prevMonth = (() => {
     const [y, m] = month.split("-").map(Number);
     const d = new Date(y, m - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   })();
 
-  const missing = db.prepare(`
+  const allCombos = db.prepare(`
     SELECT
       c.name AS category_name,
       c.id AS category_id,
       i.name AS item_name, i.unit,
+      i.id AS item_id,
       COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
-      s.id AS supplier_id, i.id AS item_id,
+      s.id AS supplier_id,
       prev.price AS prev_price,
       le.status,
       le.review_note
@@ -2286,14 +2423,47 @@ export function getWHCollectionOverview(month: string): {
       ) WHERE rn = 1
     ) le ON le.item_id = i.id AND le.supplier_id = s.id
     LEFT JOIN price_entries prev ON prev.item_id = i.id AND prev.supplier_id = s.id AND prev.month = ? AND prev.status = 'approved'
-    WHERE (le.status IS NULL OR le.status = 'rejected') AND i.active = 1
+    WHERE i.active = 1
     ORDER BY c.name, i.name, s.name
-    LIMIT 80
   `).all(month, prevMonth) as Array<{
     category_name: string; category_id: number; item_name: string; unit: string;
-    supplier_name: string; supplier_id: number; item_id: number; prev_price: number | null;
+    item_id: number; supplier_name: string; supplier_id: number; prev_price: number | null;
     status: string | null; review_note: string | null;
   }>;
+
+  // Group by item and separate submitted vs missing suppliers
+  const itemMap = new Map<number, {
+    category_name: string;
+    category_id: number;
+    item_name: string;
+    unit: string;
+    item_id: number;
+    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null }>;
+    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null }>;
+  }>();
+
+  for (const row of allCombos) {
+    if (!itemMap.has(row.item_id)) {
+      itemMap.set(row.item_id, {
+        category_name: row.category_name,
+        category_id: row.category_id,
+        item_name: row.item_name,
+        unit: row.unit,
+        item_id: row.item_id,
+        submitted: [],
+        missing: [],
+      });
+    }
+    const entry = itemMap.get(row.item_id)!;
+    if (row.status === 'approved' || row.status === 'pending') {
+      entry.submitted.push({ supplier_id: row.supplier_id, supplier_name: row.supplier_name, prev_price: row.prev_price });
+    } else {
+      entry.missing.push({ supplier_id: row.supplier_id, supplier_name: row.supplier_name, prev_price: row.prev_price, status: row.status, review_note: row.review_note });
+    }
+  }
+
+  // Only return items that have at least one missing supplier
+  const missing = Array.from(itemMap.values()).filter(item => item.missing.length > 0);
 
   return { totals, byCategory: categoriesWithPct, missing };
 }
@@ -2502,7 +2672,7 @@ export function getAllPriceEntries() {
       pe.review_note,
       i.name as item_name,
       i.unit,
-      s.name as supplier_name,
+      COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
       c.name as category_name,
       i.category_id
     FROM price_entries pe
@@ -2557,6 +2727,7 @@ export function getMonthlyReviewData(month: string) {
         COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name,
         i.transportation_per_unit,
         i.moq,
+        i.recommended_supplier_id,
         IFNULL(it.is_tiered, 0) as is_tiered,
         COALESCE(sp.tier1_max, it.tier1_max, 100) as tier1_max,
         COALESCE(sp.tier1_discount, it.tier1_discount, 0.0) as tier1_discount,
@@ -2581,7 +2752,7 @@ export function getMonthlyReviewData(month: string) {
     SELECT
       quote_id, item_id, supplier_id, price, recorded_at, status, review_note, notes, actual_transport,
       item_name, unit, category_id, category_name, supplier_name,
-      transportation_per_unit, moq, is_tiered,
+      transportation_per_unit, moq, recommended_supplier_id, is_tiered,
       tier1_max, tier1_discount, tier2_max, tier2_discount,
       tier3_max, tier3_discount, tier4_max, tier4_discount
     FROM ranked
@@ -2604,6 +2775,7 @@ export function getMonthlyReviewData(month: string) {
     supplier_name: string;
     transportation_per_unit: number;
     moq: number;
+    recommended_supplier_id: number | null;
     is_tiered: number;
     tier1_max: number;
     tier1_discount: number;
@@ -2811,6 +2983,7 @@ export function getMonthlyReviewData(month: string) {
     lastConfirmedSelling: LastConfirmedSellingRow | null;
     transportation_per_unit: number;
     moq: number;
+    recommendedSupplierId: number | null;
     is_tiered: number;
     tier1_max: number;
     tier1_discount: number;
@@ -2843,6 +3016,7 @@ export function getMonthlyReviewData(month: string) {
         lastConfirmedSelling: lastConfirmedSellingMap.get(row.item_id) ?? null,
         transportation_per_unit: row.transportation_per_unit,
         moq: row.moq,
+        recommendedSupplierId: row.recommended_supplier_id,
         is_tiered: row.is_tiered,
         tier1_max: row.tier1_max,
         tier1_discount: row.tier1_discount,
@@ -2935,13 +3109,17 @@ export function getItemCardData(itemId: number) {
   const item = db.prepare(`
     SELECT i.id, i.name, i.unit, i.description, i.active,
            c.name AS category_name, c.id AS category_id,
-           i.transportation_per_unit, i.moq
+           i.transportation_per_unit, i.moq, i.recommended_supplier_id,
+           COALESCE(NULLIF(TRIM(rs.fame_name), ''), rs.name) AS recommended_supplier_name
     FROM items i JOIN categories c ON c.id = i.category_id
+    LEFT JOIN suppliers rs ON rs.id = i.recommended_supplier_id
     WHERE i.id = ?
   `).get(itemId) as {
     id: number; name: string; unit: string; description: string;
     active: number; category_name: string; category_id: number;
     transportation_per_unit: number; moq: number;
+    recommended_supplier_id: number | null;
+    recommended_supplier_name: string | null;
   } | undefined;
 
   if (!item) return null;
@@ -3217,6 +3395,7 @@ export function getRecentPriceUpdates(month: string, limit = 5): any[] {
         SELECT item_id, MAX(id) as max_id
         FROM selling_price_history
         WHERE month = ? AND is_update = 1 AND approval_status = 'approved'
+          AND prev_sell_min IS NOT NULL
         GROUP BY item_id
       )
       SELECT
@@ -3269,7 +3448,7 @@ export function getUnacknowledgedCount(month: string): number {
     SELECT COUNT(*) as cnt
     FROM selling_price_history h
     LEFT JOIN price_acknowledgments pa ON pa.history_id = h.id
-    WHERE h.month = ? AND h.is_update = 1 AND pa.id IS NULL
+    WHERE h.month = ? AND h.is_update = 1 AND h.prev_sell_min IS NOT NULL AND pa.id IS NULL
   `).get(month) as { cnt: number };
   return row?.cnt ?? 0;
 }
@@ -3394,7 +3573,7 @@ export function deleteMarginFloor(id: number): void {
 export function applyCategoryMarkup(input: {
   categoryId: number;
   month: string;
-  strategy: "min" | "avg" | "max";
+  strategy: "min" | "avg" | "max" | "fav";
   markupType: "percent" | "amount" | "divisor";
   markupMin: number;
   markupMax: number;
@@ -3425,8 +3604,13 @@ export function applyCategoryMarkup(input: {
     for (const item of items) {
       try {
         const rec = getRecommendation(input.month, item.id);
-        // Skip items with no quotes this month
-        if (rec.buyAvg === null || rec.buyMin === null || rec.buyMax === null) {
+        // Skip items with no quotes this month (or no quote for recommended supplier if strategy is 'fav')
+        if (
+          rec.buyAvg === null ||
+          rec.buyMin === null ||
+          rec.buyMax === null ||
+          (input.strategy === "fav" && rec.buyFav === null)
+        ) {
           skipped++;
           continue;
         }
@@ -4149,6 +4333,12 @@ export function approveAllPendingSellingPrices(categoryId: number, month: string
     UPDATE selling_prices
     SET approval_status = 'approved',
         reconsider_note = NULL,
+        last_approved_sell_min = NULL,
+        last_approved_sell_max = NULL,
+        last_approved_strategy = NULL,
+        last_approved_at = NULL,
+        last_approved_transportation = NULL,
+        last_approved_other_expenses = NULL,
         created_by = ?,
         created_at = ?
     WHERE item_id = ? AND month = ?
@@ -4160,18 +4350,27 @@ export function approveAllPendingSellingPrices(categoryId: number, month: string
     for (const item of items) {
       stmt.run(managerName, now, item.id, month);
       
+      // Determine if this is truly an update (had a previously approved price this month)
+      // First-time approvals should NOT trigger SA alerts
+      const existingApproved = db.prepare(`
+        SELECT last_approved_sell_min FROM selling_prices
+        WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
+      `).get(item.id, month) as { last_approved_sell_min: number } | undefined;
+      const isRealUpdate = existingApproved ? 1 : 0;
+
       // Also update history
       db.prepare(`
         INSERT INTO selling_price_history (
           item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-          new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type,
+          new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
           changed_by, changed_at, change_reason, is_update, approval_status
         )
-        SELECT item_id, month, sell_min, sell_max, markup_min, markup_max, strategy,
-               sell_min, sell_max, markup_min, markup_max, strategy, markup_type,
-               ?, ?, 'Manager Approved All', 1, 'approved'
+        SELECT item_id, month,
+               last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
+               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
+               ?, ?, 'Manager Approved All', ?, 'approved'
         FROM selling_prices WHERE item_id = ? AND month = ?
-      `).run(managerName, now, item.id, month);
+      `).run(managerName, now, isRealUpdate, item.id, month);
     }
   });
   tx();
@@ -4184,23 +4383,37 @@ export function approveSinglePendingSellingPrice(itemId: number, month: string, 
     UPDATE selling_prices
     SET approval_status = 'approved',
         reconsider_note = NULL,
+        last_approved_sell_min = NULL,
+        last_approved_sell_max = NULL,
+        last_approved_strategy = NULL,
+        last_approved_at = NULL,
+        last_approved_transportation = NULL,
+        last_approved_other_expenses = NULL,
         created_by = ?,
         created_at = ?
     WHERE item_id = ? AND month = ?
   `).run(managerName, now, itemId, month);
 
+  // Determine if this is truly an update (had a previously approved price this month)
+  const existingApproved = db.prepare(`
+    SELECT last_approved_sell_min FROM selling_prices
+    WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
+  `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
+  const isRealUpdate = existingApproved ? 1 : 0;
+
   // Also update history
   db.prepare(`
     INSERT INTO selling_price_history (
       item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type,
+      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
       changed_by, changed_at, change_reason, is_update, approval_status
     )
-    SELECT item_id, month, sell_min, sell_max, markup_min, markup_max, strategy,
-           sell_min, sell_max, markup_min, markup_max, strategy, markup_type,
-           ?, ?, 'Manager Approved Item', 1, 'approved'
+    SELECT item_id, month,
+           last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
+           sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
+           ?, ?, 'Manager Approved Item', ?, 'approved'
     FROM selling_prices WHERE item_id = ? AND month = ?
-  `).run(managerName, now, itemId, month);
+  `).run(managerName, now, isRealUpdate, itemId, month);
 }
 
 export function reconsiderSellingPrice(itemId: number, month: string, note: string, managerName: string) {
@@ -4215,18 +4428,26 @@ export function reconsiderSellingPrice(itemId: number, month: string, note: stri
     WHERE item_id = ? AND month = ?
   `).run(note, managerName, now, itemId, month);
 
+  // Determine if this is truly an update
+  const existingApproved = db.prepare(`
+    SELECT last_approved_sell_min FROM selling_prices
+    WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
+  `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
+  const isRealUpdate = existingApproved ? 1 : 0;
+
   // Also update history
   db.prepare(`
     INSERT INTO selling_price_history (
       item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type,
+      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
       changed_by, changed_at, change_reason, is_update, approval_status, reconsider_note
     )
-    SELECT item_id, month, sell_min, sell_max, markup_min, markup_max, strategy,
-           sell_min, sell_max, markup_min, markup_max, strategy, markup_type,
-           ?, ?, 'Manager Reconsidered Item', 1, 'reconsidered', ?
+    SELECT item_id, month,
+           last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
+           sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
+           ?, ?, 'Manager Reconsidered Item', ?, 'reconsidered', ?
     FROM selling_prices WHERE item_id = ? AND month = ?
-  `).run(managerName, now, note, itemId, month);
+  `).run(managerName, now, isRealUpdate, note, itemId, month);
 }
 
 export function getMGPendingItemsCount(month: string): number {
@@ -4235,6 +4456,57 @@ export function getMGPendingItemsCount(month: string): number {
     SELECT COUNT(*) as count FROM selling_prices WHERE month = ? AND approval_status = 'pending'
   `).get(month) as { count: number } | undefined;
   return row?.count ?? 0;
+}
+
+/**
+ * Cancel a pending selling price — revert to last approved values.
+ * If no previous approved price exists (first-time), delete the row entirely.
+ */
+export function cancelPendingSellingPrice(itemId: number, month: string, cancelledBy: string): void {
+  const db = database();
+  const row = db.prepare(`
+    SELECT approval_status, last_approved_sell_min, last_approved_sell_max, last_approved_strategy, last_approved_at
+    FROM selling_prices WHERE item_id = ? AND month = ?
+  `).get(itemId, month) as {
+    approval_status: string;
+    last_approved_sell_min: number | null;
+    last_approved_sell_max: number | null;
+    last_approved_strategy: string | null;
+    last_approved_at: string | null;
+  } | undefined;
+
+  if (!row || row.approval_status !== 'pending') {
+    throw new Error('No pending price to cancel for this item.');
+  }
+
+  if (row.last_approved_sell_min != null) {
+    // Revert to last approved values
+    db.prepare(`
+      UPDATE selling_prices SET
+        sell_min = last_approved_sell_min,
+        sell_max = last_approved_sell_max,
+        strategy = COALESCE(last_approved_strategy, strategy),
+        transportation = COALESCE(last_approved_transportation, transportation),
+        other_expenses = COALESCE(last_approved_other_expenses, other_expenses),
+        approval_status = 'approved',
+        reconsider_note = NULL,
+        created_at = last_approved_at
+      WHERE item_id = ? AND month = ?
+    `).run(itemId, month);
+  } else {
+    // First-time submission — no previous approved price, just delete the row
+    db.prepare(`DELETE FROM selling_prices WHERE item_id = ? AND month = ?`).run(itemId, month);
+  }
+
+  // Log the cancellation in history
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO selling_price_history (
+      item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+      changed_by, changed_at, change_reason, is_update, approval_status
+    ) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, 'SC Cancelled Pending Price', 0, 'cancelled')
+  `).run(itemId, month, cancelledBy, now);
 }
 
 export function getMGReconsideredItemsCount(month: string): number {
@@ -4251,17 +4523,27 @@ export function getMGItemsView(month: string) {
 
   // Fetch all categories and active items
   const items = db.prepare(`
-    SELECT i.id, i.name, i.unit, i.category_id, c.name as category_name
+    SELECT i.id, i.name, i.unit, i.category_id, c.name as category_name,
+           i.recommended_supplier_id,
+           COALESCE(NULLIF(TRIM(rs.fame_name), ''), rs.name) as recommended_supplier_name
     FROM items i
     JOIN categories c ON c.id = i.category_id
+    LEFT JOIN suppliers rs ON rs.id = i.recommended_supplier_id
     WHERE i.active = 1
-    ORDER BY c.name, i.name
-  `).all() as Array<{ id: number; name: string; unit: string; category_id: number; category_name: string }>;
+    ORDER BY c.name, i.id
+  `).all() as Array<{ id: number; name: string; unit: string; category_id: number; category_name: string; recommended_supplier_id: number | null; recommended_supplier_name: string | null }>;
 
   return items.map(item => {
     // Current month selling price
     const currentSp = db.prepare(`
-      SELECT strategy, sell_min, sell_max, buy_avg, buy_min, buy_max, approval_status, reconsider_note
+      SELECT strategy, sell_min, sell_max, buy_avg, buy_min, buy_max,
+             approval_status, reconsider_note,
+             last_approved_sell_min, last_approved_sell_max,
+             last_approved_transportation, last_approved_other_expenses,
+             transportation, other_expenses,
+             COALESCE(tier_pricing_enabled, 0) as tier_pricing_enabled,
+             tier1_max, tier1_discount, tier2_max, tier2_discount,
+             tier3_max, tier3_discount, tier4_max, tier4_discount
       FROM selling_prices
       WHERE item_id = ? AND month = ?
     `).get(item.id, month) as any | undefined;
@@ -4338,7 +4620,8 @@ export function getMGItemsView(month: string) {
           if (expensiveRow) confirmedSupplier = expensiveRow.name;
         }
       } else {
-        confirmedSupplier = "Average (All)";
+        // avg strategy — don't show as supplier, the strategy label already clarifies
+        confirmedSupplier = null;
       }
     }
 
@@ -4357,10 +4640,26 @@ export function getMGItemsView(month: string) {
         buyMin: currentSp.buy_min,
         buyMax: currentSp.buy_max,
         approvalStatus: currentSp.approval_status,
-        reconsiderNote: currentSp.reconsider_note
+        reconsiderNote: currentSp.reconsider_note,
+        lastApprovedSellMin: currentSp.last_approved_sell_min,
+        lastApprovedSellMax: currentSp.last_approved_sell_max,
+        lastApprovedTransportation: currentSp.last_approved_transportation,
+        lastApprovedOtherExpenses: currentSp.last_approved_other_expenses,
+        transportation: currentSp.transportation ?? 0,
+        otherExpenses: currentSp.other_expenses ?? 0,
+        tierPricingEnabled: currentSp.tier_pricing_enabled ?? 0,
+        tier1Max: currentSp.tier1_max ?? 100,
+        tier1Discount: currentSp.tier1_discount ?? 0,
+        tier2Max: currentSp.tier2_max ?? 200,
+        tier2Discount: currentSp.tier2_discount ?? 0,
+        tier3Max: currentSp.tier3_max ?? 300,
+        tier3Discount: currentSp.tier3_discount ?? 0,
+        tier4Max: currentSp.tier4_max ?? 0,
+        tier4Discount: currentSp.tier4_discount ?? 0,
       } : null,
       buyingHistory,
       sellingHistory,
+      recommendedSupplierName: item.recommended_supplier_name || null,
     };
   });
 }
@@ -4381,4 +4680,64 @@ function getPastMonths(month: string, count: number = 3): string[] {
     result.push(`${prevYear}-${monthStr}`);
   }
   return result;
+}
+
+export function getUnreadNotificationsForUser(role: string, username: string): Array<{
+  id: number;
+  type: "acknowledgment" | "rejection";
+  title: string;
+  message: string;
+  time: string;
+  itemId: number;
+}> {
+  const db = database();
+  if (role === "SC" || role === "AD") {
+    const rows = db.prepare(`
+      SELECT pa.id, pa.acknowledged_by, pa.acknowledged_at,
+             h.new_sell_min, h.new_sell_max, h.month, i.name as item_name, i.id as item_id
+      FROM price_acknowledgments pa
+      JOIN selling_price_history h ON h.id = pa.history_id
+      JOIN items i ON i.id = h.item_id
+      WHERE pa.read_by_sc = 0
+      ORDER BY pa.acknowledged_at DESC
+    `).all() as any[];
+    return rows.map(r => ({
+      id: r.id,
+      type: "acknowledgment",
+      title: "Price Acknowledged",
+      message: `${r.acknowledged_by} acknowledged ${r.item_name} (EGP ${r.new_sell_min}${r.new_sell_max && r.new_sell_max !== r.new_sell_min ? ` - EGP ${r.new_sell_max}` : ""})`,
+      time: r.acknowledged_at,
+      itemId: r.item_id,
+    }));
+  }
+  if (role === "WH") {
+    const rows = db.prepare(`
+      SELECT pe.id AS quote_id, pe.price, pe.month, pe.recorded_at,
+             pe.review_note, pe.reviewed_by, pe.reviewed_at,
+             i.name AS item_name, i.id as item_id,
+             COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) AS supplier_name
+      FROM price_entries pe
+      JOIN items i ON i.id = pe.item_id
+      JOIN suppliers s ON s.id = pe.supplier_id
+      WHERE pe.status = 'rejected' AND pe.collected_by = ? AND pe.read_by_wh = 0
+      ORDER BY pe.reviewed_at DESC
+    `).all(username) as any[];
+    return rows.map(r => ({
+      id: r.quote_id,
+      type: "rejection",
+      title: "Quote Rejected",
+      message: `${r.item_name} for ${r.supplier_name} rejected: "${r.review_note || "No reason specified"}"`,
+      time: r.reviewed_at || r.recorded_at,
+      itemId: r.item_id,
+    }));
+  }
+  return [];
+}
+
+export function markSingleAcknowledgmentAsRead(id: number) {
+  database().prepare("UPDATE price_acknowledgments SET read_by_sc = 1 WHERE id = ?").run(id);
+}
+
+export function markSingleRejectedPriceEntryAsReadForWH(quoteId: number) {
+  database().prepare("UPDATE price_entries SET read_by_wh = 1 WHERE id = ?").run(quoteId);
 }
