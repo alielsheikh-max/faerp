@@ -323,7 +323,7 @@ export default function InteractiveDashboard({
         </div>
 
         {/* Window */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <div className="desktop-only" style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>{t("idash.history")}</span>
           <div style={{ display: "flex", gap: "3px", background: "var(--bg-elevated)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border)" }}>
             {([3, 6, 12] as const).map(w => (
@@ -535,7 +535,7 @@ export default function InteractiveDashboard({
             </div>
 
             {/* Price trend chart */}
-            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+            <div className="desktop-only" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
                 <div>
                   <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
@@ -724,7 +724,7 @@ export default function InteractiveDashboard({
             )}
           </div>
 
-          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+          <div className="desktop-only" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
               <div>
                 <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", margin: 0 }}>
@@ -790,7 +790,7 @@ export default function InteractiveDashboard({
           )}
 
       {/* ═══ SECTION 3: SUPPLIER × MONTH COMPARISON ══════════════════ */}
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
+      <div className="desktop-only" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <div>

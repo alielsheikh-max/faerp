@@ -330,7 +330,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
   return (
     <div className="page-stack">
       {/* Client Quoting Simulator */}
-      <section className="panel animate-fade-in">
+      <section className="panel animate-fade-in desktop-only">
         <div className="panel-header">
           <div>
             <p className="eyebrow">{T.simEyebrow}</p>

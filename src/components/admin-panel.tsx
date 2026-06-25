@@ -1558,7 +1558,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
       </section>
 
       {/* SECTION 3: Dangerous Zone / Database Purge */}
-      <section style={{ marginTop: "24px" }}>
+      <section className="desktop-only" style={{ marginTop: "24px" }}>
         <article className="panel" style={{ border: "1.5px solid var(--danger)", background: "rgba(239, 68, 68, 0.02)" }}>
           <div className="panel-header" style={{ marginBottom: "16px", borderBottom: "1px solid rgba(239, 68, 68, 0.15)", paddingBottom: "12px" }}>
             <div>

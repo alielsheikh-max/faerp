@@ -1272,7 +1272,7 @@ export default function PurchasingForm({
       {/* ── Category + Item selectors ── */}
       <div className="mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
         <label className="field">
-          <span>1. {t("purch.selectCategory")}</span>
+          <span>{t("purch.selectCategory")}</span>
           <select
             value={selectedCategoryId}
             onChange={e => setSelectedCategoryId(e.target.value)}
@@ -1283,7 +1283,7 @@ export default function PurchasingForm({
           </select>
         </label>
         <label className="field">
-          <span>2. {t("purch.selectItem")}</span>
+          <span>{t("purch.selectItem")}</span>
           <ItemCombobox
             items={filteredItems.map((item) => {
               const submitted = submittedSuppliersByItemId[item.id]?.size ?? 0;
@@ -1655,7 +1655,7 @@ export default function PurchasingForm({
             </div>
 
             {/* Pivot history table */}
-            <div style={{ marginTop: "16px", borderTop: "1.5px solid var(--border-light)", paddingTop: "16px" }}>
+            <div className="desktop-only" style={{ marginTop: "16px", borderTop: "1.5px solid var(--border-light)", paddingTop: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
                 <h3 style={{ fontSize: "12px", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>
                   📊 {t("purch.prevPrices")}

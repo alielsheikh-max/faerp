@@ -710,7 +710,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
           )}
 
           {/* System status */}
-          <div style={{ padding: "8px 12px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="desktop-only" style={{ padding: "8px 12px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
             <span className="pulse-dot" />
             <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.8)" }}>{t("sidebar.systemOnline")}</span>
           </div>
