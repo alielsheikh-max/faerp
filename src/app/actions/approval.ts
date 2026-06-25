@@ -6,7 +6,9 @@ import { asNumber, asString } from "@/lib/format";
 import {
   approveAllPendingSellingPrices,
   approveSinglePendingSellingPrice,
-  reconsiderSellingPrice
+  reconsiderSellingPrice,
+  getPendingPriceEntries,
+  getPendingPriceChangeRequests
 } from "@/lib/db";
 
 export async function approveAllSellingPricesAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
@@ -74,5 +76,16 @@ export async function reconsiderSellingPriceAction(formData: FormData): Promise<
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to return for reconsideration." };
+  }
+}
+
+export async function getPendingApprovalsAction(): Promise<{ ok: boolean; pendingQuotes?: any[]; pendingRevisions?: any[]; error?: string }> {
+  try {
+    const session = requireRole(["SC"]);
+    const pendingQuotes = getPendingPriceEntries();
+    const pendingRevisions = getPendingPriceChangeRequests();
+    return { ok: true, pendingQuotes, pendingRevisions };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to fetch approvals." };
   }
 }

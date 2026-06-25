@@ -31,7 +31,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     0;
 
   return (
-    <AppShell role={session.role} searchIndex={searchIndex} pendingRequests={pendingRequests} ackCount={ackCount}>
+    <AppShell role={session.role} searchIndex={searchIndex} pendingRequests={pendingRequests} ackCount={ackCount} username={session.displayName}>
       {children}
     </AppShell>
   );

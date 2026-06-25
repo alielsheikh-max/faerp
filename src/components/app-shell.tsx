@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useState, useEffect } from "react";
 import { ROLE_PROFILES, RoleCode } from "@/lib/constants";
 import UniversalSearch from "@/components/universal-search";
 import { useI18n } from "@/lib/i18n-context";
 import { getUnreadNotificationsAction, markSingleNotificationReadAction } from "@/app/actions/notifications";
+import { getPendingApprovalsAction } from "@/app/actions/approval";
+import { 
+  approvePriceEntryAction, 
+  rejectPriceEntryAction, 
+  approvePriceChangeRequestAction, 
+  rejectPriceChangeRequestAction 
+} from "@/app/actions/pricing";
+import { formatCurrency, formatMonthLabel } from "@/lib/format";
 
 type SearchIndex = {
   items: Array<{ id: number; name: string; unit: string; active: number; category_name: string; category_id: number }>;
@@ -21,10 +29,12 @@ const ROLE_COLORS: Record<RoleCode, { badge: string; dot: string }> = {
   MG: { badge: "#f59e0b", dot: "#d97706" },
 };
 
-export function AppShell({ role, children, searchIndex, pendingRequests = 0, ackCount = 0 }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number; ackCount?: number }) {
+export function AppShell({ role, children, searchIndex, pendingRequests = 0, ackCount = 0, username = "Pricing Control" }: { role: RoleCode; children: ReactNode; searchIndex?: SearchIndex; pendingRequests?: number; ackCount?: number; username?: string }) {
   const { t, toggleLocale, isRTL, locale } = useI18n();
   const pathname = usePathname();
+  const router = useRouter();
   const colors = ROLE_COLORS[role];
+  const isAr = locale === "ar";
 
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -96,6 +106,149 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       }
     } else {
       setShowQuickNotifications(false);
+    }
+  };
+
+  // Quick approvals popup states and handlers
+  const [showApprovalsPopup, setShowApprovalsPopup] = useState(false);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [pendingQuotes, setPendingQuotes] = useState<any[]>([]);
+  const [pendingRevisions, setPendingRevisions] = useState<any[]>([]);
+  const [activeApprovalsTab, setActiveApprovalsTab] = useState<"quotes" | "revisions">("quotes");
+  const [approvalsActionPendingId, setApprovalsActionPendingId] = useState<string | null>(null);
+  const [approvalsNotes, setApprovalsNotes] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!showApprovalsPopup) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".quick-approvals-container")) {
+        setShowApprovalsPopup(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [showApprovalsPopup]);
+
+  const handleToggleApprovalsPopup = async () => {
+    if (showApprovalsPopup) {
+      setShowApprovalsPopup(false);
+      return;
+    }
+
+    setShowApprovalsPopup(true);
+    setApprovalsLoading(true);
+    try {
+      const res = await getPendingApprovalsAction();
+      if (res.ok) {
+        setPendingQuotes(res.pendingQuotes || []);
+        setPendingRevisions(res.pendingRevisions || []);
+        if ((res.pendingQuotes || []).length === 0 && (res.pendingRevisions || []).length > 0) {
+          setActiveApprovalsTab("revisions");
+        } else {
+          setActiveApprovalsTab("quotes");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setApprovalsLoading(false);
+    }
+  };
+
+  const handleApproveQuote = async (id: number) => {
+    const key = `quote-${id}`;
+    setApprovalsActionPendingId(key);
+    const note = approvalsNotes[key] || "";
+    
+    const fd = new FormData();
+    fd.set("entryId", String(id));
+    fd.set("reviewedBy", username || "SC");
+    fd.set("reviewNote", note);
+
+    try {
+      const res = await approvePriceEntryAction(fd);
+      if (res?.ok) {
+        setPendingQuotes(prev => prev.filter(q => q.id !== id));
+        router.refresh();
+      } else {
+        alert(res?.error || "Approval failed.");
+      }
+    } catch (e) {
+      alert("Failed to approve quote.");
+    } finally {
+      setApprovalsActionPendingId(null);
+    }
+  };
+
+  const handleRejectQuote = async (id: number) => {
+    const key = `quote-${id}`;
+    const note = approvalsNotes[key] || "";
+    if (!note.trim()) {
+      alert(t("scapp.rejectNoteRequired") || "Rejection note is required.");
+      return;
+    }
+
+    setApprovalsActionPendingId(key);
+    const fd = new FormData();
+    fd.set("entryId", String(id));
+    fd.set("reviewedBy", username || "SC");
+    fd.set("reviewNote", note);
+
+    try {
+      const res = await rejectPriceEntryAction(fd);
+      if (res?.ok) {
+        setPendingQuotes(prev => prev.filter(q => q.id !== id));
+        router.refresh();
+      } else {
+        alert(res?.error || "Rejection failed.");
+      }
+    } catch (e) {
+      alert("Failed to reject quote.");
+    } finally {
+      setApprovalsActionPendingId(null);
+    }
+  };
+
+  const handleApproveRevision = async (id: number) => {
+    const key = `revision-${id}`;
+    setApprovalsActionPendingId(key);
+    const note = approvalsNotes[key] || "";
+
+    const fd = new FormData();
+    fd.set("requestId", String(id));
+    fd.set("reviewedBy", username || "SC");
+    fd.set("reviewNote", note);
+
+    try {
+      await approvePriceChangeRequestAction(fd);
+      setPendingRevisions(prev => prev.filter(r => r.id !== id));
+      router.refresh();
+    } catch (e) {
+      alert("Failed to approve revision.");
+    } finally {
+      setApprovalsActionPendingId(null);
+    }
+  };
+
+  const handleRejectRevision = async (id: number) => {
+    const key = `revision-${id}`;
+    setApprovalsActionPendingId(key);
+    const note = approvalsNotes[key] || "";
+
+    const fd = new FormData();
+    fd.set("requestId", String(id));
+    fd.set("reviewedBy", username || "SC");
+    fd.set("reviewNote", note);
+
+    try {
+      await rejectPriceChangeRequestAction(fd);
+      setPendingRevisions(prev => prev.filter(r => r.id !== id));
+      router.refresh();
+    } catch (e) {
+      alert("Failed to reject revision.");
+    } finally {
+      setApprovalsActionPendingId(null);
     }
   };
 
@@ -227,9 +380,319 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 }}>⏳</span>
                 <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
               </button>
+            ) : role === "SC" ? (
+              <div className="quick-approvals-container" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", position: "relative" }}>
+                {showApprovalsPopup && (
+                  <div style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 8px)",
+                    insetInlineEnd: "0",
+                    width: "380px",
+                    maxHeight: "520px",
+                    background: "var(--bg-glass)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    borderRadius: "var(--radius-lg)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow-xl)",
+                    display: "flex",
+                    flexDirection: "column",
+                    zIndex: 1000,
+                    overflow: "hidden",
+                    animation: "slideUpFade 0.25s var(--ease-spring)",
+                  }} onClick={e => e.stopPropagation()}>
+                    
+                    {/* Header */}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 16px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "rgba(245, 158, 11, 0.08)",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "16px" }}>⏳</span>
+                        <strong style={{ fontSize: "13.5px", color: "var(--text-primary)" }}>{t("scapp.pendingRequests") || "Pending Reviews"}</strong>
+                        <span style={{
+                          background: "#d97706",
+                          color: "#fff",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 6px",
+                          borderRadius: "99px",
+                        }}>{pendingQuotes.length + pendingRevisions.length}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowApprovalsPopup(false)}
+                        style={{
+                          background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer",
+                          fontSize: "14px", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center",
+                          borderRadius: "50%", transition: "background 150ms",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.06)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "none"}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Tabs */}
+                    {pendingQuotes.length > 0 && pendingRevisions.length > 0 && (
+                      <div style={{ display: "flex", borderBottom: "1px solid var(--border-light)", background: "var(--bg-elevated)", padding: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setActiveApprovalsTab("quotes")}
+                          style={{
+                            flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
+                            background: activeApprovalsTab === "quotes" ? "var(--bg-surface)" : "transparent",
+                            color: activeApprovalsTab === "quotes" ? "var(--primary)" : "var(--text-muted)",
+                            boxShadow: activeApprovalsTab === "quotes" ? "var(--shadow-xs)" : "none",
+                            transition: "all 150ms",
+                          }}
+                        >
+                          {isAr ? "عروض الأسعار" : "Quotes"} ({pendingQuotes.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveApprovalsTab("revisions")}
+                          style={{
+                            flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
+                            background: activeApprovalsTab === "revisions" ? "var(--bg-surface)" : "transparent",
+                            color: activeApprovalsTab === "revisions" ? "var(--primary)" : "var(--text-muted)",
+                            boxShadow: activeApprovalsTab === "revisions" ? "var(--shadow-xs)" : "none",
+                            transition: "all 150ms",
+                          }}
+                        >
+                          {isAr ? "طلبات التعديل" : "Revisions"} ({pendingRevisions.length})
+                        </button>
+                      </div>
+                    )}
+
+                    {/* List Body */}
+                    <div style={{ flex: 1, overflowY: "auto", padding: "10px", maxHeight: "360px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {approvalsLoading ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "32px", gap: "8px" }}>
+                          <span style={{
+                            width: "18px", height: "18px", border: "2px solid rgba(245,158,11,0.2)",
+                            borderTopColor: "#d97706", borderRadius: "50%", animation: "spin 0.8s linear infinite",
+                          }} />
+                          <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Loading...</span>
+                        </div>
+                      ) : activeApprovalsTab === "quotes" ? (
+                        pendingQuotes.length === 0 ? (
+                          <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
+                            {isAr ? "لا توجد عروض أسعار معلقة" : "No pending quotes."}
+                          </div>
+                        ) : (
+                          pendingQuotes.map(q => {
+                            const key = `quote-${q.id}`;
+                            const isPending = approvalsActionPendingId === key;
+                            return (
+                              <div key={q.id} style={{
+                                padding: "10px 12px", borderRadius: "var(--radius)", background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "6px"
+                              }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                  <span className="badge" style={{ fontSize: "9px", background: "rgba(245,158,11,0.12)", color: "#d97706" }}>
+                                    {q.category_name} · {formatMonthLabel(q.month)}
+                                  </span>
+                                  <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--success)" }}>
+                                    {formatCurrency(q.price)}
+                                  </span>
+                                </div>
+                                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "var(--text-primary)", textAlign: isRTL ? "right" : "left" }}>
+                                  {q.item_name}
+                                </div>
+                                <div style={{ fontSize: "10.5px", color: "var(--text-muted)", textAlign: isRTL ? "right" : "left" }}>
+                                  {isAr ? "المورد" : "Supplier"}: <strong style={{ color: "var(--text-secondary)" }}>{q.supplier_name}</strong>
+                                </div>
+                                {q.notes && (
+                                  <div style={{ fontSize: "10.5px", background: "var(--bg-subtle)", padding: "4px 8px", borderRadius: "4px", color: "var(--text-secondary)", fontStyle: "italic", textAlign: isRTL ? "right" : "left" }}>
+                                    💡 {q.notes}
+                                  </div>
+                                )}
+                                
+                                {/* Quick Decision Form */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px", borderTop: "1px dashed var(--border)", paddingTop: "6px" }}>
+                                  <input
+                                    type="text"
+                                    placeholder={isAr ? "ملاحظة المراجعة (مطلوبة للرفض)..." : "Review note (required for rejection)..."}
+                                    value={approvalsNotes[key] || ""}
+                                    onChange={e => setApprovalsNotes(prev => ({ ...prev, [key]: e.target.value }))}
+                                    style={{
+                                      height: "30px", fontSize: "11px", padding: "4px 8px", borderRadius: "6px",
+                                      border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)",
+                                      width: "100%", direction: isRTL ? "rtl" : "ltr"
+                                    }}
+                                  />
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <button
+                                      type="button"
+                                      disabled={isPending}
+                                      onClick={() => handleApproveQuote(q.id)}
+                                      style={{
+                                        flex: 1, height: "30px", background: "var(--success)", color: "#fff",
+                                        border: "none", borderRadius: "6px", fontSize: "11px", fontWeight: 700,
+                                        cursor: "pointer", opacity: isPending ? 0.6 : 1, transition: "opacity 150ms"
+                                      }}
+                                    >
+                                      {isAr ? "✓ موافقة" : "✓ Approve"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isPending}
+                                      onClick={() => handleRejectQuote(q.id)}
+                                      style={{
+                                        flex: 1, height: "30px", background: "var(--danger)", color: "#fff",
+                                        border: "none", borderRadius: "6px", fontSize: "11px", fontWeight: 700,
+                                        cursor: "pointer", opacity: isPending ? 0.6 : 1, transition: "opacity 150ms"
+                                      }}
+                                    >
+                                      {isAr ? "✕ رفض" : "✕ Reject"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )
+                      ) : (
+                        pendingRevisions.length === 0 ? (
+                          <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
+                            {isAr ? "لا توجد طلبات تعديل معلقة" : "No pending revisions."}
+                          </div>
+                        ) : (
+                          pendingRevisions.map(r => {
+                            const key = `revision-${r.id}`;
+                            const isPending = approvalsActionPendingId === key;
+                            return (
+                              <div key={r.id} style={{
+                                padding: "10px 12px", borderRadius: "var(--radius)", background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "6px"
+                              }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                  <span className="badge" style={{ fontSize: "9px", background: "rgba(99,102,241,0.12)", color: "#6366f1" }}>
+                                    {r.category_name} · {formatMonthLabel(r.month)}
+                                  </span>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700 }}>
+                                    <span style={{ color: "var(--text-muted)", textDecoration: "line-through" }}>{formatCurrency(r.old_price)}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>→</span>
+                                    <span style={{ color: "var(--primary)" }}>{formatCurrency(r.new_price)}</span>
+                                  </div>
+                                </div>
+                                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "var(--text-primary)", textAlign: isRTL ? "right" : "left" }}>
+                                  {r.item_name}
+                                </div>
+                                <div style={{ fontSize: "10.5px", color: "var(--text-muted)", textAlign: isRTL ? "right" : "left" }}>
+                                  {isAr ? "المورد" : "Supplier"}: <strong style={{ color: "var(--text-secondary)" }}>{r.supplier_name}</strong>
+                                </div>
+                                <div style={{ fontSize: "10.5px", background: "rgba(245,158,11,0.06)", padding: "4px 8px", borderRadius: "4px", color: "var(--warning)", border: "1px solid rgba(245,158,11,0.18)", textAlign: isRTL ? "right" : "left" }}>
+                                  ❓ {r.reason}
+                                </div>
+                                
+                                {/* Quick Decision Form */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px", borderTop: "1px dashed var(--border)", paddingTop: "6px" }}>
+                                  <input
+                                    type="text"
+                                    placeholder={isAr ? "ملاحظة المراجعة (اختياري)..." : "Review note (optional)..."}
+                                    value={approvalsNotes[key] || ""}
+                                    onChange={e => setApprovalsNotes(prev => ({ ...prev, [key]: e.target.value }))}
+                                    style={{
+                                      height: "30px", fontSize: "11px", padding: "4px 8px", borderRadius: "6px",
+                                      border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)",
+                                      width: "100%", direction: isRTL ? "rtl" : "ltr"
+                                    }}
+                                  />
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <button
+                                      type="button"
+                                      disabled={isPending}
+                                      onClick={() => handleApproveRevision(r.id)}
+                                      style={{
+                                        flex: 1, height: "30px", background: "var(--success)", color: "#fff",
+                                        border: "none", borderRadius: "6px", fontSize: "11px", fontWeight: 700,
+                                        cursor: "pointer", opacity: isPending ? 0.6 : 1, transition: "opacity 150ms"
+                                      }}
+                                    >
+                                      {isAr ? "✓ موافقة" : "✓ Approve"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isPending}
+                                      onClick={() => handleRejectRevision(r.id)}
+                                      style={{
+                                        flex: 1, height: "30px", background: "var(--danger)", color: "#fff",
+                                        border: "none", borderRadius: "6px", fontSize: "11px", fontWeight: 700,
+                                        cursor: "pointer", opacity: isPending ? 0.6 : 1, transition: "opacity 150ms"
+                                      }}
+                                    >
+                                      {isAr ? "✕ رفض" : "✕ Reject"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{
+                      padding: "10px 16px",
+                      borderTop: "1px solid var(--border)",
+                      background: "var(--bg-elevated)",
+                      textAlign: "center",
+                    }}>
+                      <Link
+                        href="/dashboard/approvals"
+                        onClick={() => setShowApprovalsPopup(false)}
+                        style={{
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          color: "#d97706",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        {isAr ? "فتح محطة عمل الموافقات كاملة ➔" : "Open full approvals workstation ➔"}
+                      </Link>
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleToggleApprovalsPopup}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "6px",
+                    padding: "6px 14px", borderRadius: "10px",
+                    background: "var(--bg-elevated)",
+                    color: "#b45309", fontWeight: 700, fontSize: "11.5px",
+                    boxShadow: "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)",
+                    border: "1.5px solid rgba(245,158,11,0.35)",
+                    backdropFilter: "blur(8px)",
+                    transition: "transform 150ms, box-shadow 150ms",
+                    direction: "ltr",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(245,158,11,0.4)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"; }}
+                >
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: "20px", height: "20px", borderRadius: "6px",
+                    background: "rgba(245,158,11,0.15)", fontSize: "11px",
+                  }}>⏳</span>
+                  <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
+                </button>
+              </div>
             ) : (
               <Link
-                href={role === "WH" ? "/dashboard/purchasing/approvals" : "/dashboard/approvals"}
+                href="/dashboard/purchasing/approvals"
                 style={{
                   display: "flex", alignItems: "center", gap: "6px",
                   padding: "6px 14px", borderRadius: "10px",
