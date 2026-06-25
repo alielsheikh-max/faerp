@@ -2132,6 +2132,14 @@ body:has(.print-page-wrapper) .content-area {
   display: none !important;
 }
 
+.search-detail-prices-wrapper {
+  display: contents;
+}
+
+.recent-price-group-details-wrapper {
+  display: contents;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    DEDICATED MOBILE EXPERIENCE — Task-focused, clutter-free
    Hide non-essential elements, optimize for touch input
@@ -2398,6 +2406,106 @@ body:has(.print-page-wrapper) .content-area {
     border-radius: 8px;
     font-size: 11px;
     font-weight: 700;
+  }
+
+  /* ── Dedicated Mobile Theme Extensions ── */
+  
+  /* Search Results Mobile Adjustments */
+  .search-detail-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 12px !important;
+  }
+  .search-detail-prices-wrapper {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+    gap: 8px !important;
+    border-top: 1.5px solid var(--border-light) !important;
+    padding-top: 10px !important;
+    margin-top: 6px !important;
+  }
+  .search-detail-prices-wrapper > div {
+    text-align: center !important;
+  }
+  .search-detail-prices-wrapper > div > div:first-child {
+    font-size: 9px !important;
+    margin-bottom: 2px !important;
+  }
+  .search-detail-prices-wrapper > div > div:last-child {
+    font-size: 12px !important;
+    font-weight: 800 !important;
+  }
+
+  /* Recent Price Group Header Mobile Stack */
+  .recent-price-group-header {
+    grid-template-columns: auto 1fr !important;
+    gap: 8px !important;
+  }
+  .recent-price-group-details-wrapper {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-column: 1 / -1 !important;
+    border-top: 1.5px solid var(--border-light) !important;
+    padding-top: 10px !important;
+    margin-top: 6px !important;
+    gap: 8px !important;
+  }
+  .recent-price-group-details-wrapper > span.badge {
+    justify-self: start !important;
+  }
+  .recent-price-group-details-wrapper > .recent-price-count-label {
+    text-align: right !important;
+  }
+  .recent-price-group-details-wrapper > .recent-price-range-label {
+    text-align: start !important;
+    grid-column: 1 / span 1 !important;
+  }
+  .recent-price-group-details-wrapper > .recent-price-best-label {
+    text-align: right !important;
+    grid-column: 2 / span 1 !important;
+  }
+  .recent-price-group-details-wrapper > .recent-price-best-label-empty {
+    display: none !important;
+  }
+
+  /* Interactive Dashboard Market Avg Header Stacking */
+  .dashboard-header-flex {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  .dashboard-header-flex h2 {
+    white-space: normal !important;
+    max-width: 100% !important;
+    font-size: 15px !important;
+    line-height: 1.4 !important;
+  }
+  .dashboard-header-market-avg {
+    text-align: start !important;
+    width: 100% !important;
+    border-top: 1.5px solid var(--border-light) !important;
+    padding-top: 10px !important;
+    margin-top: 4px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  .dashboard-header-market-avg > div:first-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Purchasing Form Mobile Inputs Stacking */
+  .action-column {
+    align-self: stretch !important;
+    width: 100% !important;
+    margin-top: 6px !important;
+  }
+  .action-column button {
+    width: 100% !important;
+    min-height: 48px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
   }
 }
 

@@ -1527,7 +1527,7 @@ export default function PurchasingForm({
                     background: "var(--bg-elevated)",
                     transition: "all 200ms ease",
                   }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                    <div className="mobile-stack" style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
                       {/* Supplier identity */}
                       <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "180px", width: "180px", flexShrink: 0 }}>
                         <span style={{ width: "34px", height: "34px", borderRadius: "8px", background: color + "22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color, flexShrink: 0 }}>
@@ -1623,7 +1623,7 @@ export default function PurchasingForm({
                       </div>
 
                       {/* Action Column */}
-                      <div style={{ display: "flex", gap: "8px", alignSelf: "flex-end", flexShrink: 0 }}>
+                      <div className="action-column" style={{ display: "flex", gap: "8px", alignSelf: "flex-end", flexShrink: 0 }}>
                         <button
                           type="button"
                           disabled={inlinePending}

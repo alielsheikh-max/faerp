@@ -176,6 +176,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
             {/* ── Group header row ── */}
             <div
               onClick={() => toggle(group.key)}
+              className="recent-price-group-header"
               style={{
                 display: "grid",
                 gridTemplateColumns: "auto 1fr auto auto auto auto",
@@ -207,44 +208,48 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                   <span className="badge badge-strong" style={{ fontSize: "9px", padding: "1px 6px" }}>{group.category_name}</span>
                 </div>
               </div>
-              <span className="badge" style={{ fontSize: "11px", whiteSpace: "nowrap" }}>{formatMonthLabel(group.month)}</span>
-              <span style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                {count} {isAr ? "مورد" : count === 1 ? "supplier" : "suppliers"}
-              </span>
-              <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                {minP === maxP ? (
-                  <span style={{ fontSize: "12.5px" }}>
-                    <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
-                    <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· {isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
-                  </span>
+              <div className="recent-price-group-details-wrapper">
+                <span className="badge" style={{ fontSize: "11px", whiteSpace: "nowrap" }}>{formatMonthLabel(group.month)}</span>
+                <span className="recent-price-count-label" style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  {count} {isAr ? "مورد" : count === 1 ? "supplier" : "suppliers"}
+                </span>
+                <div className="recent-price-range-label" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  {minP === maxP ? (
+                    <span style={{ fontSize: "12.5px" }}>
+                      <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
+                      <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· {isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "11.5px" }}>
+                      <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
+                      <span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span>
+                      <strong style={{ color: "var(--danger)" }}>{formatCurrency(maxP)}</strong>
+                      <span style={{ color: "var(--text-muted)", marginInlineStart: "6px", fontSize: "10px" }}>{isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
+                    </span>
+                  )}
+                </div>
+                {count > 1 ? (
+                  <div className="recent-price-best-label" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {(() => {
+                      const best = group.entries.reduce((a, b) => a.price < b.price ? a : b);
+                      return (
+                        <span
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: best.supplier_id } }));
+                          }}
+                          className="clickable-detail-trigger"
+                          style={{ fontSize: "10px" }}
+                        >
+                          🏆 {best.supplier_display_name}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 ) : (
-                  <span style={{ fontSize: "11.5px" }}>
-                    <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
-                    <span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span>
-                    <strong style={{ color: "var(--danger)" }}>{formatCurrency(maxP)}</strong>
-                    <span style={{ color: "var(--text-muted)", marginInlineStart: "6px", fontSize: "10px" }}>{isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
-                  </span>
+                  <div className="recent-price-best-label-empty" />
                 )}
               </div>
-              {count > 1 && (
-                <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  {(() => {
-                    const best = group.entries.reduce((a, b) => a.price < b.price ? a : b);
-                    return (
-                      <span
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: best.supplier_id } }));
-                        }}
-                        className="clickable-detail-trigger"
-                        style={{ fontSize: "10px" }}
-                      >
-                        🏆 {best.supplier_display_name}
-                      </span>
-                    );
-                  })()}
-                </div>
-              )}
             </div>
 
             {/* ── Expanded rows ── */}

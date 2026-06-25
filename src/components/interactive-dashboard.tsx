@@ -445,7 +445,7 @@ export default function InteractiveDashboard({
 
             {/* ── Current month supplier price cards ─────────────────── */}
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <div className="dashboard-header-flex" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
                 <div>
                   <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "2px" }}>
                     {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
@@ -462,7 +462,7 @@ export default function InteractiveDashboard({
                   </h2>
                 </div>
                 {cheapestPrice !== null && avgCurrentPrice !== null && (
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div className="dashboard-header-market-avg" style={{ textAlign: "right", flexShrink: 0 }}>
                     <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("idash.marketAvg")}</div>
                     <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(avgCurrentPrice)}</div>
                   </div>
@@ -675,7 +675,7 @@ export default function InteractiveDashboard({
         /* ── Non-SC: original 2-column grid ──────── */
         <div className="dashboard-wh-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <div className="dashboard-header-flex" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
               <div>
                 <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "2px" }}>
                   {formatMonthLabel(month ?? latestMonth)} · {t("idash.currentPrices")}
@@ -685,7 +685,7 @@ export default function InteractiveDashboard({
                 </h2>
               </div>
               {cheapestPrice !== null && avgCurrentPrice !== null && (
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div className="dashboard-header-market-avg" style={{ textAlign: "right", flexShrink: 0 }}>
                   <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("idash.marketAvg")}</div>
                   <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(avgCurrentPrice)}</div>
                 </div>

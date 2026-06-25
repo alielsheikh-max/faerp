@@ -302,22 +302,24 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
           {filtered.map(item => {
             const devColor = item.avgDeviation < -1 ? "var(--success)" : item.avgDeviation > 1 ? "var(--danger)" : "var(--text-muted)";
             return (
-              <div key={item.itemId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: "12px", alignItems: "center", padding: "9px 12px", borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border-light)" }}>
+              <div key={item.itemId} className="search-detail-row" style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: "12px", alignItems: "center", padding: "9px 12px", borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border-light)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.itemName}</div>
                   <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "1px" }}>{item.categoryName} · {item.unit} · {t("search.quotesShort").replace("{count}", String(item.quoteCount))}</div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.latest")}</div>
-                  <div style={{ fontSize: "13px", fontWeight: 800 }}>{formatCurrency(item.latestPrice)}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.avg")}</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(item.avg)}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.vsMkt")}</div>
-                  <div style={{ fontSize: "13px", fontWeight: 800, color: devColor }}>{item.avgDeviation > 0 ? "+" : ""}{item.avgDeviation.toFixed(1)}%</div>
+                <div className="search-detail-prices-wrapper">
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.latest")}</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800 }}>{formatCurrency(item.latestPrice)}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.avg")}</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--primary)" }}>{formatCurrency(item.avg)}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("search.vsMkt")}</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: devColor }}>{item.avgDeviation > 0 ? "+" : ""}{item.avgDeviation.toFixed(1)}%</div>
+                  </div>
                 </div>
               </div>
             );
