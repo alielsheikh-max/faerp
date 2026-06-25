@@ -1251,7 +1251,7 @@ export default function PurchasingForm({
       )}
 
       {/* ── Month banner ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 18px", background: "linear-gradient(135deg, var(--primary-light), transparent)", border: "2px solid var(--primary)", borderRadius: "var(--radius-lg)", boxShadow: "var(--glow-primary)", flexWrap: "wrap" }}>
+      <div className="mobile-stack" style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 18px", background: "linear-gradient(135deg, var(--primary-light), transparent)", border: "2px solid var(--primary)", borderRadius: "var(--radius-lg)", boxShadow: "var(--glow-primary)", flexWrap: "wrap" }}>
         <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px", flexShrink: 0 }}>📅</div>
         <div style={{ flex: 1, minWidth: "150px" }}>
           <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--primary)", marginBottom: "2px" }}>{t("purch.lockedMonth")}</div>
@@ -1270,7 +1270,7 @@ export default function PurchasingForm({
       </div>
 
       {/* ── Category + Item selectors ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
+      <div className="mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
         <label className="field">
           <span>1. {t("purch.selectCategory")}</span>
           <select
@@ -1373,7 +1373,7 @@ export default function PurchasingForm({
                 // ── CONFIRMED (revision) row ────────────────────────────────
                 if (isConfirmed && thisEntry) {
                   return (
-                    <div key={supplier.id} style={{
+                    <div key={supplier.id} className="mobile-stack" style={{
                       display: "flex", alignItems: "center", gap: "10px",
                       padding: "14px 18px", borderRadius: "12px",
                       border: "1.5px solid rgba(16,185,129,0.3)",
@@ -1676,7 +1676,7 @@ export default function PurchasingForm({
                   {t("purch.noHistRange")}
                 </div>
               ) : (
-                <div className="table-wrap" style={{ maxHeight: "300px" }}>
+                <div className="table-wrap table-responsive" style={{ maxHeight: "300px" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-subtle)" }}>

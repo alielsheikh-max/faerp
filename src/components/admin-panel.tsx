@@ -445,7 +445,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
       <Suspense fallback={null}><AdminToast /></Suspense>
         {/* T2: Floating Bulk-Action Bar for Items */}
         {bulkItemMode && selectedItemIds.size > 0 && (
-          <div style={{
+          <div className="mobile-stack" style={{
             position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
             zIndex: 2000, background: "var(--bg-surface)", border: "1.5px solid var(--primary)",
             borderRadius: "14px", boxShadow: "var(--shadow-xl)",
@@ -723,7 +723,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             )}
 
             {/* Advanced Items Multi-Filter Search */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px", marginTop: "16px" }}>
+            <div className="mobile-stack" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px", marginTop: "16px" }}>
               <input
                 type="text"
                 className="search-input"
@@ -1443,7 +1443,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
           </form>
 
           {/* Advanced Items Multi-Filter Search */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px", marginTop: "16px" }}>
+          <div className="mobile-stack" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px", marginTop: "16px" }}>
             <input
               type="text"
               className="search-input"
@@ -1572,7 +1572,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             {t("admin.purgeDesc")}
           </div>
 
-          <form action={purgeDataAction} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <form action={purgeDataAction} className="mobile-stack" style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
             <label className="field" style={{ flex: "1 1 240px", maxWidth: "320px" }}>
               <span style={{ color: "var(--danger)", fontWeight: 700 }}>{t("admin.purgePassword")}</span>
               <input 

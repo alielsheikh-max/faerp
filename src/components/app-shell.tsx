@@ -27,12 +27,28 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
   const colors = ROLE_COLORS[role];
 
   const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("theme") as "dark" | "light";
     if (saved) setTheme(saved);
     else setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
   }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -487,7 +503,29 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
         </div>
       )}
 
-      <aside className="sidebar">
+      {/* Mobile top bar */}
+      <div className="mobile-topbar">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <img src="/faerp logo.svg" style={{ width: "28px", height: "28px", objectFit: "contain" }} alt="Logo" />
+          <span style={{ fontSize: "15px", fontWeight: 800, letterSpacing: "-0.02em" }}>{t("app.name")}</span>
+        </div>
+        <button
+          type="button"
+          className="hamburger-btn"
+          onClick={() => setMobileMenuOpen(prev => !prev)}
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? "\u2715" : "\u2630"}
+        </button>
+      </div>
+
+      {/* Mobile sidebar backdrop */}
+      <div
+        className={`sidebar-backdrop ${mobileMenuOpen ? "visible" : ""}`}
+        onClick={() => setMobileMenuOpen(false)}
+      />
+
+      <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         {/* Brand */}
         <div className="brand-block">
           <div className="brand-mark">
@@ -587,6 +625,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 <div key={item.href}>
                   {/* Parent link */}
                   <Link href={item.href} className={`nav-link ${isGroupActive ? "active" : ""}`}
+                    onClick={() => setMobileMenuOpen(false)}
                     style={{ justifyContent: "space-between" }}>
                     <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontSize: "15px", width: "20px", textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
@@ -613,6 +652,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                         return (
                           <Link key={child.href} href={child.href}
                             className={`nav-link ${isChildActive ? "active" : ""}`}
+                            onClick={() => setMobileMenuOpen(false)}
                             style={{ fontSize: "12px", padding: "6px 10px", minHeight: "32px" }}>
                             <span style={{ fontSize: "13px", width: "18px", textAlign: "center", flexShrink: 0 }}>{child.icon}</span>
                             <span>{t(child.labelKey)}</span>
@@ -637,7 +677,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
               0;
             const showBadge = badgeCount > 0;
             return (
-              <Link key={item.href} href={item.href} className={`nav-link ${isActive ? "active" : ""}`}>
+              <Link key={item.href} href={item.href} className={`nav-link ${isActive ? "active" : ""}`} onClick={() => setMobileMenuOpen(false)}>
                 <span style={{ fontSize: "15px", width: "20px", textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
                 <span>{t(item.labelKey)}</span>
                 {showBadge && (
@@ -679,7 +719,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
           <div style={{ display: "flex", gap: "6px", justifyContent: "space-between" }}>
             <button
               type="button"
-              onClick={toggleLocale}
+              onClick={() => { toggleLocale(); setMobileMenuOpen(false); }}
               className="sidebar-icon-btn"
               style={{ flex: 1 }}
               data-tooltip={t("sidebar.langToggle")}
@@ -689,7 +729,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
             </button>
             <button
               type="button"
-              onClick={toggleTheme}
+              onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
               className="sidebar-icon-btn"
               style={{ flex: 1 }}
               data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}

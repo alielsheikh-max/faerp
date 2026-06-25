@@ -583,7 +583,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                   {T.simClearBoard}
                 </button>
               </div>
-              <div className="table-wrap">
+              <div className="table-wrap table-responsive">
                 <table className="data-table" style={{ fontSize: "13px" }}>
                   <thead>
                     <tr>
@@ -643,7 +643,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
         </div>
       </section>
 
-      <div className="search-bar-wrap">
+      <div className="search-bar-wrap mobile-stack">
         <input
           type="text"
           className="search-input"
@@ -692,7 +692,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
           <span className="badge badge-strong">{month}</span>
         </div>
 
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive">
           <table className="data-table">
             <thead>
               <tr>

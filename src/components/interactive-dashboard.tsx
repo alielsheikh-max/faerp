@@ -257,7 +257,7 @@ export default function InteractiveDashboard({
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 
       {/* ═══ SECTION 1: SELECTOR BAR ══════════════════════════════════ */}
-      <div style={{
+      <div className="mobile-stack" style={{
         display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap",
         padding: "16px 20px",
         background: "var(--bg-surface)",
@@ -369,7 +369,7 @@ export default function InteractiveDashboard({
       ) : (
         <>
           {role === "SC" ? (
-        <div style={{
+        <div className="dashboard-sc-grid" style={{
           display: "grid",
           gridTemplateColumns: "minmax(280px, 1fr) minmax(380px, 1.5fr)",
           gap: "16px",
@@ -673,7 +673,7 @@ export default function InteractiveDashboard({
       ) : (
 
         /* ── Non-SC: original 2-column grid ──────── */
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+        <div className="dashboard-wh-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
               <div>
@@ -809,7 +809,7 @@ export default function InteractiveDashboard({
           <span className="badge badge-strong">{isAr ? `${matrixMonths.length} أشهر` : `${matrixMonths.length} months`}</span>
         </div>
 
-        <div style={{ overflowX: "auto", maxHeight: "380px", overflowY: "auto" }}>
+        <div className="table-responsive" style={{ overflowX: "auto", maxHeight: "380px", overflowY: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--bg-elevated)" }}>

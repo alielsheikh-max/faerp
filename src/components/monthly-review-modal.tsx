@@ -606,6 +606,7 @@ const ItemRow = memo(function ItemRow({
         >
           {/* Two-column layout grid */}
           <div
+            className="mobile-stack"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(460px, 1fr))",
@@ -621,6 +622,7 @@ const ItemRow = memo(function ItemRow({
                 </p>
                 {/* Supplier price cards */}
                 <div
+                  className="mobile-stack"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -1074,7 +1076,7 @@ const ItemRow = memo(function ItemRow({
                     <div style={{ fontSize: "9px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-muted)", marginBottom: "6px" }}>
                       📈 {locale === "ar" ? "مقارنة تاريخ الشراء والبيع" : "Historical Buying vs Selling baseline"}
                     </div>
-                    <div style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", overflow: "hidden", background: "var(--bg-elevated)" }}>
+                    <div className="table-responsive" style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", overflow: "hidden", background: "var(--bg-elevated)" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px" }}>
                         <thead>
                           <tr style={{ background: "var(--bg-subtle)" }}>
@@ -1218,7 +1220,7 @@ const ItemRow = memo(function ItemRow({
                     </div>
 
                     {/* Table */}
-                    <div style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", overflow: "hidden", background: "var(--bg-elevated)" }}>
+                    <div className="table-responsive" style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", overflow: "hidden", background: "var(--bg-elevated)" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px" }}>
                         <thead>
                           <tr style={{ background: "var(--bg-subtle)" }}>
@@ -1583,6 +1585,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
           }}
         >
           <div
+            className="modal-container"
             style={{
               background: "var(--bg-surface)",
               border: "1px solid var(--border-medium)",
