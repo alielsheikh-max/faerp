@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect } from "react";
+import { useState, useTransition, useRef, useEffect, memo } from "react";
 import { createPortal } from "react-dom";
 import { formatCurrency, formatMonthLabel, formatDateTime } from "@/lib/format";
 import { saveSellingPriceInline, approvePriceEntryAction, rejectPriceEntryAction } from "@/app/actions/pricing";
@@ -115,7 +115,7 @@ type Props = {
 };
 
 // ── Supplier quote card with inline approvals ──────────────────────────────────
-function SupplierQuoteCard({
+const SupplierQuoteCard = memo(function SupplierQuoteCard({
   q,
   itemId,
   month,
@@ -418,9 +418,9 @@ function SupplierQuoteCard({
       )}
     </div>
   );
-}
+});
 
-function ItemRow({
+const ItemRow = memo(function ItemRow({
   item,
   month,
   username,
@@ -1308,7 +1308,7 @@ function ItemRow({
       )}
     </div>
   );
-}
+});
 
 // ── Main modal component ──────────────────────────────────────────────────────
 export default function MonthlyReviewModal({ month, username, data, variant = "sidebar" }: Props) {

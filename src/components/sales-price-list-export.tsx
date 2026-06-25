@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import * as XLSX from "xlsx-js-style";
+
 import { formatDate, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -198,6 +198,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
   const exportXLSX = async () => {
     setExporting(true);
     try {
+      const XLSX = await import("xlsx-js-style");
       const wb = XLSX.utils.book_new();
       
       // Style Definitions (matching WH Supplier Request layout style)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useTransition } from "react";
+import { useState, useEffect, useMemo, useTransition, memo } from "react";
 import { saveBatchPriceEntriesSilent, submitPriceChangeRequestAction, extendPreviousMonthPricesAction, saveNegotiatedPriceAction } from "@/app/actions/pricing";
 import { shiftMonth, formatMonthLabel, formatCurrency } from "@/lib/format";
 import { ItemCombobox } from "./item-combobox";
@@ -31,7 +31,7 @@ const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4"];
 const PRICE_PRESETS = ["Price change", "Price negotiation"];
 const TRANS_PRESETS = ["Transport cost change", "Rate negotiation"];
 
-export function ChangeRequestModal({
+export const ChangeRequestModal = memo(function ChangeRequestModal({
   supplier, item, month, currentPrice, newPrice, oldTransport, newTransport, requestedBy, isNegotiation, isFirstEntry, onClose,
 }: {
   supplier: Supplier; item: Item; month: string;
@@ -405,11 +405,11 @@ export function ChangeRequestModal({
       </div>
     </div>
   );
-}
+});
 
 
 // Modal for SC to extend previous month prices to current month
-function ExtendPricesModal({
+const ExtendPricesModal = memo(function ExtendPricesModal({
   item,
   month,
   suppliers,
@@ -513,7 +513,7 @@ function ExtendPricesModal({
       </div>
     </div>
   );
-}
+});
 
 export default function PurchasingForm({
   categories,

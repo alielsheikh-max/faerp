@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { formatCurrency, formatMonthLabel, formatDateTime, formatDate, currentMonth } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
-import * as XLSX from "xlsx-js-style";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ReportPreset = {
@@ -525,6 +525,7 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
   const handleExportExcel = async (presetId: string) => {
     setGeneratingExcel(presetId);
     try {
+      const XLSX = await import("xlsx-js-style");
       const res = await fetch(`/api/report-data?preset=${presetId}&month=${startMonth}&startMonth=${startMonth}&endMonth=${endMonth}`);
       if (!res.ok) { alert("Failed to load report data."); return; }
       const data = await res.json();

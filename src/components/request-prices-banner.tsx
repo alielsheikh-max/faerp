@@ -34,7 +34,7 @@ function isItemRelatedToSupplier(itemName: string, representedProducts: string |
   }
   return false;
 }
-import * as XLSX from "xlsx-js-style";
+
 
 type Category = {
   id: number;
@@ -170,7 +170,8 @@ export default function RequestPricesBanner({
     setCheckedItemIds(updated);
   };
 
-  const downloadExcel = (title: string, filename: string, headers: string[], dataRows: any[][]) => {
+  const downloadExcel = async (title: string, filename: string, headers: string[], dataRows: any[][]) => {
+    const XLSX = await import("xlsx-js-style");
     const sheetData = [
       [title],
       [

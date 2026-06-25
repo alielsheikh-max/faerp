@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import * as XLSX from "xlsx-js-style";
+
 import { formatDate, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -152,6 +152,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
     if (!rate || exporting) return;
     setExporting(true);
     try {
+      const XLSX = await import("xlsx-js-style");
       const isAr = locale === "ar";
       const headers = [
         isAr ? "الفئة" : "Category",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useMemo, useDeferredValue } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -177,6 +177,11 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   const [supplierQuery, setSupplierQuery] = useState("");
   const [itemQuery, setItemQuery] = useState("");
   const [itemCategoryFilter, setItemCategoryFilter] = useState("");
+  const deferredUserQuery = useDeferredValue(userQuery);
+  const deferredCategoryQuery = useDeferredValue(categoryQuery);
+  const deferredSupplierQuery = useDeferredValue(supplierQuery);
+  const deferredItemQuery = useDeferredValue(itemQuery);
+  const deferredItemCategoryFilter = useDeferredValue(itemCategoryFilter);
   // T2: Bulk edit state
   const [bulkItemMode, setBulkItemMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
@@ -201,34 +206,34 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   } | null>(null);
 
   // Live client-side filters
-  const filteredUsers = users.filter((u) =>
-    u.username.toLowerCase().includes(userQuery.toLowerCase()) ||
-    u.display_name.toLowerCase().includes(userQuery.toLowerCase()) ||
-    u.role.toLowerCase().includes(userQuery.toLowerCase())
-  );
+  const filteredUsers = useMemo(() => users.filter((u) =>
+    u.username.toLowerCase().includes(deferredUserQuery.toLowerCase()) ||
+    u.display_name.toLowerCase().includes(deferredUserQuery.toLowerCase()) ||
+    u.role.toLowerCase().includes(deferredUserQuery.toLowerCase())
+  ), [users, deferredUserQuery]);
 
-  const filteredCategories = categories.filter((c) =>
-    c.name.toLowerCase().includes(categoryQuery.toLowerCase()) ||
-    c.description.toLowerCase().includes(categoryQuery.toLowerCase())
-  );
+  const filteredCategories = useMemo(() => categories.filter((c) =>
+    c.name.toLowerCase().includes(deferredCategoryQuery.toLowerCase()) ||
+    c.description.toLowerCase().includes(deferredCategoryQuery.toLowerCase())
+  ), [categories, deferredCategoryQuery]);
 
-  const filteredSuppliers = suppliers.filter((s) =>
-    s.name.toLowerCase().includes(supplierQuery.toLowerCase()) ||
-    s.contact_person.toLowerCase().includes(supplierQuery.toLowerCase()) ||
-    s.phone.includes(supplierQuery)
-  );
+  const filteredSuppliers = useMemo(() => suppliers.filter((s) =>
+    s.name.toLowerCase().includes(deferredSupplierQuery.toLowerCase()) ||
+    s.contact_person.toLowerCase().includes(deferredSupplierQuery.toLowerCase()) ||
+    s.phone.includes(deferredSupplierQuery)
+  ), [suppliers, deferredSupplierQuery]);
 
-  const filteredItems = items.filter((i) => {
+  const filteredItems = useMemo(() => items.filter((i) => {
     const matchesText =
-      i.name.toLowerCase().includes(itemQuery.toLowerCase()) ||
-      i.unit.toLowerCase().includes(itemQuery.toLowerCase()) ||
-      i.description.toLowerCase().includes(itemQuery.toLowerCase()) ||
-      i.category_name.toLowerCase().includes(itemQuery.toLowerCase());
+      i.name.toLowerCase().includes(deferredItemQuery.toLowerCase()) ||
+      i.unit.toLowerCase().includes(deferredItemQuery.toLowerCase()) ||
+      i.description.toLowerCase().includes(deferredItemQuery.toLowerCase()) ||
+      i.category_name.toLowerCase().includes(deferredItemQuery.toLowerCase());
     
-    const matchesCategory = itemCategoryFilter === "" || String(i.category_id) === itemCategoryFilter;
+    const matchesCategory = deferredItemCategoryFilter === "" || String(i.category_id) === deferredItemCategoryFilter;
 
     return matchesText && matchesCategory;
-  });
+  }), [items, deferredItemQuery, deferredItemCategoryFilter]);
 
   const isReadOnly = role !== "AD";
 

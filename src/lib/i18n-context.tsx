@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { Locale, TranslationKey, t as translate } from "@/lib/i18n";
 
 type I18nContextType = {
@@ -54,8 +54,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale]
   );
 
+  const value = useMemo(() => ({
+    locale, t: tFn, toggleLocale, isRTL: locale === "ar"
+  }), [locale, tFn, toggleLocale]);
+
   return (
-    <I18nContext.Provider value={{ locale, t: tFn, toggleLocale, isRTL: locale === "ar" }}>
+    <I18nContext.Provider value={value}>
       {children}
     </I18nContext.Provider>
   );

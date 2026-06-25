@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useTransition, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useTransition, useCallback, useMemo, useDeferredValue } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
@@ -333,6 +333,7 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
   const { t, locale } = useI18n();
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [card, setCard]       = useState<CardState>(null);
   const [loading, startLoad]  = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -345,8 +346,8 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
   const openModal = () => { setOpen(true); setCard(null); setTimeout(() => inputRef.current?.focus(), 60); };
   const closeModal = () => { setOpen(false); setQuery(""); setCard(null); };
 
-  const filteredItems     = query.trim().length >= 1 ? index.items.filter(i => fuzzy(query, i.name) || fuzzy(query, i.category_name)) : [];
-  const filteredSuppliers = (query.trim().length >= 1 && role !== "SA") ? index.suppliers.filter(s => fuzzy(query, s.name) || fuzzy(query, s.fame_name || "")) : [];
+  const filteredItems     = deferredQuery.trim().length >= 1 ? index.items.filter(i => fuzzy(deferredQuery, i.name) || fuzzy(deferredQuery, i.category_name)) : [];
+  const filteredSuppliers = (deferredQuery.trim().length >= 1 && role !== "SA") ? index.suppliers.filter(s => fuzzy(deferredQuery, s.name) || fuzzy(deferredQuery, s.fame_name || "")) : [];
   const hasResults = filteredItems.length > 0 || filteredSuppliers.length > 0;
 
   const categoriesList = useMemo(() => {

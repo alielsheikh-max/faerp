@@ -25,6 +25,10 @@ function openDatabase() {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   const db = new Database(databasePath);
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("cache_size = -64000");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("mmap_size = 268435456");
   initializeSchema(db);
   migrateItemTiers(db);
   migratePriceAcknowledgments(db);
@@ -408,6 +412,33 @@ function initializeSchema(db: Db) {
       detail       TEXT,             -- JSON blob (item name, price, month, etc.)
       performed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- ── Performance Indexes ──────────────────────────────────────────────────
+    -- price_entries: most queried table
+    CREATE INDEX IF NOT EXISTS idx_pe_month ON price_entries(month);
+    CREATE INDEX IF NOT EXISTS idx_pe_item_month ON price_entries(item_id, month);
+    CREATE INDEX IF NOT EXISTS idx_pe_item_supplier_month ON price_entries(item_id, supplier_id, month);
+    CREATE INDEX IF NOT EXISTS idx_pe_supplier ON price_entries(supplier_id);
+    CREATE INDEX IF NOT EXISTS idx_pe_status ON price_entries(status);
+    CREATE INDEX IF NOT EXISTS idx_pe_collected_status ON price_entries(collected_by, status);
+
+    -- selling_prices (UNIQUE on item_id,month already serves as index for that pair)
+    CREATE INDEX IF NOT EXISTS idx_sp_month ON selling_prices(month);
+    CREATE INDEX IF NOT EXISTS idx_sp_month_approval ON selling_prices(month, approval_status);
+
+    -- selling_price_history
+    CREATE INDEX IF NOT EXISTS idx_sph_item_month ON selling_price_history(item_id, month);
+    CREATE INDEX IF NOT EXISTS idx_sph_month_update ON selling_price_history(month, is_update, approval_status);
+
+    -- activity_log
+    CREATE INDEX IF NOT EXISTS idx_al_performed ON activity_log(performed_at DESC);
+
+    -- price_change_requests
+    CREATE INDEX IF NOT EXISTS idx_pcr_status ON price_change_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_pcr_requested ON price_change_requests(requested_by, status);
+
+    -- exchange_rates
+    CREATE INDEX IF NOT EXISTS idx_er_currency ON exchange_rates(currency, fetched_at DESC);
   `);
 }
 
@@ -1208,15 +1239,18 @@ export function bulkDeleteItems(ids: number[]): { deleted: number; skipped: numb
   const db = database();
   let deleted = 0;
   let skipped = 0;
-  for (const id of ids) {
-    const usage = db.prepare(`
-      SELECT (SELECT COUNT(*) FROM price_entries WHERE item_id = ?) +
-             (SELECT COUNT(*) FROM selling_prices WHERE item_id = ?) as count
-    `).get(id, id) as { count: number };
-    if (usage.count > 0) { skipped++; continue; }
-    db.prepare("DELETE FROM items WHERE id = ?").run(id);
-    deleted++;
-  }
+  const tx = db.transaction(() => {
+    for (const id of ids) {
+      const usage = db.prepare(`
+        SELECT (SELECT COUNT(*) FROM price_entries WHERE item_id = ?) +
+               (SELECT COUNT(*) FROM selling_prices WHERE item_id = ?) as count
+      `).get(id, id) as { count: number };
+      if (usage.count > 0) { skipped++; continue; }
+      db.prepare("DELETE FROM items WHERE id = ?").run(id);
+      deleted++;
+    }
+  });
+  tx();
   return { deleted, skipped };
 }
 
@@ -1225,30 +1259,34 @@ export function bulkDeleteCategories(ids: number[]): { deleted: number; skipped:
   const db = database();
   let deleted = 0;
   let skipped = 0;
-  for (const id of ids) {
-    const usage = db.prepare("SELECT COUNT(*) as count FROM items WHERE category_id = ?").get(id) as { count: number };
-    if (usage.count > 0) { skipped++; continue; }
-    db.prepare("DELETE FROM categories WHERE id = ?").run(id);
-    deleted++;
-  }
+  const tx = db.transaction(() => {
+    for (const id of ids) {
+      const usage = db.prepare("SELECT COUNT(*) as count FROM items WHERE category_id = ?").get(id) as { count: number };
+      if (usage.count > 0) { skipped++; continue; }
+      db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+      deleted++;
+    }
+  });
+  tx();
   return { deleted, skipped };
 }
 
 export function getMonthlyMetrics(month: string) {
   const db = database();
-  const quotes = db.prepare("SELECT COUNT(*) as count FROM price_entries WHERE month = ?").get(month) as { count: number };
-  const suppliers = db
-    .prepare("SELECT COUNT(DISTINCT supplier_id) as count FROM price_entries WHERE month = ?")
-    .get(month) as { count: number };
-  const products = db
-    .prepare("SELECT COUNT(DISTINCT item_id) as count FROM price_entries WHERE month = ?")
-    .get(month) as { count: number };
+
+  // Consolidated: 5 metrics from price_entries in one scan
+  const peMetrics = db.prepare(`
+    SELECT
+      COUNT(*) as quotes,
+      COUNT(DISTINCT supplier_id) as suppliers,
+      COUNT(DISTINCT item_id) as products,
+      MAX(recorded_at) as last_update
+    FROM price_entries WHERE month = ?
+  `).get(month) as { quotes: number; suppliers: number; products: number; last_update: string | null };
+
   const selling = db
     .prepare("SELECT COUNT(*) as count FROM selling_prices WHERE month = ?")
     .get(month) as { count: number };
-  const lastUpdate = db
-    .prepare("SELECT MAX(recorded_at) as value FROM price_entries WHERE month = ?")
-    .get(month) as { value: string | null };
   const changes = db.prepare(`
     SELECT COALESCE(SUM(grouped.extra_changes), 0) as count
     FROM (
@@ -1263,12 +1301,12 @@ export function getMonthlyMetrics(month: string) {
   const totalItems = db.prepare("SELECT COUNT(*) as count FROM items WHERE active = 1").get() as { count: number };
 
   return {
-    quotes: quotes.count,
-    suppliers: suppliers.count,
-    products: products.count,
+    quotes: peMetrics.quotes,
+    suppliers: peMetrics.suppliers,
+    products: peMetrics.products,
     selling: selling.count,
     changes: changes.count,
-    lastUpdate: lastUpdate.value,
+    lastUpdate: peMetrics.last_update,
     totalItems: totalItems.count
   };
 }
@@ -2269,15 +2307,19 @@ export function getAdminSnapshot() {
       i.transportation_per_unit,
       i.moq,
       i.recommended_supplier_id,
-      (SELECT COUNT(*) FROM price_entries pe WHERE pe.item_id = i.id) as quote_count,
-      (SELECT sp.sell_min FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_min,
-      (SELECT sp.sell_max FROM selling_prices sp WHERE sp.item_id = i.id AND sp.month = ?) as sell_max,
-      (SELECT AVG(pe.price) FROM price_entries pe WHERE pe.item_id = i.id AND pe.month = ?) as buy_avg,
-      (SELECT COUNT(*) FROM price_change_requests pcr WHERE pcr.item_id = i.id AND pcr.status = 'pending') as pending_request_count
+      IFNULL(pe_counts.cnt, 0) as quote_count,
+      sp.sell_min,
+      sp.sell_max,
+      pe_avg.avg_price as buy_avg,
+      IFNULL(pcr_counts.cnt, 0) as pending_request_count
     FROM items i
     JOIN categories c ON c.id = i.category_id
+    LEFT JOIN (SELECT item_id, COUNT(*) as cnt FROM price_entries GROUP BY item_id) pe_counts ON pe_counts.item_id = i.id
+    LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = ?
+    LEFT JOIN (SELECT item_id, AVG(price) as avg_price FROM price_entries WHERE month = ? GROUP BY item_id) pe_avg ON pe_avg.item_id = i.id
+    LEFT JOIN (SELECT item_id, COUNT(*) as cnt FROM price_change_requests WHERE status = 'pending' GROUP BY item_id) pcr_counts ON pcr_counts.item_id = i.id
     ORDER BY i.active DESC, c.name, i.id
-  `).all(month, month, month) as Array<{
+  `).all(month, month) as Array<{
     id: number;
     name: string;
     unit: string;
@@ -2656,8 +2698,10 @@ export function getPurchasingHistory(month: string, monthsBack: number = 12) {
   }>;
 }
 
-export function getAllPriceEntries() {
+export function getAllPriceEntries(month?: string) {
   const db = database();
+  const whereClause = month ? "WHERE pe.month = ?" : "";
+  const params = month ? [month] : [];
   return db.prepare(`
     SELECT
       pe.id,
@@ -2679,8 +2723,9 @@ export function getAllPriceEntries() {
     JOIN items i ON i.id = pe.item_id
     JOIN categories c ON c.id = i.category_id
     JOIN suppliers s ON s.id = pe.supplier_id
+    ${whereClause}
     ORDER BY pe.month ASC, pe.recorded_at ASC
-  `).all() as Array<{
+  `).all(...params) as Array<{
     id: number;
     item_id: number;
     supplier_id: number;
@@ -3242,6 +3287,24 @@ export function getSupplierCardData(supplierId: number) {
 
   // Per-item stats
   const itemIds = Array.from(new Set(priceRows.map(r => r.item_id)));
+  const uniqueMonths = Array.from(new Set(priceRows.map(r => r.month)));
+
+  // Pre-fetch ALL market averages in one bulk query (replaces N+1 per-item-per-month queries)
+  const marketAvgMap = new Map<string, number>();
+  if (itemIds.length > 0 && uniqueMonths.length > 0) {
+    const itemPH = itemIds.map(() => "?").join(", ");
+    const monthPH = uniqueMonths.map(() => "?").join(", ");
+    const avgRows = db.prepare(`
+      SELECT item_id, month, AVG(price) as avg_price
+      FROM price_entries
+      WHERE item_id IN (${itemPH}) AND month IN (${monthPH})
+      GROUP BY item_id, month
+    `).all(...itemIds, ...uniqueMonths) as Array<{ item_id: number; month: string; avg_price: number }>;
+    for (const r of avgRows) {
+      marketAvgMap.set(`${r.item_id}_${r.month}`, r.avg_price);
+    }
+  }
+
   const itemStats = itemIds.map(itemId => {
     const rows = priceRows.filter(r => r.item_id === itemId);
     const prices = rows.map(r => r.price);
@@ -3250,14 +3313,11 @@ export function getSupplierCardData(supplierId: number) {
     const max = Math.max(...prices);
     const latest = rows[0];
 
-    // Compare with market avg for each month
+    // Compare with market avg for each month (using pre-fetched data)
     const deviations: number[] = [];
     for (const row of rows) {
-      const marketAvg = db.prepare(`
-        SELECT AVG(p2.price) as avg FROM price_entries p2
-        WHERE p2.item_id = ? AND p2.month = ?
-      `).get(row.item_id, row.month) as { avg: number };
-      if (marketAvg.avg > 0) deviations.push((row.price - marketAvg.avg) / marketAvg.avg * 100);
+      const mktAvg = marketAvgMap.get(`${row.item_id}_${row.month}`) ?? 0;
+      if (mktAvg > 0) deviations.push((row.price - mktAvg) / mktAvg * 100);
     }
     const avgDeviation = deviations.length > 0 ? deviations.reduce((a, b) => a + b, 0) / deviations.length : 0;
 
@@ -4379,41 +4439,43 @@ export function approveAllPendingSellingPrices(categoryId: number, month: string
 export function approveSinglePendingSellingPrice(itemId: number, month: string, managerName: string) {
   const db = database();
   const now = new Date().toISOString();
-  db.prepare(`
-    UPDATE selling_prices
-    SET approval_status = 'approved',
-        reconsider_note = NULL,
-        last_approved_sell_min = NULL,
-        last_approved_sell_max = NULL,
-        last_approved_strategy = NULL,
-        last_approved_at = NULL,
-        last_approved_transportation = NULL,
-        last_approved_other_expenses = NULL,
-        created_by = ?,
-        created_at = ?
-    WHERE item_id = ? AND month = ?
-  `).run(managerName, now, itemId, month);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE selling_prices
+      SET approval_status = 'approved',
+          reconsider_note = NULL,
+          last_approved_sell_min = NULL,
+          last_approved_sell_max = NULL,
+          last_approved_strategy = NULL,
+          last_approved_at = NULL,
+          last_approved_transportation = NULL,
+          last_approved_other_expenses = NULL,
+          created_by = ?,
+          created_at = ?
+      WHERE item_id = ? AND month = ?
+    `).run(managerName, now, itemId, month);
 
-  // Determine if this is truly an update (had a previously approved price this month)
-  const existingApproved = db.prepare(`
-    SELECT last_approved_sell_min FROM selling_prices
-    WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
-  `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
-  const isRealUpdate = existingApproved ? 1 : 0;
+    // Determine if this is truly an update (had a previously approved price this month)
+    const existingApproved = db.prepare(`
+      SELECT last_approved_sell_min FROM selling_prices
+      WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
+    `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
+    const isRealUpdate = existingApproved ? 1 : 0;
 
-  // Also update history
-  db.prepare(`
-    INSERT INTO selling_price_history (
-      item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-      new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
-      changed_by, changed_at, change_reason, is_update, approval_status
-    )
-    SELECT item_id, month,
-           last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
-           sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
-           ?, ?, 'Manager Approved Item', ?, 'approved'
-    FROM selling_prices WHERE item_id = ? AND month = ?
-  `).run(managerName, now, isRealUpdate, itemId, month);
+    // Also update history
+    db.prepare(`
+      INSERT INTO selling_price_history (
+        item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+        new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+        changed_by, changed_at, change_reason, is_update, approval_status
+      )
+      SELECT item_id, month,
+             last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
+             sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
+             ?, ?, 'Manager Approved Item', ?, 'approved'
+      FROM selling_prices WHERE item_id = ? AND month = ?
+    `).run(managerName, now, isRealUpdate, itemId, month);
+  })();
 }
 
 export function reconsiderSellingPrice(itemId: number, month: string, note: string, managerName: string) {
@@ -4533,27 +4595,77 @@ export function getMGItemsView(month: string) {
     ORDER BY c.name, i.id
   `).all() as Array<{ id: number; name: string; unit: string; category_id: number; category_name: string; recommended_supplier_id: number | null; recommended_supplier_name: string | null }>;
 
-  return items.map(item => {
-    // Current month selling price
-    const currentSp = db.prepare(`
-      SELECT strategy, sell_min, sell_max, buy_avg, buy_min, buy_max,
-             approval_status, reconsider_note,
-             last_approved_sell_min, last_approved_sell_max,
-             last_approved_transportation, last_approved_other_expenses,
-             transportation, other_expenses,
-             COALESCE(tier_pricing_enabled, 0) as tier_pricing_enabled,
-             tier1_max, tier1_discount, tier2_max, tier2_discount,
-             tier3_max, tier3_discount, tier4_max, tier4_discount
-      FROM selling_prices
-      WHERE item_id = ? AND month = ?
-    `).get(item.id, month) as any | undefined;
+  if (items.length === 0) return [];
 
-    // Past 3 months buying costs
+  const itemIds = items.map(i => i.id);
+  const itemPlaceholders = itemIds.map(() => "?").join(", ");
+  const monthPlaceholders = pastMonths.map(() => "?").join(", ");
+
+  // ── Bulk query 1: Current month selling prices (1 query for ALL items) ──
+  const spRows = db.prepare(`
+    SELECT item_id, strategy, sell_min, sell_max, buy_avg, buy_min, buy_max,
+           approval_status, reconsider_note,
+           last_approved_sell_min, last_approved_sell_max,
+           last_approved_transportation, last_approved_other_expenses,
+           transportation, other_expenses,
+           COALESCE(tier_pricing_enabled, 0) as tier_pricing_enabled,
+           tier1_max, tier1_discount, tier2_max, tier2_discount,
+           tier3_max, tier3_discount, tier4_max, tier4_discount
+    FROM selling_prices
+    WHERE month = ?
+  `).all(month) as Array<any>;
+  const spMap = new Map(spRows.map((r: any) => [r.item_id, r]));
+
+  // ── Bulk query 2: Past 3 months buying costs (1 query for ALL items × 3 months) ──
+  const buyingRows = db.prepare(`
+    SELECT item_id, month, price, negotiated_price
+    FROM price_entries
+    WHERE item_id IN (${itemPlaceholders}) AND month IN (${monthPlaceholders}) AND price > 0
+  `).all(...itemIds, ...pastMonths) as Array<{ item_id: number; month: string; price: number; negotiated_price: number | null }>;
+
+  const buyingByItemMonth = new Map<string, Array<{ price: number; negotiated_price: number | null }>>();
+  for (const row of buyingRows) {
+    const key = `${row.item_id}_${row.month}`;
+    if (!buyingByItemMonth.has(key)) buyingByItemMonth.set(key, []);
+    buyingByItemMonth.get(key)!.push(row);
+  }
+
+  // ── Bulk query 3: Past 3 months selling prices (1 query for ALL items × 3 months) ──
+  const sellingHistRows = db.prepare(`
+    SELECT item_id, month, sell_min, sell_max, approval_status
+    FROM selling_prices
+    WHERE item_id IN (${itemPlaceholders}) AND month IN (${monthPlaceholders})
+  `).all(...itemIds, ...pastMonths) as Array<{ item_id: number; month: string; sell_min: number; sell_max: number; approval_status: string }>;
+
+  const sellingHistMap = new Map<string, { sell_min: number; sell_max: number; approval_status: string }>();
+  for (const row of sellingHistRows) {
+    sellingHistMap.set(`${row.item_id}_${row.month}`, row);
+  }
+
+  // ── Bulk query 4: Confirmed suppliers — cheapest/most expensive per item ──
+  const confirmedRows = db.prepare(`
+    SELECT pe.item_id,
+           COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name,
+           COALESCE(pe.negotiated_price, pe.price) as effective_price
+    FROM price_entries pe
+    JOIN suppliers s ON s.id = pe.supplier_id
+    WHERE pe.item_id IN (${itemPlaceholders}) AND pe.month = ? AND pe.status = 'approved'
+    ORDER BY pe.item_id, effective_price ASC
+  `).all(...itemIds, month) as Array<{ item_id: number; supplier_name: string; effective_price: number }>;
+
+  const cheapestMap = new Map<number, string>();
+  const expensiveMap = new Map<number, string>();
+  for (const row of confirmedRows) {
+    if (!cheapestMap.has(row.item_id)) cheapestMap.set(row.item_id, row.supplier_name);
+    expensiveMap.set(row.item_id, row.supplier_name);
+  }
+
+  // ── Assemble results in-memory (zero additional queries) ──
+  return items.map(item => {
+    const currentSp = spMap.get(item.id) ?? null;
+
     const buyingHistory = pastMonths.map(m => {
-      const quotes = db.prepare(`
-        SELECT price, negotiated_price FROM price_entries WHERE item_id = ? AND month = ? AND price > 0
-      `).all(item.id, m) as Array<{ price: number; negotiated_price: number | null }>;
-      
+      const quotes = buyingByItemMonth.get(`${item.id}_${m}`) ?? [];
       const prices = quotes.map(q => q.negotiated_price && q.negotiated_price > 0 ? q.negotiated_price : q.price);
       return {
         month: m,
@@ -4563,11 +4675,8 @@ export function getMGItemsView(month: string) {
       };
     });
 
-    // Past 3 months selling prices
     const sellingHistory = pastMonths.map(m => {
-      const sp = db.prepare(`
-        SELECT sell_min, sell_max, approval_status FROM selling_prices WHERE item_id = ? AND month = ?
-      `).get(item.id, m) as { sell_min: number; sell_max: number; approval_status: string } | undefined;
+      const sp = sellingHistMap.get(`${item.id}_${m}`);
       return {
         month: m,
         sell_min: sp && sp.approval_status === 'approved' ? sp.sell_min : null,
@@ -4578,50 +4687,9 @@ export function getMGItemsView(month: string) {
     let confirmedSupplier: string | null = null;
     if (currentSp) {
       if (currentSp.strategy === "min") {
-        const sRow = db.prepare(`
-          SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
-          FROM price_entries pe
-          JOIN suppliers s ON s.id = pe.supplier_id
-          WHERE pe.item_id = ? AND pe.month = ? AND (pe.negotiated_price = ? OR (pe.negotiated_price IS NULL AND pe.price = ?)) AND pe.status = 'approved'
-          LIMIT 1
-        `).get(item.id, month, currentSp.buy_min, currentSp.buy_min) as { name: string } | undefined;
-        if (sRow) {
-          confirmedSupplier = sRow.name;
-        } else {
-          const cheapestRow = db.prepare(`
-            SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
-            FROM price_entries pe
-            JOIN suppliers s ON s.id = pe.supplier_id
-            WHERE pe.item_id = ? AND pe.month = ? AND pe.status = 'approved'
-            ORDER BY COALESCE(pe.negotiated_price, pe.price) ASC
-            LIMIT 1
-          `).get(item.id, month) as { name: string } | undefined;
-          if (cheapestRow) confirmedSupplier = cheapestRow.name;
-        }
+        confirmedSupplier = cheapestMap.get(item.id) ?? null;
       } else if (currentSp.strategy === "max") {
-        const sRow = db.prepare(`
-          SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
-          FROM price_entries pe
-          JOIN suppliers s ON s.id = pe.supplier_id
-          WHERE pe.item_id = ? AND pe.month = ? AND (pe.negotiated_price = ? OR (pe.negotiated_price IS NULL AND pe.price = ?)) AND pe.status = 'approved'
-          LIMIT 1
-        `).get(item.id, month, currentSp.buy_max, currentSp.buy_max) as { name: string } | undefined;
-        if (sRow) {
-          confirmedSupplier = sRow.name;
-        } else {
-          const expensiveRow = db.prepare(`
-            SELECT COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as name
-            FROM price_entries pe
-            JOIN suppliers s ON s.id = pe.supplier_id
-            WHERE pe.item_id = ? AND pe.month = ? AND pe.status = 'approved'
-            ORDER BY COALESCE(pe.negotiated_price, pe.price) DESC
-            LIMIT 1
-          `).get(item.id, month) as { name: string } | undefined;
-          if (expensiveRow) confirmedSupplier = expensiveRow.name;
-        }
-      } else {
-        // avg strategy — don't show as supplier, the strategy label already clarifies
-        confirmedSupplier = null;
+        confirmedSupplier = expensiveMap.get(item.id) ?? null;
       }
     }
 

@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 
     case "collection_log": {
       // Get all entries for this month
-      const allEntries = getAllPriceEntries().filter((e) => e.month === month);
+      const allEntries = getAllPriceEntries(month);
       return NextResponse.json({ recentEntries: allEntries, metrics });
     }
 
