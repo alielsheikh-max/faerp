@@ -13,12 +13,16 @@ type MissingSupplier = {
   prev_price: number | null;
   status: string | null;
   review_note: string | null;
+  submitted_price?: number | null;
+  submitted_transport?: number | null;
 };
 
 type SubmittedSupplier = {
   supplier_id: number;
   supplier_name: string;
   prev_price: number | null;
+  submitted_price?: number | null;
+  submitted_transport?: number | null;
 };
 
 type MissingItem = {
@@ -189,8 +193,8 @@ export default function WhMissingQuotes({ missing, suppliers, items, displayName
           </h2>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ position: "relative" }}>
+        <div className="wh-missing-action-bar" style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <div className="wh-missing-search-wrap" style={{ position: "relative", flex: "1 1 180px" }}>
             <input
               type="text"
               placeholder={isAr ? "ابحث عن صنف، مورد..." : "Search item, supplier..."}
@@ -204,7 +208,7 @@ export default function WhMissingQuotes({ missing, suppliers, items, displayName
                 color: "var(--text-primary)",
                 fontSize: "12.5px",
                 outline: "none",
-                minWidth: "220px",
+                width: "100%",
               }}
             />
             <span style={{ position: "absolute", left: "10px", top: "7px", fontSize: "12px", color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
@@ -405,16 +409,20 @@ export default function WhMissingQuotes({ missing, suppliers, items, displayName
                 <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>
                   ✓ {isAr ? "تم تقديم الأسعار" : "Submitted"} ({activeItem.submitted.length})
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-                  {activeItem.submitted.map(s => (
-                    <span key={s.supplier_id} style={{
-                      display: "inline-flex", alignItems: "center", gap: "4px",
-                      padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 600,
-                      background: "rgba(16,185,129,0.10)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
-                    }}>
-                      ✓ {s.supplier_name}
-                    </span>
-                  ))}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {activeItem.submitted.map(s => {
+                    const priceText = s.submitted_price != null ? formatCurrency(s.submitted_price) : "";
+                    const transportText = s.submitted_transport ? ` + ${formatCurrency(s.submitted_transport)} ${isAr ? "نقل" : "trans."}` : "";
+                    return (
+                      <span key={s.supplier_id} style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        padding: "3.5px 10px", borderRadius: "8px", fontSize: "11.5px", fontWeight: 700,
+                        background: "rgba(16,185,129,0.10)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
+                      }}>
+                        ✓ {s.supplier_name}: {priceText}{transportText}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}

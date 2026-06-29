@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n-context";
@@ -16,6 +16,7 @@ type Props = {
     category_id: number;
     transportation_per_unit: number;
     moq: number;
+    images?: string | null;
   };
   supplierStats: Array<{
     name: string;
@@ -38,14 +39,14 @@ type Props = {
   serializedGrid: Record<string, Record<string, { price: number; recordedAt: string }>>;
   sellingRows: Array<{
     month: string;
-    sell_min: number;
-    sell_max: number;
-    strategy: string;
-    markup_type: string;
-    markup_min: number;
-    markup_max: number;
-    created_by: string;
-    created_at: string;
+    sell_min: number | null;
+    sell_max: number | null;
+    strategy: string | null;
+    markup_type?: string;
+    markup_min?: number;
+    markup_max?: number;
+    created_by?: string;
+    created_at?: string;
   }>;
   role: string;
 };
@@ -67,6 +68,38 @@ export default function ItemDetailClient({
   const visibleMonths = useMemo(() => {
     return windowSize === "all" ? months : months.slice(0, windowSize);
   }, [months, windowSize]);
+
+  // ── Gallery / Lightbox state ──────────────────────────────────────────────
+  const galleryImages: string[] = useMemo(() => {
+    if (!item.images) return [];
+    try { return JSON.parse(item.images); } catch { return []; }
+  }, [item.images]);
+  const [activeImg, setActiveImg] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIdx, setLightboxIdx] = useState(0);
+
+  const openLightbox = useCallback((idx: number) => {
+    setLightboxIdx(idx);
+    setLightboxOpen(true);
+  }, []);
+
+  const closeLightbox = useCallback(() => setLightboxOpen(false), []);
+
+  const lbPrev = useCallback(() => setLightboxIdx(i => (i - 1 + galleryImages.length) % galleryImages.length), [galleryImages.length]);
+  const lbNext = useCallback(() => setLightboxIdx(i => (i + 1) % galleryImages.length), [galleryImages.length]);
+
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") lbPrev();
+      if (e.key === "ArrowRight") lbNext();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxOpen, closeLightbox, lbPrev, lbNext]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Compute SVG chart points based on monthStats
   const chartData = useMemo(() => {
@@ -168,6 +201,218 @@ export default function ItemDetailClient({
         </div>
       </div>
 
+      {/* ── Product Image Gallery ──────────────────────────────────────────── */}
+      {galleryImages.length > 0 && (
+        <div style={{
+          padding: "24px",
+          borderRadius: "16px",
+          border: "1px solid var(--border-medium)",
+          background: "var(--bg-surface)",
+        }}>
+          <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 800, letterSpacing: "0.08em", color: "var(--primary)", marginBottom: "16px" }}>
+            📷 {locale === "ar" ? "معرض الصور" : "Product Gallery"}
+          </div>
+
+          {/* Main image */}
+          <div
+            onClick={() => openLightbox(activeImg)}
+            style={{
+              position: "relative",
+              width: "100%",
+              maxHeight: "340px",
+              borderRadius: "12px",
+              overflow: "hidden",
+              cursor: "zoom-in",
+              background: "var(--bg-elevated)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "12px",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={galleryImages[activeImg]}
+              alt={item.name}
+              style={{
+                width: "100%",
+                maxHeight: "340px",
+                objectFit: "contain",
+                transition: "opacity 0.3s ease",
+              }}
+            />
+            <div style={{
+              position: "absolute",
+              bottom: "10px",
+              insetInlineEnd: "10px",
+              background: "rgba(0,0,0,0.55)",
+              borderRadius: "8px",
+              padding: "4px 10px",
+              fontSize: "11px",
+              color: "#fff",
+              fontWeight: 700,
+              pointerEvents: "none",
+            }}>
+              🔍 {locale === "ar" ? "انقر للتوسعة" : "Click to expand"}
+            </div>
+          </div>
+
+          {/* Thumbnail strip */}
+          {galleryImages.length > 1 && (
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {galleryImages.map((src, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveImg(idx)}
+                  style={{
+                    width: "72px",
+                    height: "72px",
+                    borderRadius: "10px",
+                    overflow: "hidden",
+                    border: idx === activeImg
+                      ? "3px solid var(--primary)"
+                      : "2px solid var(--border-light)",
+                    padding: 0,
+                    cursor: "pointer",
+                    background: "var(--bg-elevated)",
+                    transition: "border-color 0.2s ease, transform 0.15s ease",
+                    transform: idx === activeImg ? "scale(1.06)" : "scale(1)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={`${item.name} ${idx + 1}`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Lightbox Overlay ──────────────────────────────────────────────── */}
+      {lightboxOpen && (
+        <div
+          onClick={closeLightbox}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.88)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "fadeIn 0.2s ease",
+          }}
+        >
+          {/* Close button */}
+          <button
+            onClick={closeLightbox}
+            style={{
+              position: "absolute",
+              top: "20px",
+              insetInlineEnd: "24px",
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              borderRadius: "50%",
+              width: "42px",
+              height: "42px",
+              cursor: "pointer",
+              fontSize: "20px",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(4px)",
+              transition: "background 0.2s",
+            }}
+          >✕</button>
+
+          {/* Prev */}
+          {galleryImages.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); lbPrev(); }}
+              style={{
+                position: "absolute",
+                insetInlineStart: "24px",
+                background: "rgba(255,255,255,0.15)",
+                border: "none",
+                borderRadius: "50%",
+                width: "48px",
+                height: "48px",
+                cursor: "pointer",
+                fontSize: "22px",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backdropFilter: "blur(4px)",
+                transition: "background 0.2s",
+              }}
+            >{locale === "ar" ? "›" : "‹"}</button>
+          )}
+
+          {/* Image */}
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "90vw", maxHeight: "90vh", position: "relative" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={galleryImages[lightboxIdx]}
+              alt={`${item.name} – ${lightboxIdx + 1} of ${galleryImages.length}`}
+              style={{
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                objectFit: "contain",
+                borderRadius: "12px",
+                boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
+                display: "block",
+                animation: "fadeIn 0.25s ease",
+              }}
+            />
+            {galleryImages.length > 1 && (
+              <div style={{
+                position: "absolute",
+                bottom: "-36px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                color: "rgba(255,255,255,0.7)",
+                fontSize: "13px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}>
+                {lightboxIdx + 1} / {galleryImages.length}
+              </div>
+            )}
+          </div>
+
+          {/* Next */}
+          {galleryImages.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); lbNext(); }}
+              style={{
+                position: "absolute",
+                insetInlineEnd: "24px",
+                background: "rgba(255,255,255,0.15)",
+                border: "none",
+                borderRadius: "50%",
+                width: "48px",
+                height: "48px",
+                cursor: "pointer",
+                fontSize: "22px",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backdropFilter: "blur(4px)",
+                transition: "background 0.2s",
+              }}
+            >{locale === "ar" ? "‹" : "›"}</button>
+          )}
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
         {role !== "SA" ? (
@@ -214,11 +459,13 @@ export default function ItemDetailClient({
           </>
         )}
 
-        <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
-          <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الخدمات اللوجستية القياسية" : "Standard Logistics"}</div>
-          <strong style={{ fontSize: "20px", color: "var(--text-primary)" }}>{formatCurrency(item.transportation_per_unit)}</strong>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{locale === "ar" ? "تكلفة النقل المقدرة لكل وحدة" : "Est. transport cost per unit"}</div>
-        </div>
+        {role !== "SA" && (
+          <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
+            <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الخدمات اللوجستية القياسية" : "Standard Logistics"}</div>
+            <strong style={{ fontSize: "20px", color: "var(--text-primary)" }}>{formatCurrency(item.transportation_per_unit)}</strong>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{locale === "ar" ? "تكلفة النقل المقدرة لكل وحدة" : "Est. transport cost per unit"}</div>
+          </div>
+        )}
 
         <div style={{ padding: "18px", borderRadius: "14px", border: "1px solid var(--border-light)", background: "var(--bg-surface)" }}>
           <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px" }}>{locale === "ar" ? "الحد الأدنى لكمية الطلب (MOQ)" : "Minimum Order Qty"}</div>
@@ -250,7 +497,7 @@ export default function ItemDetailClient({
                       <tr key={row.month} style={{ borderBottom: "1px solid var(--border-light)" }}>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{formatMonthLabel(row.month)}</td>
                         <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                          <span className="badge badge-strong">{row.strategy.toUpperCase()}</span>
+                          <span className="badge badge-strong">{(row.strategy || "—").toUpperCase()}</span>
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, color: "var(--success)" }}>
                           {formatCurrency(row.sell_min)}
@@ -355,13 +602,13 @@ export default function ItemDetailClient({
                       {visibleMonths.map((m, mi) => {
                         const isLatest = mi === 0;
                         return (
-                          <th key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isLatest ? 800 : 700, color: isLatest ? "var(--primary)" : "var(--text-muted)" }}>
+                          <th key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isLatest ? 800 : 700, color: isLatest ? "var(--primary)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
                             {formatMonthLabel(m)}
                             {isLatest && <span style={{ fontSize: "8px", fontWeight: 800, marginInlineStart: "5px", color: "var(--primary)", verticalAlign: "super" }}>{locale === "ar" ? "الأحدث" : "LATEST"}</span>}
                           </th>
                         );
                       })}
-                      <th style={{ padding: "10px 12px", textAlign: "center", color: "var(--primary)", fontWeight: 700 }}>{locale === "ar" ? "المتوسط" : "Avg"}</th>
+                      <th style={{ padding: "10px 12px", textAlign: "center", color: "var(--primary)", fontWeight: 700, whiteSpace: "nowrap" }}>{locale === "ar" ? "المتوسط" : "Avg"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -383,12 +630,12 @@ export default function ItemDetailClient({
                             const minPrice = monthPrices.length ? Math.min(...monthPrices) : null;
                             const isBest = entry && minPrice !== null && entry.price === minPrice;
                             return (
-                              <td key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.06)" : "transparent" }}>
+                              <td key={m} style={{ padding: "10px 12px", textAlign: "center", fontWeight: isBest ? 700 : 400, color: isBest ? "var(--success)" : entry ? "var(--text-primary)" : "var(--text-dim)", background: isBest ? "rgba(16,185,129,0.06)" : "transparent", whiteSpace: "nowrap" }}>
                                 {entry ? formatCurrency(entry.price) : "—"}
                               </td>
                             );
                           })}
-                          <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
+                          <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap" }}>
                             {avg !== null ? formatCurrency(avg) : "—"}
                           </td>
                         </tr>
@@ -442,7 +689,7 @@ export default function ItemDetailClient({
                     <div key={row.month} style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--bg-elevated)", border: "1px solid var(--border-light)", fontSize: "12px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                         <span className="badge" style={{ fontSize: "9px" }}>{row.month}</span>
-                        <strong style={{ color: "var(--primary-dark)" }}>{row.strategy.toUpperCase()}</strong>
+                        <strong style={{ color: "var(--primary-dark)" }}>{(row.strategy || "—").toUpperCase()}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
                         <span style={{ color: "var(--success)" }}>{formatCurrency(row.sell_min)}</span>

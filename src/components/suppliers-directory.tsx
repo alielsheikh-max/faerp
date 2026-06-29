@@ -84,7 +84,7 @@ export default function SuppliersDirectory({ suppliers, categories }: Props) {
       {/* ── Search Bar ──────────────────────────────────── */}
       <div style={{ position: "relative", marginBottom: "14px" }}>
         <span style={{
-          position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)",
+          position: "absolute", insetInlineStart: "14px", top: "50%", transform: "translateY(-50%)",
           fontSize: "16px", pointerEvents: "none", userSelect: "none",
         }}>
           🔍
@@ -98,14 +98,14 @@ export default function SuppliersDirectory({ suppliers, categories }: Props) {
             "Search by name, code, contact, product, region…",
             "ابحث بالاسم، الكود، المنتج، المنطقة…"
           )}
-          style={{ width: "100%", paddingLeft: "40px", paddingRight: "14px", boxSizing: "border-box" }}
+          style={{ width: "100%", paddingInlineStart: "40px", paddingInlineEnd: "36px", boxSizing: "border-box" }}
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery("")}
             style={{
-              position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)",
+              position: "absolute", insetInlineEnd: "10px", top: "50%", transform: "translateY(-50%)",
               background: "none", border: "none", cursor: "pointer", fontSize: "16px",
               color: "var(--text-muted)", padding: "4px",
             }}
@@ -230,6 +230,7 @@ function SupplierCard({
   return (
     <button
       type="button"
+      className="supplier-card-button"
       onClick={onClick}
       style={{
         background: "var(--bg-surface)",
@@ -237,7 +238,7 @@ function SupplierCard({
         borderRadius: "14px",
         padding: "18px",
         cursor: "pointer",
-        textAlign: "left",
+        textAlign: locale === "ar" ? "right" : "left",
         transition: "all 200ms cubic-bezier(0.4,0,0.2,1)",
         display: "flex",
         flexDirection: "column",

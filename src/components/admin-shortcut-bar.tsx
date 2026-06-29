@@ -11,7 +11,7 @@ export default function AdminShortcutBar() {
   };
 
   return (
-    <div style={{
+    <div className="mobile-tabs-scroll" style={{
       display: "flex", gap: "8px", flexWrap: "wrap",
       background: "var(--bg-surface)", padding: "12px 16px",
       borderRadius: "var(--radius)", border: "1px solid var(--border-light)",

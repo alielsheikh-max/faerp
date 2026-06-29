@@ -5,11 +5,59 @@ import { requireRole } from "@/lib/auth";
 import { asNumber, asString } from "@/lib/format";
 import {
   approveAllPendingSellingPrices,
+  approveGlobalPendingSellingPrices,
+  approveMultiplePendingSellingPrices,
   approveSinglePendingSellingPrice,
   reconsiderSellingPrice,
   getPendingPriceEntries,
   getPendingPriceChangeRequests
 } from "@/lib/db";
+
+export async function approveMultipleSellingPricesAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = requireRole(["MG"]);
+    const month = asString(formData.get("month"));
+    const itemIdsStr = asString(formData.get("itemIds"));
+
+    if (!month || !itemIdsStr) {
+      return { ok: false, error: "Month and Item IDs are required." };
+    }
+
+    const itemIds = JSON.parse(itemIdsStr) as number[];
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return { ok: false, error: "No items selected." };
+    }
+
+    approveMultiplePendingSellingPrices(itemIds, month, session.displayName);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to approve batch." };
+  }
+}
+
+export async function approveGlobalSellingPricesAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = requireRole(["MG"]);
+    const month = asString(formData.get("month"));
+
+    if (!month) {
+      return { ok: false, error: "Month is required." };
+    }
+
+    approveGlobalPendingSellingPrices(month, session.displayName);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to approve all." };
+  }
+}
 
 export async function approveAllSellingPricesAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   try {

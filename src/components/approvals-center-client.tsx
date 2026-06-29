@@ -187,7 +187,7 @@ export default function ApprovalsCenterClient({
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 
       {/* ── Top-Level Incoming / Outgoing Tabs ── */}
-      <div style={{
+      <div className="mobile-tabs-scroll" style={{
         display: "flex",
         background: "linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)",
         padding: "5px",
@@ -240,7 +240,7 @@ export default function ApprovalsCenterClient({
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 
           {/* ── Sub Tabs: Quotes / Revisions ── */}
-          <div style={{
+          <div className="mobile-tabs-scroll" style={{
             display: "flex",
             background: "var(--bg-elevated)",
             padding: "4px",
@@ -466,7 +466,7 @@ export default function ApprovalsCenterClient({
 
                       {/* Expanded Section: Price Histories */}
                       {isExpanded && (
-                        <div style={{
+                        <div className="mobile-stack" style={{
                           marginTop: "16px",
                           padding: "16px",
                           background: "var(--bg-elevated)",
@@ -486,26 +486,28 @@ export default function ApprovalsCenterClient({
                                 {isAr ? "لا يوجد سجل شراء سابق" : "No previous purchasing history"}
                               </div>
                             ) : (
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                                <thead>
-                                  <tr style={{ borderBottom: "1.5px solid var(--border)" }}>
-                                    <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "الشهر" : "Month"}</th>
-                                    <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "السعر" : "Price"}</th>
-                                    <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "ملاحظة" : "Note"}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {q.purchHistory.map((p, i) => (
-                                    <tr key={i} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                                      <td style={{ padding: "4px" }}>{formatMonthLabel(p.month)}</td>
-                                      <td style={{ textAlign: "right", padding: "4px", fontWeight: 700 }}>{formatCurrency(p.price)}</td>
-                                      <td style={{ padding: "4px", color: "var(--text-muted)", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {p.notes || "—"}
-                                      </td>
+                              <div className="table-responsive">
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: "1.5px solid var(--border)" }}>
+                                      <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "الشهر" : "Month"}</th>
+                                      <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "السعر" : "Price"}</th>
+                                      <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "ملاحظة" : "Note"}</th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                                  </thead>
+                                  <tbody>
+                                    {q.purchHistory.map((p, i) => (
+                                      <tr key={i} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                                        <td style={{ padding: "4px" }}>{formatMonthLabel(p.month)}</td>
+                                        <td style={{ textAlign: "right", padding: "4px", fontWeight: 700 }}>{formatCurrency(p.price)}</td>
+                                        <td style={{ padding: "4px", color: "var(--text-muted)", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {p.notes || "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                           </div>
 
@@ -519,26 +521,28 @@ export default function ApprovalsCenterClient({
                                 {isAr ? "لا يوجد سجل بيع سابق" : "No previous selling history"}
                               </div>
                             ) : (
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                                <thead>
-                                  <tr style={{ borderBottom: "1.5px solid var(--border)" }}>
-                                    <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "الشهر" : "Month"}</th>
-                                    <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "متوسط الشراء" : "Buy Avg"}</th>
-                                    <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "سعر البيع" : "Sell Price"}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {q.sellHistory.map((s, i) => (
-                                    <tr key={i} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                                      <td style={{ padding: "4px" }}>{formatMonthLabel(s.month)}</td>
-                                      <td style={{ textAlign: "right", padding: "4px" }}>{formatCurrency(s.buy_avg)}</td>
-                                      <td style={{ textAlign: "right", padding: "4px", fontWeight: 700, color: "var(--success)" }}>
-                                        {s.sell_min === s.sell_max ? formatCurrency(s.sell_min) : `${formatCurrency(s.sell_min)}–${formatCurrency(s.sell_max)}`}
-                                      </td>
+                              <div className="table-responsive">
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: "1.5px solid var(--border)" }}>
+                                      <th style={{ textAlign: isRTL ? "right" : "left", padding: "4px" }}>{isAr ? "الشهر" : "Month"}</th>
+                                      <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "متوسط الشراء" : "Buy Avg"}</th>
+                                      <th style={{ textAlign: "right", padding: "4px" }}>{isAr ? "سعر البيع" : "Sell Price"}</th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                                  </thead>
+                                  <tbody>
+                                    {q.sellHistory.map((s, i) => (
+                                      <tr key={i} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                                        <td style={{ padding: "4px" }}>{formatMonthLabel(s.month)}</td>
+                                        <td style={{ textAlign: "right", padding: "4px" }}>{formatCurrency(s.buy_avg)}</td>
+                                        <td style={{ textAlign: "right", padding: "4px", fontWeight: 700, color: "var(--success)" }}>
+                                          {s.sell_min === s.sell_max ? formatCurrency(s.sell_min) : `${formatCurrency(s.sell_min)}–${formatCurrency(s.sell_max)}`}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -665,7 +669,7 @@ export default function ApprovalsCenterClient({
               {t("scapp.noOutgoing")}
             </div>
           ) : (
-            <div style={{ overflowX: "auto", borderRadius: "12px", border: "1px solid var(--border-light)" }}>
+            <div className="table-responsive" style={{ overflowX: "auto", borderRadius: "12px", border: "1px solid var(--border-light)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
                 <thead>
                   <tr style={{ background: "var(--bg-elevated)", borderBottom: "2px solid var(--border-medium)" }}>

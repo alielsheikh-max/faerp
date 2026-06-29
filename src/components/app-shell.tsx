@@ -114,7 +114,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
   const [approvalsLoading, setApprovalsLoading] = useState(false);
   const [pendingQuotes, setPendingQuotes] = useState<any[]>([]);
   const [pendingRevisions, setPendingRevisions] = useState<any[]>([]);
-  const [activeApprovalsTab, setActiveApprovalsTab] = useState<"quotes" | "revisions">("quotes");
+  const [activeApprovalsTab, setActiveApprovalsTab] = useState<"quotes" | "revisions" | "notifications">("quotes");
   const [approvalsActionPendingId, setApprovalsActionPendingId] = useState<string | null>(null);
   const [approvalsNotes, setApprovalsNotes] = useState<Record<string, string>>({});
 
@@ -143,11 +143,21 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
       if (res.ok) {
         setPendingQuotes(res.pendingQuotes || []);
         setPendingRevisions(res.pendingRevisions || []);
-        if ((res.pendingQuotes || []).length === 0 && (res.pendingRevisions || []).length > 0) {
-          setActiveApprovalsTab("revisions");
-        } else {
-          setActiveApprovalsTab("quotes");
-        }
+      }
+
+      const resNotif = await getUnreadNotificationsAction();
+      if (resNotif.ok && resNotif.notifications) {
+        setUnreadNotifications(resNotif.notifications);
+        setLocalAckCount(resNotif.notifications.length);
+      }
+
+      // Determine active tab
+      if (res.ok && (res.pendingQuotes || []).length > 0) {
+        setActiveApprovalsTab("quotes");
+      } else if (res.ok && (res.pendingRevisions || []).length > 0) {
+        setActiveApprovalsTab("revisions");
+      } else {
+        setActiveApprovalsTab("notifications");
       }
     } catch (e) {
       console.error(e);
@@ -252,7 +262,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
     }
   };
 
-  const handleMarkAsRead = async (id: number, type: "acknowledgment" | "rejection", e: React.MouseEvent) => {
+  const handleMarkAsRead = async (id: number, type: "acknowledgment" | "rejection" | "negotiation", e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     setUnreadNotifications(prev => prev.filter(n => !(n.id === id && n.type === type)));
@@ -350,7 +360,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
           display: "flex", flexDirection: "column", gap: "6px", zIndex: 600,
           pointerEvents: "auto", alignItems: "flex-end",
         }}>
-          {pendingRequests > 0 && (role === "SC" || role === "WH" || role === "MG") && (
+          {((role === "SC" || role === "AD") ? (pendingRequests > 0 || localAckCount > 0) : pendingRequests > 0) && (role === "SC" || role === "WH" || role === "MG" || role === "AD") && (
             role === "MG" ? (
               <button
                 type="button"
@@ -380,7 +390,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                 }}>⏳</span>
                 <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
               </button>
-            ) : role === "SC" ? (
+            ) : (role === "SC" || role === "AD") ? (
               <div className="quick-approvals-container" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", position: "relative" }}>
                 {showApprovalsPopup && (
                   <div style={{
@@ -413,7 +423,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "16px" }}>⏳</span>
-                        <strong style={{ fontSize: "13.5px", color: "var(--text-primary)" }}>{t("scapp.pendingRequests") || "Pending Reviews"}</strong>
+                        <strong style={{ fontSize: "13.5px", color: "var(--text-primary)" }}>{isAr ? "مراجعات وتنبيهات معلقة" : "Pending Reviews & Alerts"}</strong>
                         <span style={{
                           background: "#d97706",
                           color: "#fff",
@@ -421,7 +431,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                           fontWeight: 700,
                           padding: "2px 6px",
                           borderRadius: "99px",
-                        }}>{pendingQuotes.length + pendingRevisions.length}</span>
+                        }}>{pendingQuotes.length + pendingRevisions.length + unreadNotifications.length}</span>
                       </div>
                       <button
                         type="button"
@@ -439,36 +449,47 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                     </div>
 
                     {/* Tabs */}
-                    {pendingQuotes.length > 0 && pendingRevisions.length > 0 && (
-                      <div style={{ display: "flex", borderBottom: "1px solid var(--border-light)", background: "var(--bg-elevated)", padding: "4px" }}>
-                        <button
-                          type="button"
-                          onClick={() => setActiveApprovalsTab("quotes")}
-                          style={{
-                            flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
-                            background: activeApprovalsTab === "quotes" ? "var(--bg-surface)" : "transparent",
-                            color: activeApprovalsTab === "quotes" ? "var(--primary)" : "var(--text-muted)",
-                            boxShadow: activeApprovalsTab === "quotes" ? "var(--shadow-xs)" : "none",
-                            transition: "all 150ms",
-                          }}
-                        >
-                          {isAr ? "عروض الأسعار" : "Quotes"} ({pendingQuotes.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveApprovalsTab("revisions")}
-                          style={{
-                            flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
-                            background: activeApprovalsTab === "revisions" ? "var(--bg-surface)" : "transparent",
-                            color: activeApprovalsTab === "revisions" ? "var(--primary)" : "var(--text-muted)",
-                            boxShadow: activeApprovalsTab === "revisions" ? "var(--shadow-xs)" : "none",
-                            transition: "all 150ms",
-                          }}
-                        >
-                          {isAr ? "طلبات التعديل" : "Revisions"} ({pendingRevisions.length})
-                        </button>
-                      </div>
-                    )}
+                    <div style={{ display: "flex", borderBottom: "1px solid var(--border-light)", background: "var(--bg-elevated)", padding: "4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveApprovalsTab("quotes")}
+                        style={{
+                          flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
+                          background: activeApprovalsTab === "quotes" ? "var(--bg-surface)" : "transparent",
+                          color: activeApprovalsTab === "quotes" ? "var(--primary)" : "var(--text-muted)",
+                          boxShadow: activeApprovalsTab === "quotes" ? "var(--shadow-xs)" : "none",
+                          transition: "all 150ms",
+                        }}
+                      >
+                        {isAr ? "عروض الأسعار" : "Quotes"} ({pendingQuotes.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveApprovalsTab("revisions")}
+                        style={{
+                          flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
+                          background: activeApprovalsTab === "revisions" ? "var(--bg-surface)" : "transparent",
+                          color: activeApprovalsTab === "revisions" ? "var(--primary)" : "var(--text-muted)",
+                          boxShadow: activeApprovalsTab === "revisions" ? "var(--shadow-xs)" : "none",
+                          transition: "all 150ms",
+                        }}
+                      >
+                        {isAr ? "طلبات التعديل" : "Revisions"} ({pendingRevisions.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveApprovalsTab("notifications")}
+                        style={{
+                          flex: 1, padding: "6px 12px", fontSize: "11px", fontWeight: 700, border: "none", borderRadius: "6px", cursor: "pointer",
+                          background: activeApprovalsTab === "notifications" ? "var(--bg-surface)" : "transparent",
+                          color: activeApprovalsTab === "notifications" ? "var(--primary)" : "var(--text-muted)",
+                          boxShadow: activeApprovalsTab === "notifications" ? "var(--shadow-xs)" : "none",
+                          transition: "all 150ms",
+                        }}
+                      >
+                        {isAr ? "الإشعارات" : "Notifications"} ({unreadNotifications.length})
+                      </button>
+                    </div>
 
                     {/* List Body */}
                     <div style={{ flex: 1, overflowY: "auto", padding: "10px", maxHeight: "360px", display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -558,7 +579,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                             );
                           })
                         )
-                      ) : (
+                      ) : activeApprovalsTab === "revisions" ? (
                         pendingRevisions.length === 0 ? (
                           <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
                             {isAr ? "لا توجد طلبات تعديل معلقة" : "No pending revisions."}
@@ -636,6 +657,114 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                             );
                           })
                         )
+                      ) : (
+                        unreadNotifications.length === 0 ? (
+                          <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
+                            {isAr ? "لا توجد إشعارات جديدة" : "No new notifications."}
+                          </div>
+                        ) : (
+                          unreadNotifications.map(n => {
+                            let formattedTime = "";
+                            try {
+                              formattedTime = new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            } catch (err) {
+                              formattedTime = String(n.time);
+                            }
+                            return (
+                              <div key={`${n.type}-${n.id}`} style={{
+                                display: "flex",
+                                gap: "10px",
+                                padding: "10px 12px",
+                                borderBottom: "1px solid var(--border-light)",
+                                position: "relative",
+                                background: "var(--bg-elevated)",
+                                borderRadius: "var(--radius)",
+                                border: "1px solid var(--border-light)",
+                              }} className="quick-notif-item">
+                                <div style={{ flex: 1, minWidth: 0, textAlign: isRTL ? "right" : "left" }}>
+                                  <div style={{
+                                    fontWeight: 600,
+                                    fontSize: "12px",
+                                    color: "var(--text-primary)",
+                                    marginBottom: "2px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    flexDirection: isRTL ? "row-reverse" : "row",
+                                  }}>
+                                    <span>{n.title}</span>
+                                    <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 400 }}>
+                                      {formattedTime}
+                                    </span>
+                                  </div>
+                                  <p style={{
+                                    margin: 0,
+                                    fontSize: "11px",
+                                    color: "var(--text-secondary)",
+                                    lineHeight: "1.4",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                  }}>{n.message}</p>
+                                  
+                                  {/* Action Link to the Item */}
+                                  {n.itemId && (
+                                    <Link
+                                      href={`/dashboard/pricing?searchId=${n.itemId}`}
+                                      onClick={() => setShowApprovalsPopup(false)}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        marginTop: "6px",
+                                        fontSize: "11px",
+                                        color: "#6366f1",
+                                        textDecoration: "none",
+                                        fontWeight: 600,
+                                        gap: "3px",
+                                      }}
+                                    >
+                                      {t("notif.priceHistory")} ➔
+                                    </Link>
+                                  )}
+                                </div>
+                                
+                                {/* Check Button to Mark Read */}
+                                <button
+                                  type="button"
+                                  title={t("notif.markAsRead")}
+                                  onClick={(e) => handleMarkAsRead(n.id, n.type, e)}
+                                  style={{
+                                    alignSelf: "center",
+                                    background: "rgba(99,102,241,0.06)",
+                                    border: "1px solid rgba(99,102,241,0.15)",
+                                    borderRadius: "6px",
+                                    width: "26px",
+                                    height: "26px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    color: "#6366f1",
+                                    transition: "all 150ms",
+                                    flexShrink: 0,
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.background = "#6366f1";
+                                    e.currentTarget.style.color = "#fff";
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.background = "rgba(99,102,241,0.06)";
+                                    e.currentTarget.style.color = "#6366f1";
+                                  }}
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            );
+                          })
+                        )
                       )}
                     </div>
 
@@ -646,24 +775,44 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                       background: "var(--bg-elevated)",
                       textAlign: "center",
                     }}>
-                      <Link
-                        href="/dashboard/approvals"
-                        onClick={() => setShowApprovalsPopup(false)}
-                        style={{
-                          fontSize: "11.5px",
-                          fontWeight: 700,
-                          color: "#d97706",
-                          textDecoration: "none",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        {isAr ? "فتح محطة عمل الموافقات كاملة ➔" : "Open full approvals workstation ➔"}
-                      </Link>
+                      {activeApprovalsTab === "notifications" ? (
+                        <Link
+                          href="/dashboard/notifications"
+                          onClick={() => setShowApprovalsPopup(false)}
+                          style={{
+                            fontSize: "11.5px",
+                            fontWeight: 700,
+                            color: "#6366f1",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {isAr ? "عرض كل الإشعارات ➔" : "View all notifications ➔"}
+                        </Link>
+                      ) : (
+                        <Link
+                          href="/dashboard/approvals"
+                          onClick={() => setShowApprovalsPopup(false)}
+                          style={{
+                            fontSize: "11.5px",
+                            fontWeight: 700,
+                            color: "#d97706",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {isAr ? "فتح محطة عمل الموافقات كاملة ➔" : "Open full approvals workstation ➔"}
+                        </Link>
+                      )}
                     </div>
                   </div>
                 )}
+                
+                {/* The Floating consolidated button */}
                 <button
                   type="button"
                   onClick={handleToggleApprovalsPopup}
@@ -671,23 +820,50 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
                     display: "flex", alignItems: "center", gap: "6px",
                     padding: "6px 14px", borderRadius: "10px",
                     background: "var(--bg-elevated)",
-                    color: "#b45309", fontWeight: 700, fontSize: "11.5px",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)",
-                    border: "1.5px solid rgba(245,158,11,0.35)",
+                    color: pendingRequests > 0 ? "#b45309" : "#4f46e5",
+                    fontWeight: 700, fontSize: "11.5px",
+                    boxShadow: pendingRequests > 0
+                      ? "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"
+                      : "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(99,102,241,0.2)",
+                    border: pendingRequests > 0
+                      ? "1.5px solid rgba(245,158,11,0.35)"
+                      : "1.5px solid rgba(99,102,241,0.3)",
                     backdropFilter: "blur(8px)",
                     transition: "transform 150ms, box-shadow 150ms",
                     direction: "ltr",
                     cursor: "pointer",
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(245,158,11,0.4)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"; }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                    (e.currentTarget as HTMLElement).style.boxShadow = pendingRequests > 0
+                      ? "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(245,158,11,0.4)"
+                      : "0 6px 20px rgba(0,0,0,0.18), 0 0 0 1px rgba(99,102,241,0.35)";
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.transform = "";
+                    (e.currentTarget as HTMLElement).style.boxShadow = pendingRequests > 0
+                      ? "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(245,158,11,0.25)"
+                      : "0 2px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(99,102,241,0.2)";
+                  }}
                 >
                   <span style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     width: "20px", height: "20px", borderRadius: "6px",
-                    background: "rgba(245,158,11,0.15)", fontSize: "11px",
-                  }}>⏳</span>
-                  <span><strong>{pendingRequests}</strong> {t("shell.approvalsPending")}</span>
+                    background: pendingRequests > 0 ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.12)",
+                    fontSize: "11px",
+                  }}>{pendingRequests > 0 ? "⏳" : "📨"}</span>
+                  <span>
+                    {pendingRequests > 0 ? (
+                      <>
+                        <strong>{pendingRequests}</strong> {t("shell.approvalsPending")}
+                        {localAckCount > 0 && ` & ${localAckCount} ${isAr ? "تنبيه" : "Alert(s)"}`}
+                      </>
+                    ) : (
+                      <>
+                        <strong>{localAckCount}</strong> {t("shell.newNotifications")}
+                      </>
+                    )}
+                  </span>
                 </button>
               </div>
             ) : (
@@ -717,7 +893,7 @@ export function AppShell({ role, children, searchIndex, pendingRequests = 0, ack
               </Link>
             )
           )}
-          {localAckCount > 0 && (
+          {localAckCount > 0 && role !== "SC" && role !== "AD" && (
             <div className="quick-notifications-container" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", position: "relative" }}>
               {showQuickNotifications && (
                 <div style={{

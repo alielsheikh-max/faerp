@@ -1,6 +1,6 @@
 import { SectionIntro } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth";
-import MarkReadClient, { MarkWHReadClient } from "@/components/mark-read-client";
+import { MarkAllReadButton, MarkAllWHReadButton, DismissNotificationButton } from "@/components/mark-read-client";
 import {
   getRecentPriceUpdates,
   getPriceAcknowledgments,
@@ -47,6 +47,8 @@ export default function NotificationsPage() {
       ? mgPendingItems.length
       : recentUpdates.filter((u: any) => !u.ack_by).length;
 
+  const scUnreadCount = acknowledgments.filter((a: any) => !a.read_by_sc).length + negotiatedEntries.filter((a: any) => !a.read_by_sc).length;
+
   const totalActivity = isWH
     ? rejectedEntries.length
     : isMG
@@ -64,7 +66,12 @@ export default function NotificationsPage() {
               ? "مراجعة عروض الأسعار التي تم رفضها من قبل إدارة سلاسل الإمداد للبدء في إعادة التفاوض."
               : "Review quotes rejected by the Supply Chain team to start renegotiation."
           }
-          actions={<span className="badge badge-strong">{formatMonthLabel(month)}</span>}
+          actions={
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {unreadCount > 0 && <MarkAllWHReadButton />}
+              <span className="badge badge-strong">{formatMonthLabel(month)}</span>
+            </div>
+          }
         />
 
         {/* Unread banner for WH */}
@@ -133,7 +140,7 @@ export default function NotificationsPage() {
               {rejectedEntries.map((pe) => {
                 const isUnread = !pe.read_by_wh;
                 return (
-                  <div key={pe.quote_id} style={{
+                  <div key={pe.quote_id} className="wh-rejected-row" style={{
                     display: "grid", gridTemplateColumns: "1fr auto auto auto",
                     gap: "16px", alignItems: "center",
                     padding: "14px 16px", borderRadius: "12px",
@@ -175,10 +182,7 @@ export default function NotificationsPage() {
 
                     <div style={{ textAlign: isAr ? "left" : "right" }}>
                       {isUnread ? (
-                        <span style={{
-                          fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
-                          background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.3)",
-                        }}>{isAr ? "غير مقروء" : "New"}</span>
+                        <DismissNotificationButton id={pe.quote_id} type="rejection" isAr={isAr} />
                       ) : (
                         <span style={{
                           fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
@@ -192,8 +196,6 @@ export default function NotificationsPage() {
             </div>
           </section>
         )}
-
-        <MarkWHReadClient />
       </div>
     );
   }
@@ -349,12 +351,17 @@ export default function NotificationsPage() {
             ? t("notif.descManager")
             : t("notif.descSA")
         }
-        actions={<span className="badge badge-strong">{formatMonthLabel(month)}</span>}
+        actions={
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {isManager && scUnreadCount > 0 && <MarkAllReadButton />}
+            <span className="badge badge-strong">{formatMonthLabel(month)}</span>
+          </div>
+        }
       />
 
       {/* ── Unread / Pending Alert Banner ─────────────────────────────────── */}
       {(unreadCount > 0 || pendingChangeRequests.length > 0) && (
-        <div style={{
+        <div className="notifications-alert-grid" style={{
           display: "grid",
           gridTemplateColumns: pendingChangeRequests.length > 0 && unreadCount > 0 ? "1fr 1fr" : "1fr",
           gap: "12px",
@@ -565,15 +572,17 @@ export default function NotificationsPage() {
                 const diff = a.negotiated_price - a.original_price;
                 const diffPct = a.original_price > 0 ? (diff / a.original_price) * 100 : 0;
                 const isSaving = diff < 0;
+                const isUnread = !a.read_by_sc;
 
                 return (
                   <div key={a.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                    display: "grid", gridTemplateColumns: "1fr auto auto auto auto",
                     gap: "16px", alignItems: "center",
                     padding: "12px 16px", borderRadius: "10px",
-                    background: "var(--bg-surface)", border: "1px solid var(--border-light)",
-                    borderLeft: isAr ? "none" : "4px solid #8b5cf6",
-                    borderRight: isAr ? "4px solid #8b5cf6" : "none",
+                    background: isUnread ? "rgba(139,92,246,0.06)" : "var(--bg-surface)",
+                    border: `1.5px solid ${isUnread ? "rgba(139,92,246,0.3)" : "var(--border-light)"}`,
+                    borderLeft: isAr ? "none" : (isUnread ? "4px solid #8b5cf6" : "4px solid var(--border-light)"),
+                    borderRight: isAr ? (isUnread ? "4px solid #8b5cf6" : "4px solid var(--border-light)") : "none",
                     direction: isAr ? "rtl" : "ltr",
                   }}>
                     <div style={{ textAlign: isAr ? "right" : "left" }}>
@@ -607,6 +616,16 @@ export default function NotificationsPage() {
                       }}>{t("notif.loggedBy").replace("{user}", a.collected_by)}</span>
                       <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.recorded_at)}</div>
                     </div>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      {isUnread ? (
+                        <DismissNotificationButton id={a.id} type="negotiation" isAr={isAr} />
+                      ) : (
+                        <span style={{
+                          fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                          background: "var(--bg-subtle)", color: "var(--text-muted)", border: "1px solid var(--border)",
+                        }}>{isAr ? "تم الاطلاع" : "Seen"}</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -636,35 +655,49 @@ export default function NotificationsPage() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {acknowledgments.map((a) => (
-                <div key={a.id} style={{
-                  display: "grid", gridTemplateColumns: "1fr auto auto auto",
-                  gap: "12px", alignItems: "center",
-                  padding: "12px 16px", borderRadius: "10px",
-                  background: "var(--bg-surface)", border: "1px solid var(--border-light)",
-                  borderLeft: isAr ? "none" : "4px solid var(--success)",
-                  borderRight: isAr ? "4px solid var(--success)" : "none",
-                  direction: isAr ? "rtl" : "ltr",
-                }}>
-                  <div style={{ textAlign: isAr ? "right" : "left" }}>
-                    <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
-                  </div>
-                  <span className="badge">{formatMonthLabel(a.month)}</span>
-                  <div style={{ textAlign: isAr ? "left" : "right" }}>
-                    <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.priceRange")}</div>
-                    <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
-                      {formatCurrency(a.new_sell_min)} – {formatCurrency(a.new_sell_max)}
+              {acknowledgments.map((a) => {
+                const isUnread = !a.read_by_sc;
+                return (
+                  <div key={a.id} style={{
+                    display: "grid", gridTemplateColumns: "1fr auto auto auto auto",
+                    gap: "12px", alignItems: "center",
+                    padding: "12px 16px", borderRadius: "10px",
+                    background: isUnread ? "rgba(16,185,129,0.06)" : "var(--bg-surface)",
+                    border: `1.5px solid ${isUnread ? "rgba(16,185,129,0.25)" : "var(--border-light)"}`,
+                    borderLeft: isAr ? "none" : (isUnread ? "4px solid var(--success)" : "4px solid var(--border-light)"),
+                    borderRight: isAr ? (isUnread ? "4px solid var(--success)" : "4px solid var(--border-light)") : "none",
+                    direction: isAr ? "rtl" : "ltr",
+                  }}>
+                    <div style={{ textAlign: isAr ? "right" : "left" }}>
+                      <div style={{ fontWeight: 700, fontSize: "13px" }}>{a.item_name}</div>
+                    </div>
+                    <span className="badge">{formatMonthLabel(a.month)}</span>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "2px" }}>{t("notif.priceRange")}</div>
+                      <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "13px" }}>
+                        {formatCurrency(a.new_sell_min)} – {formatCurrency(a.new_sell_max)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      <span style={{
+                        fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                        background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
+                      }}>{t("notif.seenBy").replace("{user}", a.acknowledged_by)}</span>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.acknowledged_at)}</div>
+                    </div>
+                    <div style={{ textAlign: isAr ? "left" : "right" }}>
+                      {isUnread ? (
+                        <DismissNotificationButton id={a.id} type="acknowledgment" isAr={isAr} />
+                      ) : (
+                        <span style={{
+                          fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
+                          background: "var(--bg-subtle)", color: "var(--text-muted)", border: "1px solid var(--border)",
+                        }}>{isAr ? "تم الاطلاع" : "Seen"}</span>
+                      )}
                     </div>
                   </div>
-                  <div style={{ textAlign: isAr ? "left" : "right" }}>
-                    <span style={{
-                      fontSize: "10px", fontWeight: 800, padding: "4px 10px", borderRadius: "99px",
-                      background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)",
-                    }}>{t("notif.seenBy").replace("{user}", a.acknowledged_by)}</span>
-                    <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>{formatDateTime(a.acknowledged_at)}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -856,11 +889,8 @@ export default function NotificationsPage() {
         }}>
           <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
           <div style={{ fontWeight: 800, fontSize: "18px", color: "var(--success)", marginBottom: "6px" }}>{t("notif.allClearForMonth").replace("{month}", formatMonthLabel(month))}</div>
-          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{t("notif.noPriceChanges")}</div>
         </div>
       )}
-      {/* Mark acknowledgments as read when manager views the notifications page */}
-      {isManager && <MarkReadClient />}
     </div>
   );
 }

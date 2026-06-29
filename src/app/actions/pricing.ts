@@ -316,11 +316,15 @@ export async function saveSellingPriceInline(input: {
       changeReason: input.changeReason,
       otherExpenses,
       tierPricingEnabled,
+      sellMinOverride: Math.ceil(input.sellMin / 5) * 5,
+      sellMaxOverride: Math.ceil(input.sellMax / 5) * 5,
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/manager");
     revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/pricing");
+    revalidatePath("/dashboard/pricing/category");
 
     return { ok: true };
   } catch (e) {
@@ -386,7 +390,7 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     requireRole(["SC"]);
     const categoryId  = asNumber(formData.get("categoryId"));
     const month       = asString(formData.get("month"));
-    const strategy    = (asString(formData.get("strategy")) || "avg") as "min" | "avg" | "max";
+    const strategy    = (asString(formData.get("strategy")) || "avg") as "min" | "avg" | "max" | "fav";
     const markupTypeR = asString(formData.get("markupType")) || "percent";
     const markupType  = (["percent","amount","divisor"].includes(markupTypeR) ? markupTypeR : "percent") as "percent" | "amount" | "divisor";
     const markupMin   = asNumber(formData.get("markupMin")) ?? 8;
@@ -418,6 +422,8 @@ export async function applyCategoryMarkupAction(formData: FormData): Promise<{
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/manager");
     revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/pricing");
+    revalidatePath("/dashboard/pricing/category");
 
     return { ok: true, ...result };
   } catch (e) {
@@ -552,7 +558,7 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     requireRole(["SC"]);
     const itemId = asNumber(formData.get("itemId"));
     const month = asString(formData.get("month"));
-    const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg";
+    const strategy = asString(formData.get("strategy")) as "min" | "max" | "avg" | "fav";
     const markupTypeRaw = asString(formData.get("markupType")) || "percent";
     const markupType = (["percent", "amount", "divisor"].includes(markupTypeRaw) ? markupTypeRaw : "percent") as "percent" | "amount" | "divisor";
     const markupMin = asNumber(formData.get("markupMin"));
@@ -577,7 +583,7 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
       !month ||
       markupMin === null ||
       markupMax === null ||
-      !["min", "max", "avg"].includes(strategy)
+      !["min", "max", "avg", "fav"].includes(strategy)
     ) {
       return { ok: false, error: "Missing required fields" };
     }
@@ -612,6 +618,8 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/manager");
     revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/pricing");
+    revalidatePath("/dashboard/pricing/category");
 
     log.sellingPricePublished(
       { username: createdBy, role: "SC" },

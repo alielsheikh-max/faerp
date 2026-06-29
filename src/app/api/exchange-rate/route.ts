@@ -91,7 +91,11 @@ function shouldAutoRefresh(fetchedAt: string | undefined): boolean {
 // Returns the current stored rate.
 // If the rate is stale (>7 days) it auto-refreshes before responding.
 export async function GET() {
-  requireRole();
+  try {
+    requireRole();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let row = getExchangeRate("USD");
 
@@ -124,7 +128,11 @@ export async function GET() {
 // ── POST /api/exchange-rate ───────────────────────────────────────────────────
 // Force-refresh from CBE. SC/AD only.
 export async function POST(request: Request) {
-  requireRole(["SC", "AD"]);
+  try {
+    requireRole(["SC", "AD"]);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   // Allow manual override via body: { rate: number }
   let manualRate: number | null = null;

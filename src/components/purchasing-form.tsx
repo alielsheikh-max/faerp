@@ -845,7 +845,7 @@ export default function PurchasingForm({
 
       {/* Review & Edit Submitted Prices Modal */}
       {showReviewModal && (
-        <div style={{
+        <div className="review-modal-fullscreen-overlay" style={{
           position: "fixed", inset: 0, zIndex: 2000,
           background: "rgba(15, 23, 42, 0.45)", backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
@@ -887,7 +887,7 @@ export default function PurchasingForm({
             </div>
 
             {/* Search & Actions Bar */}
-            <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", gap: "12px", alignItems: "center", background: "var(--bg-elevated)", flexShrink: 0 }}>
+            <div className="review-modal-search-bar" style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", gap: "12px", alignItems: "center", background: "var(--bg-elevated)", flexShrink: 0 }}>
               <div style={{ position: "relative", flex: 1 }}>
                 <input
                   type="text"
@@ -1311,7 +1311,7 @@ export default function PurchasingForm({
           <div className="panel" style={{ padding: "20px 24px" }}>
             <div className="panel-header">
               <div>
-                <p className="eyebrow">3. {t("purch.recordPrices")}</p>
+                <p className="eyebrow">{t("purch.recordPrices")}</p>
                 <h2
                   onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: selectedItem.id } }))}
                   className="clickable-detail-trigger"
@@ -1373,7 +1373,7 @@ export default function PurchasingForm({
                 // ── CONFIRMED (revision) row ────────────────────────────────
                 if (isConfirmed && thisEntry) {
                   return (
-                    <div key={supplier.id} className="mobile-stack" style={{
+                    <div key={supplier.id} className="mobile-stack price-entry-row" style={{
                       display: "flex", alignItems: "center", gap: "10px",
                       padding: "14px 18px", borderRadius: "12px",
                       border: "1.5px solid rgba(16,185,129,0.3)",
@@ -1520,7 +1520,7 @@ export default function PurchasingForm({
 
                 /* ── FIRST ENTRY row ─────────────────────────────────────── */
                 return (
-                  <div key={supplier.id} style={{
+                  <div key={supplier.id} className="price-entry-row" style={{
                     display: "flex", flexDirection: "column", gap: "8px",
                     padding: "14px 18px", borderRadius: "12px",
                     border: inlineError[supplier.id] ? "1.5px solid var(--danger)" : "1.5px solid var(--border)",

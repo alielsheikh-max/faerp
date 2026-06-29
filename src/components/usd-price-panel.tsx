@@ -363,7 +363,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
           onClick={e => e.stopPropagation()}
         >
           {/* Top bar */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: `1px solid ${R.border}`, background: R.white, borderRadius: "var(--radius-lg) var(--radius-lg) 0 0", flexShrink: 0 }}>
+          <div className="usd-price-modal-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: `1px solid ${R.border}`, background: R.white, borderRadius: "var(--radius-lg) var(--radius-lg) 0 0", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>💵</div>
               <div style={{ textAlign: locale === "ar" ? "right" : "left" }}>
@@ -371,7 +371,7 @@ export default function UsdPricePanel({ catalog, month, username }: Props) {
                 <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: R.navy }}>{lbl("Published Selling Prices in USD", "قائمة الأسعار المعتمدة بالدولار")}</h2>
               </div>
             </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div className="usd-price-modal-header-actions" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               {rate && (
                 <>
                   <button type="button" onClick={exportXLSX} disabled={exporting}

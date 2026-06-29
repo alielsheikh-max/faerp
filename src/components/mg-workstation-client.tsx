@@ -5,6 +5,8 @@ import { formatCurrency, formatMonthLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 import {
   approveAllSellingPricesAction,
+  approveGlobalSellingPricesAction,
+  approveMultipleSellingPricesAction,
   approveSingleSellingPriceAction,
   reconsiderSellingPriceAction
 } from "@/app/actions/approval";
@@ -146,6 +148,69 @@ export default function MGWorkstationClient({ items, categories, month, username
 
   const pendingCount = statusCounts.pending;
 
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setSelectedItemIds(new Set());
+  }, [categoryId, searchQuery, statusFilter]);
+
+  const handleSelectAll = () => {
+    const pendingItems = filtered.filter(i => i.currentSp?.approvalStatus === "pending");
+    setSelectedItemIds(new Set(pendingItems.map(i => i.itemId)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedItemIds(new Set());
+  };
+
+  const handleToggleSelectItem = (itemId: number) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleApproveSelected = () => {
+    const ids = Array.from(selectedItemIds);
+    if (ids.length === 0) return;
+    if (confirm(isAr ? `هل أنت متأكد من اعتماد الأسعار للأصناف الـ ${ids.length} المحددة؟` : `Are you sure you want to approve prices for the ${ids.length} selected items?`)) {
+      setActionError(null);
+      startTransition(async () => {
+        const fd = new FormData();
+        fd.set("month", month);
+        fd.set("itemIds", JSON.stringify(ids));
+        const res = await approveMultipleSellingPricesAction(fd);
+        if (!res.ok) {
+          setActionError(res.error || "Failed to approve selected prices.");
+        } else {
+          setSelectedItemIds(new Set());
+          alert(isAr ? "تم اعتماد الأسعار المحددة بنجاح!" : "Selected prices approved successfully!");
+        }
+      });
+    }
+  };
+
+  const handleApproveGlobal = () => {
+    if (confirm(isAr ? "هل أنت متأكد من اعتماد جميع الأسعار المعلقة عبر كافة الفئات في هذا الشهر؟" : "Are you sure you want to approve all pending prices across ALL categories for this month?")) {
+      setActionError(null);
+      startTransition(async () => {
+        const fd = new FormData();
+        fd.set("month", month);
+        const res = await approveGlobalSellingPricesAction(fd);
+        if (!res.ok) {
+          setActionError(res.error || "Failed to approve all pending prices.");
+        } else {
+          alert(isAr ? "تم اعتماد جميع الأسعار بنجاح!" : "All pending prices approved successfully!");
+        }
+      });
+    }
+  };
+
   const handleApproveAll = () => {
     if (categoryId === "all") {
       alert(isAr ? "يرجى تحديد فئة معينة لاعتماد الكل" : "Please select a specific category to approve all.");
@@ -281,27 +346,31 @@ export default function MGWorkstationClient({ items, categories, month, username
           </div>
         </div>
 
-        {/* Bulk approval */}
+        {/* Category-level approve all */}
         {categoryId !== "all" && pendingCount > 0 && (
           <button
             type="button"
             onClick={handleApproveAll}
             disabled={pending}
             className="button button-success"
-            style={{
-              padding: "8px 18px",
-              fontSize: "13px",
-              fontWeight: 700,
-              cursor: pending ? "not-allowed" : "pointer",
-              opacity: pending ? 0.7 : 1,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              flexDirection: isAr ? "row-reverse" : "row"
-            }}
+            style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 700, cursor: pending ? "not-allowed" : "pointer", opacity: pending ? 0.7 : 1, display: "inline-flex", alignItems: "center", gap: "6px", flexDirection: isAr ? "row-reverse" : "row" }}
           >
             <span>✅</span>
             <span>{isAr ? `اعتماد جميع أسعار الفئة (${pendingCount})` : `Approve All in Category (${pendingCount})`}</span>
+          </button>
+        )}
+
+        {/* Global approve all */}
+        {categoryId === "all" && statusCounts.pending > 0 && (
+          <button
+            type="button"
+            onClick={handleApproveGlobal}
+            disabled={pending}
+            className="button button-success"
+            style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 700, cursor: pending ? "not-allowed" : "pointer", opacity: pending ? 0.7 : 1, display: "inline-flex", alignItems: "center", gap: "6px", flexDirection: isAr ? "row-reverse" : "row", background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 4px 12px rgba(16,185,129,0.2)" }}
+          >
+            <span>⚡</span>
+            <span>{isAr ? `اعتماد جميع الأسعار المعلقة (${statusCounts.pending})` : `Approve All Pending (${statusCounts.pending})`}</span>
           </button>
         )}
       </div>
@@ -312,8 +381,67 @@ export default function MGWorkstationClient({ items, categories, month, username
         </div>
       )}
 
+      {/* ── Checkbox selection toolbar — shown only when pending items visible ─── */}
+      {statusCounts.pending > 0 && (statusFilter === "all" || statusFilter === "pending") && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap",
+          padding: "10px 16px",
+          background: selectedItemIds.size > 0 ? "linear-gradient(135deg,rgba(16,185,129,0.08) 0%,rgba(5,150,105,0.05) 100%)" : "var(--bg-elevated)",
+          border: `1.5px solid ${selectedItemIds.size > 0 ? "rgba(16,185,129,0.4)" : "var(--border-light)"}`,
+          borderRadius: "10px",
+          transition: "all 0.2s ease",
+          flexDirection: isAr ? "row-reverse" : "row",
+        }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {isAr ? "الاختيار الجماعي" : "Bulk Select"}
+          </span>
+
+          <button
+            type="button"
+            onClick={handleSelectAll}
+            style={{ padding: "5px 12px", borderRadius: "7px", border: "1.5px solid var(--primary)", background: "rgba(99,102,241,0.08)", color: "var(--primary)", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+          >
+            ☑ {isAr ? "تحديد الكل المعلق" : "Select All Pending"}
+          </button>
+
+          {selectedItemIds.size > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={handleDeselectAll}
+                style={{ padding: "5px 12px", borderRadius: "7px", border: "1.5px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-muted)", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+              >
+                ☐ {isAr ? "إلغاء التحديد" : "Deselect All"}
+              </button>
+
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#059669" }}>
+                {isAr ? `${selectedItemIds.size} أصناف محددة` : `${selectedItemIds.size} item${selectedItemIds.size !== 1 ? "s" : ""} selected`}
+              </span>
+
+              <button
+                type="button"
+                onClick={handleApproveSelected}
+                disabled={pending}
+                style={{
+                  padding: "7px 18px", borderRadius: "8px",
+                  background: "linear-gradient(135deg,#10b981 0%,#059669 100%)",
+                  boxShadow: "0 4px 12px rgba(16,185,129,0.25)",
+                  border: "none", color: "#fff", fontSize: "12px", fontWeight: 800,
+                  cursor: pending ? "not-allowed" : "pointer",
+                  opacity: pending ? 0.7 : 1,
+                  display: "inline-flex", alignItems: "center", gap: "6px"
+                }}
+              >
+                <span>✅</span>
+                <span>{isAr ? `اعتماد المحدد (${selectedItemIds.size})` : `Approve Selected (${selectedItemIds.size})`}</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Status Filter Pills */}
-      <div style={{
+      <div className="mobile-tabs-scroll" style={{
         display: "flex", gap: "8px", flexWrap: "wrap",
         flexDirection: isAr ? "row-reverse" : "row",
       }}>
@@ -413,6 +541,25 @@ export default function MGWorkstationClient({ items, categories, month, username
                 >
                   {/* Left: Item Name + Badges */}
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    {status === "pending" && (
+                      <div 
+                        onClick={(e) => e.stopPropagation()} 
+                        style={{ display: "inline-flex", alignItems: "center", marginRight: isAr ? "0" : "8px", marginLeft: isAr ? "8px" : "0" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedItemIds.has(item.itemId)}
+                          onChange={() => handleToggleSelectItem(item.itemId)}
+                          style={{
+                            width: "18px",
+                            height: "18px",
+                            accentColor: "var(--success)",
+                            cursor: "pointer",
+                            borderRadius: "4px"
+                          }}
+                        />
+                      </div>
+                    )}
                     <h4 style={{ fontSize: "14px", fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
                       {item.itemName}
                     </h4>
@@ -666,7 +813,7 @@ export default function MGWorkstationClient({ items, categories, month, username
 
                   {/* Card Col 4: Quick Actions */}
                   {hasQuote && (
-                    <div style={{
+                    <div className="mg-card-actions" style={{
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "center",
@@ -796,14 +943,66 @@ export default function MGWorkstationClient({ items, categories, month, username
                           🏭 {isAr ? "تاريخ تكاليف الموردين" : "Supplier Quotes Cost History"}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                          {item.buyingHistory.map((h, i) => (
-                            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
-                              <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
-                                {h.avg !== null ? `${formatCurrency(h.avg)} (avg)` : "—"}
-                              </span>
+                          {item.buyingHistory.map((h, i) => {
+                            const isCurrent = i === 0;
+                            const prev = item.buyingHistory[i + 1];
+                            const currVal = h.avg;
+                            const prevVal = prev?.avg ?? null;
+                            let arrow = "";
+                            let arrowColor = "var(--text-muted)";
+                            let pctStr = "";
+                            if (currVal !== null && prevVal !== null && prevVal !== 0) {
+                              const delta = ((currVal - prevVal) / prevVal) * 100;
+                              if (Math.abs(delta) >= 0.1) {
+                                // For buying: price UP = bad (red), price DOWN = good (green)
+                                arrow = delta > 0 ? "▲" : "▼";
+                                arrowColor = delta > 0 ? "var(--danger, #ef4444)" : "var(--success, #10b981)";
+                                pctStr = `${Math.abs(delta).toFixed(1)}%`;
+                              } else {
+                                arrow = "—";
+                                arrowColor = "var(--text-muted)";
+                              }
+                            }
+                            return (
+                              <div key={i} style={{
+                                display: "flex", justifyContent: "space-between", alignItems: "center",
+                                fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row",
+                                padding: isCurrent ? "5px 8px" : "2px 0",
+                                borderRadius: isCurrent ? "7px" : "0",
+                                background: isCurrent ? "rgba(99,102,241,0.10)" : "transparent",
+                                border: isCurrent ? "1px solid rgba(99,102,241,0.25)" : "none",
+                              }}>
+                                <span style={{ color: isCurrent ? "var(--primary)" : "var(--text-secondary)", fontWeight: isCurrent ? 800 : 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                                  {isCurrent && <span style={{ fontSize: "9px", background: "var(--primary)", color: "#fff", borderRadius: "3px", padding: "1px 4px", fontWeight: 700 }}>
+                                    {isAr ? "الحالي" : "NOW"}
+                                  </span>}
+                                  {formatMonthLabel(h.month)}
+                                </span>
+                                <span style={{ display: "flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
+                                  {currVal !== null ? (
+                                    <>
+                                      <span style={{ color: isCurrent ? "var(--primary)" : "var(--text-primary)" }}>
+                                        {formatCurrency(currVal)}
+                                      </span>
+                                      {arrow && (
+                                        <span style={{ fontSize: "10px", color: arrowColor, fontWeight: 800, display: "flex", alignItems: "center", gap: "1px" }}>
+                                          <span>{arrow}</span>
+                                          {pctStr && <span style={{ fontSize: "9.5px" }}>{pctStr}</span>}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span style={{ color: "var(--text-muted)" }}>—</span>
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {item.buyingHistory.length === 0 && (
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", padding: "6px 0" }}>
+                              {isAr ? "لا توجد بيانات" : "No data"}
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
 
@@ -813,24 +1012,74 @@ export default function MGWorkstationClient({ items, categories, month, username
                           💰 {isAr ? "تاريخ أسعار البيع المعتمدة" : "Approved Selling Price History"}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                          {item.sellingHistory.map((h, i) => (
-                            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{formatMonthLabel(h.month)}</span>
-                              <span style={{ fontWeight: 700, color: "var(--primary)" }}>
-                                {h.sell_min !== null
-                                  ? (isAr
-                                      ? `الأدنى: ${formatCurrency(roundUp5(h.sell_min))} · الأقصى: ${formatCurrency(roundUp5(h.sell_max))}`
-                                      : `Min: ${formatCurrency(roundUp5(h.sell_min))} · Max: ${formatCurrency(roundUp5(h.sell_max))}`
-                                    )
-                                  : "—"
-                                }
-                              </span>
+                          {item.sellingHistory.map((h, i) => {
+                            const isCurrent = i === 0;
+                            const prev = item.sellingHistory[i + 1];
+                            const currVal = h.sell_min;
+                            const prevVal = prev?.sell_min ?? null;
+                            let arrow = "";
+                            let arrowColor = "var(--text-muted)";
+                            let pctStr = "";
+                            if (currVal !== null && prevVal !== null && prevVal !== 0) {
+                              const delta = ((currVal - prevVal) / prevVal) * 100;
+                              if (Math.abs(delta) >= 0.1) {
+                                // For selling: price UP = good (green), price DOWN = bad (red)
+                                arrow = delta > 0 ? "▲" : "▼";
+                                arrowColor = delta > 0 ? "var(--success, #10b981)" : "var(--danger, #ef4444)";
+                                pctStr = `${Math.abs(delta).toFixed(1)}%`;
+                              } else {
+                                arrow = "—";
+                                arrowColor = "var(--text-muted)";
+                              }
+                            }
+                            return (
+                              <div key={i} style={{
+                                display: "flex", justifyContent: "space-between", alignItems: "center",
+                                fontSize: "11.5px", flexDirection: isAr ? "row-reverse" : "row",
+                                padding: isCurrent ? "5px 8px" : "2px 0",
+                                borderRadius: isCurrent ? "7px" : "0",
+                                background: isCurrent ? "rgba(16,185,129,0.09)" : "transparent",
+                                border: isCurrent ? "1px solid rgba(16,185,129,0.25)" : "none",
+                              }}>
+                                <span style={{ color: isCurrent ? "var(--success, #10b981)" : "var(--text-secondary)", fontWeight: isCurrent ? 800 : 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                                  {isCurrent && <span style={{ fontSize: "9px", background: "var(--success, #10b981)", color: "#fff", borderRadius: "3px", padding: "1px 4px", fontWeight: 700 }}>
+                                    {isAr ? "الحالي" : "NOW"}
+                                  </span>}
+                                  {formatMonthLabel(h.month)}
+                                </span>
+                                <span style={{ display: "flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
+                                  {currVal !== null ? (
+                                    <>
+                                      <span style={{ color: isCurrent ? "var(--success, #10b981)" : "var(--primary)", fontSize: "11.5px" }}>
+                                        {isAr
+                                          ? `${formatCurrency(roundUp5(h.sell_min))} · ${formatCurrency(roundUp5(h.sell_max))}`
+                                          : `${formatCurrency(roundUp5(h.sell_min))} – ${formatCurrency(roundUp5(h.sell_max))}`
+                                        }
+                                      </span>
+                                      {arrow && (
+                                        <span style={{ fontSize: "10px", color: arrowColor, fontWeight: 800, display: "flex", alignItems: "center", gap: "1px" }}>
+                                          <span>{arrow}</span>
+                                          {pctStr && <span style={{ fontSize: "9.5px" }}>{pctStr}</span>}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span style={{ color: "var(--text-muted)" }}>—</span>
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {item.sellingHistory.length === 0 && (
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", padding: "6px 0" }}>
+                              {isAr ? "لا توجد بيانات" : "No data"}
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
+
                 )}
               </div>
             );

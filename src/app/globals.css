@@ -2175,6 +2175,107 @@ body:has(.print-page-wrapper) .content-area {
     margin-bottom: 6px;
     display: block;
   }
+.quick-notif-item {
+  transition: background-color 150ms ease;
+}
+.quick-notif-item:hover {
+  background-color: rgba(99, 102, 241, 0.04);
+}
+}
+
+/* Helper display utilities for responsive content visibility */
+.mobile-only {
+  display: none !important;
+}
+
+/* ── Dedicated Mobile View Overrides (strictly scoped to max-width: 768px) ── */
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: block !important;
+  }
+  span.mobile-only {
+    display: inline !important;
+  }
+
+  /* Login branding cleanup on mobile */
+  .hero-main-content p,
+  .hero-feature-list,
+  .hero-footer,
+  .hero-main-content h1 {
+    display: none !important;
+  }
+
+  /* Pricing & Dashboard Action Bars stacking */
+  .pricing-toolbar,
+  .dashboard-action-bar {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Search bar select dropdowns full width when stacked */
+  .search-bar-wrap select {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Manager Card Action stacking */
+  .mg-card-actions {
+    border-inline-start: none !important;
+    padding-inline-start: 0 !important;
+    border-top: 1px dashed var(--border-light) !important;
+    padding-top: 12px !important;
+    margin-top: 8px !important;
+  }
+
+  /* SC Approvals card header stacking */
+  .approvals-history-header {
+    grid-template-columns: auto 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    align-items: start !important;
+  }
+  .approvals-history-meta-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    align-items: flex-start !important;
+    grid-column: 2 / -1 !important;
+    margin-top: 4px !important;
+  }
+  [dir="rtl"] .approvals-history-meta-wrapper {
+    align-items: flex-start !important;
+  }
+
+  /* Force first entry rows and confirmed rows to stack cleanly and stretch inputs */
+  .price-entry-row {
+    margin-bottom: 12px !important;
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
+  }
+
+  /* Ensure buttons inside button-row or card footers display beautifully */
+  .button-row .button,
+  .button-row a.button {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Prevent flex-basis heights from expanding select inputs in column layouts */
+  .mobile-stack > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-basis: auto !important;
+  }
+
+  /* Force table columns to avoid squishing/wrapping inside scrollable wrappers */
+  .table-wrap th, .table-wrap td,
+  .table-responsive th, .table-responsive td {
+    white-space: nowrap !important;
+  }
 
   /* ── Inputs — Taller, easier to tap ── */
   input[type="text"],
@@ -2610,4 +2711,652 @@ h1, h2, h3, h4, h5, h6,
 }
 [data-theme="dark"] .quick-notif-item:hover {
   background-color: rgba(99, 102, 241, 0.08);
+}
+
+/* ── Dedicated Mobile View Overrides (strictly scoped to max-width: 768px) ── */
+@media (max-width: 768px) {
+  /* Pricing & Dashboard Action Bars stacking */
+  .pricing-toolbar,
+  .dashboard-action-bar {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Search bar select dropdowns full width when stacked */
+  .search-bar-wrap select {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Manager Card Action stacking */
+  .mg-card-actions {
+    border-inline-start: none !important;
+    padding-inline-start: 0 !important;
+    border-top: 1px dashed var(--border-light) !important;
+    padding-top: 12px !important;
+    margin-top: 8px !important;
+  }
+
+  /* SC Approvals card header stacking */
+  .approvals-history-header {
+    grid-template-columns: auto 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    align-items: start !important;
+  }
+  .approvals-history-meta-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    align-items: flex-start !important;
+    grid-column: 2 / -1 !important;
+    margin-top: 4px !important;
+  }
+  [dir="rtl"] .approvals-history-meta-wrapper {
+    align-items: flex-start !important;
+  }
+
+  /* Force first entry rows and confirmed rows to stack cleanly and stretch inputs */
+  .price-entry-row {
+    margin-bottom: 12px !important;
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
+  }
+
+  /* Ensure buttons inside button-row or card footers display beautifully */
+  .button-row .button,
+  .button-row a.button {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   WH ACCOUNT — DEDICATED MOBILE FIXES
+   These only affect screens ≤ 768px and don't touch desktop layout.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── 1. WH Notifications: Rejected quote rows ──────────────────── */
+  /* Desktop: 4-column grid (1fr auto auto auto)
+     Mobile:  Single column card with stacked info rows */
+  .wh-rejected-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 14px !important;
+  }
+  .wh-rejected-row > div {
+    text-align: start !important;
+    width: 100% !important;
+  }
+  /* Shift "Rejected Price / Reviewed By / Status" labels to a horizontal mini-row */
+  .wh-rejected-row > div:nth-child(2),
+  .wh-rejected-row > div:nth-child(3),
+  .wh-rejected-row > div:nth-child(4) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    gap: 8px !important;
+  }
+
+  /* ── 2. WH Missing Quotes: Action bar stacks on very small screens ── */
+  .wh-missing-action-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .wh-missing-action-bar .wh-missing-search-wrap {
+    flex: none !important;
+    width: 100% !important;
+  }
+  .wh-missing-action-bar > a.button {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 44px !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  /* ── 3. WH Purchasing Form: Review & Edit Modal — full-screen on mobile ── */
+  /* The modal overlay has padding: 20px which wastes screen space on mobile */
+  .review-modal-fullscreen-overlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .review-modal-fullscreen-overlay > div {
+    border-radius: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+
+  /* ── 4. WH Purchasing Form: confirmed price-entry row action buttons ── */
+  /* When price-entry-row has mobile-stack, ensure action buttons are full-width */
+  .price-entry-row.mobile-stack > div:last-child,
+  .price-entry-row > .mobile-stack > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+  .price-entry-row.mobile-stack > div:last-child button,
+  .price-entry-row > .mobile-stack > div:last-child button {
+    flex: 1 !important;
+    min-height: 44px !important;
+  }
+
+  /* ── 5. WH Purchasing Form: "Review & Edit" search bar ── */
+  /* Desktop: flex row with input + 2 buttons
+     Mobile:  wrap into column with full-width buttons */
+  .review-modal-search-bar {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .review-modal-search-bar > div:first-child {
+    flex: none !important;
+    width: 100% !important;
+  }
+  .review-modal-search-bar > button {
+    flex: 1 !important;
+    min-height: 40px !important;
+  }
+
+  /* ── 6. WH Dashboard: month banner button wraps cleanly ── */
+  /* The "Review & Edit Submitted Prices" button in the banner */
+  .mobile-stack > button.button-primary {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 48px !important;
+  }
+
+  /* ── 7. WH Approvals page: stat grid is readable on all phones ── */
+  /* Already 2-col at 768px; keep at 2-col for WH approvals (4 cards) */
+  .stat-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* ── 8. General: ensure all tables inside panels are scrollable ── */
+  .panel > .table-wrap,
+  .panel > div > .table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* ── 9. Purchasing form: confirmed row children full-width ── */
+  /* minWidth overrides that prevent proper stacking */
+  .mobile-stack.price-entry-row > div[style*="minWidth"],
+  .mobile-stack.price-entry-row > div[style*="min-width"] {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* ── 10. WH collection progress mini-cards ── */
+  /* auto-fit grid with minmax(160px, 1fr) should already work;
+     but enforce 2 columns on very small screens */
+  .wh-collection-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* ── 11. Approvals History: stack price comparison block vertically on mobile ── */
+  .approvals-history-diff {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .approvals-history-diff > div {
+    text-align: center !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  .approvals-history-diff > div:nth-child(2) {
+    transform: rotate(90deg) !important;
+    display: inline-block !important;
+    width: auto !important;
+    margin: 4px auto !important;
+  }
+  .approvals-history-diff > div:last-child {
+    text-align: center !important;
+  }
+
+  /* ── 12. SC: Monthly Review Modal Mobile Refinement ── */
+  /* Stack modal header vertically on mobile to prevent overlapping */
+  .monthly-review-modal-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    position: relative !important;
+  }
+  /* Absolute position the close button at top-right for intuitive UX */
+  .monthly-review-modal-header > button {
+    position: absolute !important;
+    top: 14px !important;
+    inset-inline-end: 16px !important;
+    font-size: 26px !important;
+  }
+  /* Legend details take full-width and wrap cleanly below titles */
+  .monthly-review-modal-legend {
+    max-width: 100% !important;
+    width: 100% !important;
+    border-top: 1px solid var(--border-light) !important;
+    padding-top: 10px !important;
+    gap: 10px !important;
+  }
+
+  /* Filters & Search row stacking */
+  .monthly-review-modal-filters {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .monthly-review-modal-filters > input {
+    flex: none !important;
+    width: 100% !important;
+  }
+  .monthly-review-modal-filters > div {
+    width: 100% !important;
+    display: flex !important;
+    gap: 6px !important;
+  }
+  .monthly-review-modal-filters > div > button {
+    flex: 1 !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+  }
+  /* Expand/Collapse buttons wrap cleanly underneath with full width */
+  .monthly-review-modal-filters > div:last-child {
+    margin-inline-start: 0 !important;
+  }
+
+  /* Footer button stacks and guidance texts stretch */
+  .monthly-review-modal-footer {
+    flex-direction: column !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+    text-align: center !important;
+  }
+  .monthly-review-modal-footer > button {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  /* Item list rows header spacing overrides on mobile */
+  .monthly-review-item-header {
+    grid-template-columns: auto 1fr !important;
+    gap: 8px !important;
+  }
+  /* Details wrapper converts to 2-column grid and stacks below title */
+  .monthly-review-item-details-wrapper {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-column: 1 / -1 !important;
+    border-top: 1.5px solid var(--border-light) !important;
+    padding-top: 10px !important;
+    margin-top: 6px !important;
+    gap: 8px !important;
+  }
+  /* 1st column: supplier dots list & min price badge */
+  .monthly-review-item-details-wrapper > div:first-child {
+    grid-column: 1 / span 1 !important;
+    justify-self: start !important;
+  }
+  .monthly-review-item-details-wrapper > span:nth-child(2) {
+    grid-column: 1 / span 1 !important;
+    justify-self: start !important;
+  }
+  /* 2nd column: avg price and status badge */
+  .monthly-review-item-details-wrapper > span:nth-child(3) {
+    grid-column: 2 / span 1 !important;
+    justify-self: end !important;
+    text-align: end !important;
+  }
+  .monthly-review-item-details-wrapper > span:last-child {
+    grid-column: 2 / span 1 !important;
+    justify-self: end !important;
+    text-align: end !important;
+  }
+
+  /* ── 13. USD Price Panel Modal Refinements ── */
+  .usd-price-modal-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    position: relative !important;
+    padding: 16px 20px !important;
+  }
+  .usd-price-modal-header .modal-close-btn {
+    position: absolute !important;
+    top: 10px !important;
+    inset-inline-end: 16px !important;
+    font-size: 26px !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .usd-price-modal-header-actions {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+    margin-top: 4px !important;
+    margin-inline-start: 0 !important;
+  }
+  .usd-price-modal-header-actions > button {
+    flex: 1 !important;
+    justify-content: center !important;
+    min-height: 40px !important;
+  }
+
+  /* ── 14. Category Pricing Bulk Apply Grid ── */
+  .category-pricing-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── 15. SC: Selling Price History Row ── */
+  .dashboard-sc-history-row {
+    grid-template-columns: 1fr auto !important;
+    gap: 8px !important;
+  }
+  .dashboard-sc-history-row > div:nth-child(2) {
+    grid-column: 1 / span 1 !important;
+    justify-self: start !important;
+  }
+  .dashboard-sc-history-row > div:nth-child(3) {
+    grid-column: 2 / span 1 !important;
+    grid-row: 2 / span 1 !important;
+    justify-self: end !important;
+  }
+  .dashboard-sc-history-row > div:last-child {
+    grid-column: 2 / span 1 !important;
+    grid-row: 1 / span 1 !important;
+    justify-self: end !important;
+  }
+
+  /* ── 16. SC: Pricing Calculator Inputs Stacking ── */
+  .pricing-calculator-inputs {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .pricing-calculator-inputs > div {
+    width: 100% !important;
+  }
+  .pricing-calculator-inputs > div > div {
+    display: flex !important;
+    width: 100% !important;
+  }
+  .pricing-calculator-inputs > div > div > button {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 7px 10px !important;
+  }
+  .pricing-calculator-inputs > div > input {
+    width: 100% !important;
+  }
+
+  /* ── 17. Notifications Alert Banner Grid Stacking ── */
+  .notifications-alert-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── 18. SC: Pricing Engine Mobile Margin & Spacing overrides ── */
+  .pricing-calculator-container {
+    padding: 12px 10px !important;
+    position: static !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    margin-top: 16px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+  .pricing-calculator-top-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+  .pricing-strategy-switcher {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .pricing-strategy-switcher > div:last-child {
+    display: flex !important;
+    width: 100% !important;
+    gap: 6px !important;
+  }
+  .pricing-strategy-switcher > div:last-child > button {
+    flex: 1 !important;
+  }
+  .pricing-ref-price-selector {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(75px, 1fr)) !important;
+    gap: 5px !important;
+  }
+  .pricing-calculator-inputs {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .pricing-calculator-inputs > div {
+    width: 100% !important;
+  }
+  .pricing-cost-summary-row {
+    gap: 12px !important;
+  }
+  .pricing-tier-editor-wrap {
+    padding: 10px 8px !important;
+  }
+  .pricing-tier-grid-container > div {
+    grid-template-columns: 1.1fr 50px 54px 90px !important;
+    gap: 4px !important;
+    font-size: 11.5px !important;
+  }
+  .pricing-tier-grid-container > div > div {
+    width: 100% !important;
+  }
+  .pricing-tier-grid-container input {
+    width: 100% !important;
+    padding: 3px 2px !important;
+    font-size: 11.5px !important;
+  }
+  .pricing-confirm-label {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .pricing-confirm-label > span {
+    white-space: normal !important;
+  }
+  .pricing-history-card-header {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .pricing-history-card-header > span:last-child {
+    margin-inline-start: 0 !important;
+    width: 100% !important;
+    white-space: normal !important;
+    font-size: 8.5px !important;
+    border-top: 1px solid var(--border-light);
+    padding-top: 4px;
+    margin-top: 2px;
+  }
+  .pricing-history-tier-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)) !important;
+    gap: 4px !important;
+  }
+  .pricing-history-tier-row > div {
+    min-width: 0 !important;
+    flex: none !important;
+  }
+  .pricing-success-modal-body {
+    padding: 24px 16px !important;
+    max-width: 90% !important;
+    margin: auto !important;
+  }
+  .category-pricing-volume-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .category-pricing-search-wrap {
+    margin: 4px 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .category-pricing-highlight-label {
+    text-align: start !important;
+    font-size: 10px !important;
+  }
+  .category-pricing-item-header {
+    align-items: flex-start !important;
+  }
+  .category-pricing-item-header > input {
+    margin-top: 3px !important;
+  }
+  .category-pricing-item-tier-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .sales-price-list-export-container {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+  }
+  .sales-price-list-export-container > div:last-child {
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .sales-price-list-export-container > div:last-child > button {
+    flex: 1 !important;
+    justify-content: center !important;
+    padding: 8px 10px !important;
+  }
+  .sales-tier-pill-wrapper {
+    gap: 4px !important;
+  }
+  .sales-tier-pill-wrapper > div {
+    min-width: 46px !important;
+  }
+  .sales-tier-pill-wrapper > div > div:first-child {
+    font-size: 8px !important;
+  }
+  .sales-tier-pill-wrapper > div > div:nth-child(2) {
+    font-size: 11.5px !important;
+  }
+  .sales-tier-pill-wrapper > div > div:last-child {
+    font-size: 7.5px !important;
+  }
+  .sales-filter-panel {
+    padding: 12px 14px !important;
+  }
+  .sales-filter-btn {
+    width: 100% !important;
+  }
+
+  /* Sales card mobile touch animation */
+  .sales-mobile-card {
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .sales-mobile-card:active {
+    transform: scale(0.985);
+  }
+
+  /* Full Screen Search & Detail Modals on Mobile */
+  .universal-search-overlay,
+  .supplier-detail-modal-overlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .universal-search-content,
+  .supplier-detail-modal-container {
+    border-radius: 0 !important;
+    max-height: 100dvh !important;
+    height: 100dvh !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Detail Modals Header layout stacking */
+  .item-detail-header,
+  .supplier-detail-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 16px 20px !important;
+  }
+  .item-detail-header > a,
+  .supplier-detail-header > a {
+    align-self: flex-start !important;
+  }
+
+  /* Supplier Details popup modal layout overrides */
+  .supplier-detail-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .supplier-detail-stats > div {
+    border-right: 1px solid var(--border-light) !important;
+    border-bottom: 1px solid var(--border-light) !important;
+  }
+  .supplier-detail-stats > div:nth-child(2n) {
+    border-right: none !important;
+  }
+  .sdm-tab-bar {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  .sdm-tab-bar > button {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 10px 14px !important;
+  }
+  .sdm-overview-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Universal search KPI grid */
+  .supplier-kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Item Admin reference catalog card layout overrides */
+  .item-admin-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 14px !important;
+  }
+  .item-meta-block {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+    background: var(--bg-subtle) !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+  }
+  .item-meta-block > div {
+    text-align: center !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Ultra-small: single column for WH approvals stat grid */
+@media (max-width: 380px) {
+  .stat-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .wh-missing-action-bar {
+    flex-direction: column !important;
+  }
 }

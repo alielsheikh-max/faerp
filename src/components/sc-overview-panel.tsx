@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { formatCurrency, formatMonthLabel, roundUp5 } from "@/lib/format";
 import { useI18n } from "@/lib/i18n-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -30,6 +30,17 @@ type SalesCatalogItem = {
   buy_avg: number | null;
   reconsider_note: string | null;
   recommended_supplier_id: number | null;
+  is_tiered?: number;
+  tier1_max?: number;
+  tier1_discount?: number;
+  tier2_max?: number;
+  tier2_discount?: number;
+  tier3_max?: number;
+  tier3_discount?: number;
+  tier4_max?: number;
+  tier4_discount?: number;
+  transportation?: number;
+  other_expenses?: number;
 };
 
 type SupplierQuote = {
@@ -118,6 +129,37 @@ function shortDate(iso: string, isRTL: boolean) {
 function pctDiff(next: number, prev: number | null) {
   if (!prev) return null;
   return ((next - prev) / prev * 100).toFixed(1);
+}
+
+const TIER_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b"];
+
+function calcTierPrices(row: SalesCatalogItem) {
+  const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
+  const buyAvg = baseCost;
+  const transport = row.transportation ?? 0;
+  const other = row.other_expenses ?? 0;
+  const sellMin = row.sell_min;
+  const localRoundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+
+  function getPriceForDiscount(discount: number) {
+    if (discount <= 0 || buyAvg <= 0) return null;
+    if (discount < 1) {
+      return localRoundUp5(buyAvg / discount + transport + other);
+    }
+    const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
+    return localRoundUp5(baseSellMin * (1 - discount / 100) + transport + other);
+  }
+
+  const t1_max = row.tier1_max ?? 100;
+  const t2_max = row.tier2_max ?? 200;
+  const t3_max = row.tier3_max ?? 300;
+
+  return [
+    { label: "B",  range: `1–${t1_max}`,  price: sellMin !== null ? localRoundUp5(sellMin) : getPriceForDiscount(row.tier1_discount ?? 0) },
+    { label: "T2", range: `${t1_max + 1}–${t2_max}`, price: getPriceForDiscount(row.tier2_discount ?? 0) },
+    { label: "T3", range: `${t2_max + 1}–${t3_max}`, price: getPriceForDiscount(row.tier3_discount ?? 0) },
+    { label: "T4", range: `>${t3_max}`, price: getPriceForDiscount(row.tier4_discount ?? 0) },
+  ].filter(t => t.price !== null);
 }
 
 const CAT_PALETTES = [
@@ -604,22 +646,64 @@ export default function ScOverviewPanel({
 
                     {/* Meta info depending on tab */}
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                      {activeTab === "published" && (
-                        <div>
-                          {isRTL ? "سعر البيع المنشور: " : "Published Sell Price: "}
-                          <strong style={{ color: "var(--success)" }}>
-                            EGP {item.sell_min} {item.sell_max && item.sell_max !== item.sell_min ? `- ${item.sell_max}` : ""}
-                          </strong>
-                        </div>
-                      )}
-                      {activeTab === "pending" && (
-                        <div>
-                          {isRTL ? "سعر البيع المقترح (معلق): " : "Proposed Sell Price: "}
-                          <strong style={{ color: "var(--warning)" }}>
-                            EGP {item.sell_min} {item.sell_max && item.sell_max !== item.sell_min ? `- ${item.sell_max}` : ""}
-                          </strong>
-                        </div>
-                      )}
+                      {activeTab === "published" && (() => {
+                        const isTiered = item.is_tiered === 1 && item.buy_avg != null;
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                            <span>{isRTL ? "سعر البيع المنشور: " : "Published Sell Price: "}</span>
+                            {isTiered ? (
+                              <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                                {calcTierPrices(item).map((t, idx) => (
+                                  <span key={t.label} style={{
+                                    background: "var(--bg-subtle)",
+                                    border: "1px solid var(--border)",
+                                    padding: "2px 8px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    color: TIER_COLORS[idx] || "var(--text-secondary)",
+                                    fontWeight: 700
+                                  }}>
+                                    {t.label}: {formatCurrency(t.price)} <span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 400 }}>({t.range})</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <strong style={{ color: "var(--success)" }}>
+                                {formatCurrency(roundUp5(item.sell_min))} {item.sell_max && item.sell_max !== item.sell_min ? `- ${formatCurrency(roundUp5(item.sell_max))}` : ""}
+                              </strong>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {activeTab === "pending" && (() => {
+                        const isTiered = item.is_tiered === 1 && item.buy_avg != null;
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                            <span>{isRTL ? "سعر البيع المقترح (معلق): " : "Proposed Sell Price: "}</span>
+                            {isTiered ? (
+                              <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                                {calcTierPrices(item).map((t, idx) => (
+                                  <span key={t.label} style={{
+                                    background: "var(--bg-subtle)",
+                                    border: "1px solid var(--border)",
+                                    padding: "2px 8px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    color: TIER_COLORS[idx] || "var(--text-secondary)",
+                                    fontWeight: 700
+                                  }}>
+                                    {t.label}: {formatCurrency(t.price)} <span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 400 }}>({t.range})</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <strong style={{ color: "var(--warning)" }}>
+                                {formatCurrency(roundUp5(item.sell_min))} {item.sell_max && item.sell_max !== item.sell_min ? `- ${formatCurrency(roundUp5(item.sell_max))}` : ""}
+                              </strong>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {activeTab === "available" && (
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
                           {item.approval_status === "reconsidered" && (

@@ -464,6 +464,7 @@ const ItemRow = memo(function ItemRow({
       {/* ── Collapsed header row ── */}
       <div
         onClick={() => setOpen((v) => !v)}
+        className="monthly-review-item-header"
         style={{
           display: "grid",
           gridTemplateColumns: "auto 1fr auto auto auto auto",
@@ -523,76 +524,79 @@ const ItemRow = memo(function ItemRow({
           )}
         </div>
 
-        {/* Supplier color dots */}
-        <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
-          {item.suppliers.map((q) => (
-            <span
-              key={q.supplierId}
-              title={q.supplierName}
-              onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } })); }}
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: supplierColorMap.get(q.supplierName) ?? "#94a3b8",
-                flexShrink: 0,
-                cursor: "pointer",
-              }}
-            />
-          ))}
+        {/* Details Wrapper */}
+        <div className="monthly-review-item-details-wrapper">
+          {/* Supplier color dots */}
+          <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
+            {item.suppliers.map((q) => (
+              <span
+                key={q.supplierId}
+                title={q.supplierName}
+                onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("show-supplier-details", { detail: { supplierId: q.supplierId } })); }}
+                style={{
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  background: supplierColorMap.get(q.supplierName) ?? "#94a3b8",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Min price */}
+          <span style={{ fontSize: "12px", color: "var(--success)", fontWeight: 700, whiteSpace: "nowrap" }}>
+            ↓ {formatCurrency(item.minPrice)}
+          </span>
+
+          {/* Avg price */}
+          <span style={{ fontSize: "12px", color: "var(--primary)", fontWeight: 700, whiteSpace: "nowrap" }}>
+            ⌀ {formatCurrency(item.avgPrice)}
+          </span>
+
+          {/* Status badges */}
+          {(() => {
+            if (isPublished) {
+              return (
+                <span
+                  className="badge badge-success"
+                  style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap" }}
+                >
+                  {locale === "ar" ? "✓ منشور" : "✓ Published"}
+                </span>
+              );
+            }
+            if (hasPending) {
+              return (
+                <span
+                  className="badge badge-warning"
+                  style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap" }}
+                >
+                  {locale === "ar" ? "⏳ قيد المراجعة" : "⏳ Pending Review"}
+                </span>
+              );
+            }
+            if (allRejected) {
+              return (
+                <span
+                  className="badge badge-danger"
+                  style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap", background: "var(--danger)", color: "#fff" }}
+                >
+                  {locale === "ar" ? "✕ مرفوض" : "✕ Rejected"}
+                </span>
+              );
+            }
+            return (
+              <span
+                className="badge"
+                style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap", background: "var(--info)", color: "#fff" }}
+              >
+                {locale === "ar" ? "💡 جاهز للتسعير" : "💡 Ready to Price"}
+              </span>
+            );
+          })()}
         </div>
-
-        {/* Min price */}
-        <span style={{ fontSize: "12px", color: "var(--success)", fontWeight: 700, whiteSpace: "nowrap" }}>
-          ↓ {formatCurrency(item.minPrice)}
-        </span>
-
-        {/* Avg price */}
-        <span style={{ fontSize: "12px", color: "var(--primary)", fontWeight: 700, whiteSpace: "nowrap" }}>
-          ⌀ {formatCurrency(item.avgPrice)}
-        </span>
-
-        {/* Status badges */}
-        {(() => {
-          if (isPublished) {
-            return (
-              <span
-                className="badge badge-success"
-                style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap" }}
-              >
-                {locale === "ar" ? "✓ منشور" : "✓ Published"}
-              </span>
-            );
-          }
-          if (hasPending) {
-            return (
-              <span
-                className="badge badge-warning"
-                style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap" }}
-              >
-                {locale === "ar" ? "⏳ قيد المراجعة" : "⏳ Pending Review"}
-              </span>
-            );
-          }
-          if (allRejected) {
-            return (
-              <span
-                className="badge badge-danger"
-                style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap", background: "var(--danger)", color: "#fff" }}
-              >
-                {locale === "ar" ? "✕ مرفوض" : "✕ Rejected"}
-              </span>
-            );
-          }
-          return (
-            <span
-              className="badge"
-              style={{ fontSize: "10px", padding: "2px 8px", whiteSpace: "nowrap", background: "var(--info)", color: "#fff" }}
-            >
-              {locale === "ar" ? "💡 جاهز للتسعير" : "💡 Ready to Price"}
-            </span>
-          );
-        })()}
       </div>
 
       {/* ── Expanded detail ── */}
@@ -1602,6 +1606,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
           >
             {/* Modal header */}
             <div
+              className="monthly-review-modal-header"
               style={{
                 padding: "20px 24px 16px",
                 borderBottom: "1px solid var(--border-light)",
@@ -1653,6 +1658,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
 
               {/* Supplier legend */}
               <div
+                className="monthly-review-modal-legend"
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
@@ -1707,6 +1713,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
 
             {/* Search + filter controls */}
             <div
+              className="monthly-review-modal-filters"
               style={{
                 padding: "10px 24px",
                 borderBottom: "1px solid var(--border-light)",
@@ -1923,6 +1930,7 @@ export default function MonthlyReviewModal({ month, username, data, variant = "s
 
             {/* Footer */}
             <div
+              className="monthly-review-modal-footer"
               style={{
                 padding: "12px 24px",
                 borderTop: "1px solid var(--border-light)",

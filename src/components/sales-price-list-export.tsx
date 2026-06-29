@@ -441,7 +441,7 @@ export default function SalesPriceListExport({ rows, month, username }: Props) {
   if (published.length === 0) return null;
 
   return (
-    <div style={{
+    <div className="sales-price-list-export-container" style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "14px 20px", borderRadius: "14px",
       background: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)",

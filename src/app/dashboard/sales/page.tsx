@@ -2,7 +2,7 @@ import { SectionIntro, StatCard } from "@/components/app-shell";
 import SalesList from "@/components/sales-list";
 import { requireRole } from "@/lib/auth";
 import { getCategories, getMonthlyMetrics, getSalesCatalog, getRecentPriceUpdates } from "@/lib/db";
-import { currentMonth, formatDateTime, formatMonthLabel } from "@/lib/format";
+import { currentMonth, formatDateTime, formatMonthLabel, calcTierPricesShared } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
 import PriceUpdateAlerts from "@/components/price-update-alerts";
 import SalesPriceListExport from "@/components/sales-price-list-export";
@@ -66,7 +66,7 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
         <StatCard label={t("sales.lastUpdate")}  value={formatDateTime(metrics.lastUpdate)} note={t("sales.latestActivity")} />
       </section>
 
-      <div className="panel" style={{ padding: "20px 24px" }}>
+      <div className="panel sales-filter-panel" style={{ padding: "20px 24px" }}>
         <form method="GET" className="inline-form">
           <label className="field">
             <span>{t("sales.filterMonth")}</span>
@@ -82,7 +82,7 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
             </select>
           </label>
           <div className="form-actions align-end">
-            <button type="submit" className="button button-primary">{t("sales.loadPrices")}</button>
+            <button type="submit" className="button button-primary sales-filter-btn">{t("sales.loadPrices")}</button>
           </div>
         </form>
       </div>
@@ -96,13 +96,54 @@ export default function SalesPage({ searchParams }: { searchParams?: { month?: s
         />
       )}
 
-      <SalesList
-        initialRows={rows}
-        categories={categories}
-        month={month}
-        role={session.role as "SC" | "SA"}
-        priceHistory={priceHistoryMap}
-      />
+      {(() => {
+        const processedRows = rows.map((row) => {
+          const isTiered = row.tier_pricing_enabled || row.is_tiered;
+          const tierPrices = isTiered ? calcTierPricesShared(row) : [];
+          if (isSC) {
+            return { ...row, tierPrices };
+          } else {
+            return {
+              item_id: row.item_id,
+              item_name: row.item_name,
+              unit: row.unit,
+              category_name: row.category_name,
+              sell_min: row.sell_min,
+              sell_max: row.sell_max,
+              moq: row.moq,
+              transportation_per_unit: row.transportation_per_unit,
+              tier_pricing_enabled: row.tier_pricing_enabled,
+              is_tiered: row.is_tiered,
+              tier1_max: row.tier1_max,
+              tier2_max: row.tier2_max,
+              tier3_max: row.tier3_max,
+              tier4_max: row.tier4_max,
+              approval_status: row.approval_status,
+              last_approved_sell_min: row.last_approved_sell_min,
+              last_approved_sell_max: row.last_approved_sell_max,
+              tierPrices,
+              strategy: null,
+              buy_min: null,
+              buy_max: null,
+              buy_avg: null,
+              markup_min: null,
+              markup_max: null,
+              created_by: null,
+              created_at: null,
+            };
+          }
+        });
+
+        return (
+          <SalesList
+            initialRows={processedRows as any}
+            categories={categories}
+            month={month}
+            role={session.role as "SC" | "SA"}
+            priceHistory={priceHistoryMap}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -41,6 +41,7 @@ type SalesRow = {
   last_approved_sell_min?: number | null;
   last_approved_sell_max?: number | null;
   last_approved_strategy?: string | null;
+  tierPrices?: Array<{ label: string; range: string; price: number }>;
 };
 
 /** Round up to nearest 5 EGP — used for ALL sell price displays. */
@@ -692,7 +693,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
           <span className="badge badge-strong">{month}</span>
         </div>
 
-        <div className="table-wrap table-responsive">
+        <div className="table-wrap table-responsive desktop-only">
           <table className="data-table">
             <thead>
               <tr>
@@ -719,8 +720,8 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                   // (don't require tier_pricing_enabled===1 — that flag may be 0 if item was
                   //  published before the monthly tier toggle was switched on)
                   const isPendingRevision = role === "SA" && row.approval_status !== "approved" && row.last_approved_sell_min != null;
-                  const isTiered = !isPendingRevision && row.is_tiered === 1 && row.buy_avg != null;
-                  const tierPrices = isTiered ? calcTierPrices(row) : [];
+                  const isTiered = !isPendingRevision && (row.tierPrices ? row.tierPrices.length > 0 : (row.is_tiered === 1 && row.buy_avg != null));
+                  const tierPrices = isTiered ? (row.tierPrices || calcTierPrices(row)) : [];
                   const TIER_COLORS = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
                   const recentChange = priceHistory?.[row.item_id];
                   // Badge shows for both SC and SA; inline old→new only for SC
@@ -735,31 +736,36 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                       borderLeft: "3px solid #f59e0b",
                     } : {}}>
                       <td><span className="badge">{row.category_name}</span></td>
-                      <td>
-                        <span
-                          onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
-                          className="clickable-detail-trigger"
-                        >
-                          {row.item_name}
-                        </span>
-                        {isPendingRevision && (
-                          <span style={{
-                            display: "inline-block", marginInlineStart: "8px",
-                            fontSize: "9px", fontWeight: 800, padding: "2px 7px",
-                            borderRadius: "99px", background: "rgba(245,158,11,0.15)",
-                            border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
-                            verticalAlign: "middle",
-                          }} title={T.pendingRevisionTooltip}>{T.pendingRevision}</span>
-                        )}
-                        {hasChange && (
-                          <span style={{
-                            display: "inline-block", marginInlineStart: "8px",
-                            fontSize: "9px", fontWeight: 800, padding: "2px 7px",
-                            borderRadius: "99px", background: "rgba(245,158,11,0.15)",
-                            border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
-                            verticalAlign: "middle",
-                          }}>{T.revised}</span>
-                        )}
+                      <td style={{ maxWidth: "340px", whiteSpace: "normal" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span
+                            onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                            className="clickable-detail-trigger"
+                            style={{ display: "inline", whiteSpace: "normal" }}
+                          >
+                            {row.item_name}
+                          </span>
+                          {isPendingRevision && (
+                            <span style={{
+                              display: "inline-block",
+                              fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                              borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                              border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                              verticalAlign: "middle",
+                              whiteSpace: "nowrap"
+                            }} title={T.pendingRevisionTooltip}>{T.pendingRevision}</span>
+                          )}
+                          {hasChange && (
+                            <span style={{
+                              display: "inline-block",
+                              fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                              borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                              border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                              verticalAlign: "middle",
+                              whiteSpace: "nowrap"
+                            }}>{T.revised}</span>
+                          )}
+                        </div>
                       </td>
                       <td>{row.unit}</td>
                       <td>
@@ -845,7 +851,7 @@ export default function SalesList({ initialRows, categories, month, role, priceH
                           <span style={{ color: "var(--text-dim)", fontSize: "12px" }}>—</span>
                         )}
                       </td>
-                      <td>
+                      <td className="mobile-hide">
                         <div className="cell-stack">
                           <span>{formatDateTime(row.created_at)}</span>
                           <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{T.byUser(row.created_by ?? "")}</span>
@@ -857,6 +863,206 @@ export default function SalesList({ initialRows, categories, month, role, priceH
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="sales-list-mobile-cards mobile-only">
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "8px" }}>
+          {filteredRows.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
+              {T.noMatch}
+            </div>
+          ) : (
+            filteredRows.map((row) => {
+              const isPendingRevision = role === "SA" && row.approval_status !== "approved" && row.last_approved_sell_min != null;
+              const isTiered = !isPendingRevision && (row.tierPrices ? row.tierPrices.length > 0 : (row.is_tiered === 1 && row.buy_avg != null));
+              const tierPrices = isTiered ? (row.tierPrices || calcTierPrices(row)) : [];
+              const TIER_COLORS = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
+              const recentChange = priceHistory?.[row.item_id];
+              const hasChange = !isPendingRevision && !!recentChange;
+              return (
+                <div 
+                  key={row.item_id}
+                  className="sales-mobile-card"
+                  style={{
+                    padding: "16px",
+                    borderRadius: "12px",
+                    backgroundColor: isPendingRevision 
+                      ? "rgba(245,158,11,0.04)" 
+                      : hasChange 
+                        ? "rgba(245,158,11,0.02)" 
+                        : "var(--bg-elevated)",
+                    border: isPendingRevision 
+                      ? "1.5px solid var(--warning)" 
+                      : hasChange 
+                        ? "1.5px solid #f59e0b" 
+                        : "1.5px solid var(--border-medium)",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    position: "relative",
+                    textAlign: isRTL ? "right" : "left"
+                  }}
+                >
+                  {/* Top badges & Title row */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: "10px", flexWrap: "wrap", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                      <span className="badge" style={{ backgroundColor: "var(--bg-subtle)", color: "var(--text-secondary)", fontSize: "10px", fontWeight: 700 }}>
+                        {row.category_name}
+                      </span>
+                      <span className="badge" style={{ backgroundColor: "rgba(99, 102, 241, 0.1)", color: "var(--primary)", fontSize: "10px", fontWeight: 700 }}>
+                        {row.unit}
+                      </span>
+                    </div>
+                    {isPendingRevision && (
+                      <span style={{
+                        fontSize: "9px", fontWeight: 850, padding: "3px 8px",
+                        borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                        border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                      }} title={T.pendingRevisionTooltip}>{T.pendingRevision}</span>
+                    )}
+                    {!isPendingRevision && hasChange && (
+                      <span style={{
+                        fontSize: "9px", fontWeight: 850, padding: "3px 8px",
+                        borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                        border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                      }}>{T.revised}</span>
+                    )}
+                  </div>
+
+                  {/* Item Name */}
+                  <div style={{ marginTop: "-2px" }}>
+                    <span 
+                      onClick={() => window.dispatchEvent(new CustomEvent("show-item-details", { detail: { itemId: row.item_id } }))}
+                      className="clickable-detail-trigger"
+                      style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", display: "inline-block", cursor: "pointer" }}
+                    >
+                      {row.item_name}
+                    </span>
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ height: "1px", backgroundColor: "var(--border-light)" }} />
+
+                  {/* Price Display */}
+                  <div>
+                    {isPendingRevision ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>{T.colApprovedPrice}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.min}</div>
+                              <strong style={{ color: "var(--text-muted)", fontSize: "15px" }}>{formatCurrency(roundUp5(row.last_approved_sell_min))}</strong>
+                            </div>
+                            <span style={{ color: "var(--text-dim)", fontSize: "16px" }}>—</span>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.max}</div>
+                              <strong style={{ color: "var(--text-muted)", fontSize: "14px" }}>{formatCurrency(roundUp5(row.last_approved_sell_max))}</strong>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: "10px", color: "#b45309", fontWeight: 700, marginInlineStart: isRTL ? "0" : "auto", marginInlineEnd: isRTL ? "auto" : "0", display: "flex", alignItems: "center", gap: "3px" }}>
+                            🔒 {T.onHold}
+                          </span>
+                        </div>
+                      </div>
+                    ) : isTiered ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>{T.colApprovedPrice} ({isAr ? "أسعار الشرائح" : "Tiered Pricing"})</span>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                          {tierPrices.map((t, i) => (
+                            <div key={t.label} style={{
+                              textAlign: "center", 
+                              padding: "6px 4px", 
+                              borderRadius: "8px", 
+                              backgroundColor: "var(--bg-elevated)", 
+                              border: `1.5px solid ${TIER_COLORS[i]}25` 
+                            }}>
+                              <div style={{ fontSize: "9px", fontWeight: 800, color: TIER_COLORS[i], textTransform: "uppercase", letterSpacing: "0.05em" }}>{t.label}</div>
+                              <div style={{ fontSize: "13px", fontWeight: 800, color: TIER_COLORS[i] }}>{formatCurrency(t.price)}</div>
+                              <div style={{ fontSize: "7.5px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap" }}>{t.range}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>{T.colApprovedPrice}</span>
+                        
+                        {role === "SC" && hasChange && recentChange && recentChange.prev_sell_min !== null && (
+                          <div style={{ display: "flex", gap: "6px", alignItems: "center", fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px", flexDirection: isRTL ? "row-reverse" : "row", justifyContent: "flex-start" }}>
+                            <span style={{ textDecoration: "line-through", opacity: 0.7 }}>
+                              {formatCurrency(roundUp5(recentChange.prev_sell_min))} – {formatCurrency(roundUp5(recentChange.prev_sell_max))}
+                            </span>
+                            <span style={{ color: "#f59e0b", fontWeight: 800, fontSize: "12px" }}>→</span>
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexDirection: isRTL ? "row-reverse" : "row", justifyContent: "flex-start" }}>
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.min}</div>
+                            <strong style={{ color: "var(--success)", fontSize: "16px" }}>{formatCurrency(roundUp5(row.sell_min))}</strong>
+                          </div>
+                          <span style={{ color: "var(--text-dim)", fontSize: "16px" }}>—</span>
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: "9px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{T.max}</div>
+                            <strong style={{ color: "var(--primary)", fontSize: "16px" }}>{formatCurrency(roundUp5(row.sell_max))}</strong>
+                          </div>
+                        </div>
+
+                        {hasChange && (
+                          <div style={{ fontSize: "10px", color: "#b45309", marginTop: "4px" }}>
+                            {T.updatedAtBy(formatDateTime(recentChange.changed_at), recentChange.changed_by)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ height: "1px", backgroundColor: "var(--border-light)" }} />
+
+                  {/* Details Footer */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: "12px", textAlign: isRTL ? "right" : "left" }}>
+                    <div>
+                      <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>{T.colMoq}: </span>
+                      <strong style={{ color: "var(--warning)", backgroundColor: "rgba(245, 158, 11, 0.1)", padding: "2px 6px", borderRadius: "4px" }}>
+                        {row.moq} {row.unit}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>{T.colTransUnit}: </span>
+                      <strong>
+                        {(row.transportation ?? 0) > 0 ? (
+                          <span style={{ color: "var(--text-secondary)" }}>{formatCurrency(row.transportation)}</span>
+                        ) : (
+                          <span style={{ color: "var(--text-dim)" }}>—</span>
+                        )}
+                      </strong>
+                    </div>
+
+                    {row.strategy && (
+                      <div style={{ gridColumn: "1 / span 2" }}>
+                        <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>{T.colRefBase}: </span>
+                        <span className="badge badge-strong" style={{ display: "inline-block", fontSize: "10.5px", padding: "2px 6px" }}>
+                          {T.ref}: {row.strategy.toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ gridColumn: "1 / span 2", borderTop: "1px dashed var(--border-light)", paddingTop: "6px", marginTop: "2px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "10px", color: "var(--text-muted)", flexDirection: isRTL ? "row-reverse" : "row" }}>
+                        <span>{isAr ? "تاريخ النشر" : "Published Date"}</span>
+                        <span>{formatDateTime(row.created_at)} {T.byUser(row.created_by ?? "")}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          </div>
         </div>
       </div>
       

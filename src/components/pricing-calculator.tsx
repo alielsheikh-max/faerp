@@ -664,7 +664,7 @@ export default function PricingCalculator({
                   fontSize: "12px"
                 }}>
                   {/* Card header */}
-                  <div style={{
+                  <div className="pricing-history-card-header" style={{
                     padding: "6px 12px",
                     background: isFirstPub ? "rgba(16,185,129,0.05)" : "var(--bg-subtle)",
                     borderBottom: `1px solid ${isFirstPub ? "rgba(16,185,129,0.15)" : "var(--border-light)"}`,
@@ -699,7 +699,7 @@ export default function PricingCalculator({
 
                     {/* Prices */}
                     {isTierRecord ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                      <div className="pricing-history-tier-row" style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                         {[
                           { label: `T1`, price: h.new_sell_min },
                           { label: `T2`, price: histTierPrice(tier2Discount) },
@@ -733,37 +733,46 @@ export default function PricingCalculator({
                     )}
 
                     {/* Combined Cost details */}
-                    <div style={{
+                    <div className="pricing-history-costs-wrap" style={{
                       display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "10px",
                       padding: "4px 8px", background: "var(--bg-subtle)", borderRadius: "6px",
                       alignItems: "center"
                     }}>
-                      <span>💰</span>
-                      <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "التكلفة:" : "Buy avg:"}</span>
-                      <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(h.new_buy_avg)}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>
+                        <span>💰</span>
+                        <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "التكلفة:" : "Buy avg:"}</span>
+                        <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(h.new_buy_avg)}</span>
+                      </span>
                       
                       <span style={{ color: "var(--border-medium)" }}>·</span>
-                      <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "الهامش:" : "Markup:"}</span>
-                      <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
-                        {h.new_markup_min.toFixed(1)}%{!isTierRecord && h.new_markup_min !== h.new_markup_max ? `–${h.new_markup_max.toFixed(1)}%` : ""}
-                      </span>
 
+                      <span style={{ whiteSpace: "nowrap" }}>
+                        <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "الهامش:" : "Markup:"}</span>
+                        <span style={{ fontWeight: 700, color: "var(--text-primary)", marginInlineStart: "3px" }}>
+                          {h.new_markup_min.toFixed(1)}%{!isTierRecord && h.new_markup_min !== h.new_markup_max ? `–${h.new_markup_max.toFixed(1)}%` : ""}
+                        </span>
+                      </span>
+                      
                       {histTransport > 0 && (
                         <>
                           <span style={{ color: "var(--border-medium)" }}>·</span>
-                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نقل:" : "Transport:"}</span>
-                          <span style={{ fontWeight: 700, color: hasOverride ? "#b45309" : "var(--text-primary)" }}>
-                            {formatCurrency(hasOverride ? overrideAmt : histTransport)}
+                          <span style={{ display: "flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "نقل:" : "Transport:"}</span>
+                            <span style={{ fontWeight: 700, color: hasOverride ? "#b45309" : "var(--text-primary)" }}>
+                              {formatCurrency(hasOverride ? overrideAmt : histTransport)}
+                            </span>
+                            {hasOverride && <span style={{ fontSize: "7.5px", fontWeight: 800, color: "#b45309", background: "rgba(245,158,11,0.15)", padding: "0px 3px", borderRadius: "2px" }}>O</span>}
                           </span>
-                          {hasOverride && <span style={{ fontSize: "7.5px", fontWeight: 800, color: "#b45309", background: "rgba(245,158,11,0.15)", padding: "0px 3px", borderRadius: "2px" }}>O</span>}
                         </>
                       )}
 
                       {histOther > 0 && (
                         <>
                           <span style={{ color: "var(--border-medium)" }}>·</span>
-                          <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "مصاريف:" : "Exp:"}</span>
-                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{formatCurrency(histOther)}</span>
+                          <span style={{ whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--text-muted)" }}>{locale === "ar" ? "مصاريف:" : "Exp:"}</span>
+                            <span style={{ fontWeight: 700, color: "var(--text-primary)", marginInlineStart: "3px" }}>{formatCurrency(histOther)}</span>
+                          </span>
                         </>
                       )}
                     </div>
@@ -820,7 +829,7 @@ export default function PricingCalculator({
           
           {/* Strategy Switcher — only visible when admin has enabled tier pricing for this month */}
           {tierEnabled && (
-            <div style={{
+            <div className="pricing-strategy-switcher" style={{
               display: "flex", alignItems: "center", gap: "10px",
               padding: "10px 14px",
               background: usesTierStrategy
@@ -864,7 +873,7 @@ export default function PricingCalculator({
           )}
 
           {/* TOP SECTION: Side-by-Side (Inputs & Cost stats) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "20px", alignItems: "start" }}>
+          <div className="pricing-calculator-top-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "20px", alignItems: "start" }}>
             
             {/* Top Left: Input fields */}
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -946,7 +955,7 @@ export default function PricingCalculator({
                       <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         {locale === "ar" ? "السعر المرجعي" : "Reference Buy Cost"}
                       </span>
-                      <div style={{ display: "flex", gap: "6px" }}>
+                      <div className="pricing-ref-price-selector" style={{ display: "flex", gap: "6px" }}>
                         {((() => {
                           // Build cards dynamically based on recommended supplier detection
                           const showFavCard = recommendedSupplierId && !isRecommendedMin && !isRecommendedMax && buyFav && buyFav !== buyAvg;
@@ -986,7 +995,7 @@ export default function PricingCalculator({
                       </div>
                     </div>
                     {/* Type toggle + markup inputs */}
-                    <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                    <div className="pricing-calculator-inputs" style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         <span style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           {locale === "ar" ? "النوع" : "Type"}
@@ -1272,7 +1281,7 @@ export default function PricingCalculator({
                 <span className="eyebrow" style={{ fontSize: "10px" }}>
                   {locale === "ar" ? "سعر التكلفة الأساسي (شامل جميع التكاليف)" : "Base Cost Price (Incl. all costs)"}
                 </span>
-                <div style={{ display: "flex", gap: "20px", marginTop: "8px", flexWrap: "wrap" }}>
+                <div className="pricing-cost-summary-row" style={{ display: "flex", gap: "20px", marginTop: "8px", flexWrap: "wrap" }}>
                   {[
                     { label: locale === "ar" ? (isRecommendedMin ? "أقل سعر ⭐" : "أقل سعر") : (isRecommendedMin ? "Min Cost ⭐" : "Min Cost"), val: buyMin, color: "var(--success)" },
                     { label: locale === "ar" ? "متوسط السعر" : "Avg Cost", val: buyAvg, color: "var(--primary)" },
@@ -1408,7 +1417,7 @@ export default function PricingCalculator({
 
               {/* Volume Tier Preview */}
               {usesTierStrategy && (
-                <div style={{
+                <div className="pricing-tier-editor-wrap" style={{
                   padding: "16px",
                   background: "linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%)",
                   border: "1.5px dashed rgba(16,185,129,0.3)",
@@ -1421,7 +1430,7 @@ export default function PricingCalculator({
                     ⚡ Live Volume Tier Editor (rounded to 5 EGP)
                   </div>
                   
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
+                  <div className="pricing-tier-grid-container" style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
                     {/* Table Header */}
                     <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr 1fr", gap: "8px", fontWeight: 700, color: "var(--text-muted)", fontSize: "10px", textTransform: "uppercase", paddingBottom: "4px", borderBottom: "1.5px solid var(--border)" }}>
                       <span>Tier Range</span>
@@ -1577,7 +1586,7 @@ export default function PricingCalculator({
                 
                 {/* T17: SA notification note */}
                 <label className="field" style={{ margin: 0 }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span className="pricing-confirm-label" style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
                     <span style={{ color: "var(--primary)" }}>📢</span>
                     <span>SA Notification Message</span>
                     <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--primary)", background: "rgba(59,130,246,0.1)", padding: "1px 6px", borderRadius: "4px" }}>Visible to Sales Agent</span>
@@ -1598,7 +1607,7 @@ export default function PricingCalculator({
 
                 {/* T17: Internal SC-only note & Change Reason */}
                 <label className="field" style={{ margin: 0 }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span className="pricing-confirm-label" style={{ fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
                     <span>🔒</span>
                     <span>Internal Note & Change Reason</span>
                     <span style={{ color: "var(--danger)" }}>*</span>
@@ -1675,7 +1684,7 @@ export default function PricingCalculator({
           background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
           display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
         }}>
-          <div className="animate-scale-in" style={{
+          <div className="pricing-success-modal-body animate-scale-in" style={{
             background: "var(--bg-elevated)",
             borderRadius: "16px",
             border: "1.5px solid var(--success)",

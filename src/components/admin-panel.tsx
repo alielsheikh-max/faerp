@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useRef, Suspense, useMemo, useDeferredValue } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -59,7 +59,251 @@ type Item = {
   quote_count: number;
   pending_request_count?: number;
   recommended_supplier_id?: number | null;
+  images?: string | null;
 };
+
+function ItemImageEditor({ itemImages, isRTL, t }: { itemImages: string[], isRTL: boolean, t: any }) {
+  const [deletedList, setDeletedList] = useState<string[]>([]);
+  const [newFiles, setNewFiles] = useState<{ id: string; file: File; preview: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const remainingImages = itemImages.filter(img => !deletedList.includes(img));
+  const totalCount = remainingImages.length + newFiles.length;
+
+  const syncFileInput = (files: File[]) => {
+    if (!fileInputRef.current) return;
+    try {
+      const dataTransfer = new DataTransfer();
+      files.forEach(f => dataTransfer.items.add(f));
+      fileInputRef.current.files = dataTransfer.files;
+    } catch (e) {
+      console.error("Failed to sync file input:", e);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    const maxAllowed = 5 - remainingImages.length;
+    const allowed = selected.slice(0, maxAllowed - newFiles.length);
+
+    if (selected.length > maxAllowed - newFiles.length) {
+      alert(isRTL ? "لا يمكن تجاوز الحد الأقصى (5 صور)" : "Cannot exceed the limit of 5 images");
+    }
+
+    const added = allowed.map(file => ({
+      id: Math.random().toString(36).substring(2, 9),
+      file,
+      preview: URL.createObjectURL(file)
+    }));
+
+    const updated = [...newFiles, ...added];
+    setNewFiles(updated);
+    syncFileInput(updated.map(n => n.file));
+  };
+
+  const handleDeleteExisting = (path: string) => {
+    setDeletedList(prev => [...prev, path]);
+  };
+
+  const handleUndoDeleteExisting = (path: string) => {
+    setDeletedList(prev => prev.filter(p => p !== path));
+  };
+
+  const handleDeleteNew = (id: string, previewUrl: string) => {
+    URL.revokeObjectURL(previewUrl);
+    const updated = newFiles.filter(f => f.id !== id);
+    setNewFiles(updated);
+    syncFileInput(updated.map(n => n.file));
+  };
+
+  useEffect(() => {
+    return () => {
+      newFiles.forEach(f => URL.revokeObjectURL(f.preview));
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+      width: "100%",
+      marginTop: "12px",
+      padding: "16px",
+      borderRadius: "12px",
+      border: "1.5px dashed var(--border-medium)",
+      background: "var(--bg-elevated)",
+      gridColumn: "1 / -1"
+    }}>
+      <input type="hidden" name="deletedImages" value={JSON.stringify(deletedList)} />
+      
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)" }}>
+          📸 {isRTL ? "معرض الصور" : "Product Gallery"} ({totalCount}/5)
+        </span>
+        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+          {isRTL ? "بحد أقصى 5 ميجابايت لكل صورة" : "Max 5 MB per image"}
+        </span>
+      </div>
+
+      {/* Previews grid */}
+      {(itemImages.length > 0 || newFiles.length > 0) && (
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          {/* Existing images */}
+          {itemImages.map((img) => {
+            const isDeleted = deletedList.includes(img);
+            return (
+              <div key={img} style={{
+                position: "relative",
+                width: "64px",
+                height: "64px",
+                borderRadius: "8px",
+                overflow: "hidden",
+                border: isDeleted ? "2px solid var(--danger)" : "1.5px solid var(--border-medium)",
+                boxShadow: "var(--shadow-sm)",
+                opacity: isDeleted ? 0.45 : 1,
+                transition: "all 0.2s ease"
+              }}>
+                <img src={img} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Existing Product" />
+                {isDeleted ? (
+                  <button type="button" onClick={() => handleUndoDeleteExisting(img)} style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.7)",
+                    color: "#fff",
+                    border: "none",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textTransform: "uppercase"
+                  }}>
+                    {isRTL ? "إلغاء" : "Undo"}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => handleDeleteExisting(img)} style={{
+                    position: "absolute",
+                    top: "3px",
+                    right: "3px",
+                    background: "var(--danger)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "18px",
+                    height: "18px",
+                    fontSize: "9px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.3)"
+                  }} title={isRTL ? "إزالة الصورة" : "Remove Image"}>
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* New files previews */}
+          {newFiles.map((fileObj) => (
+            <div key={fileObj.id} style={{
+              position: "relative",
+              width: "64px",
+              height: "64px",
+              borderRadius: "8px",
+              overflow: "hidden",
+              border: "2px solid var(--primary)",
+              boxShadow: "var(--shadow-sm)",
+              transition: "all 0.2s ease",
+            }}>
+              <img src={fileObj.preview} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="New Preview" />
+              <div style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: "var(--primary)",
+                color: "#fff",
+                fontSize: "7px",
+                textAlign: "center",
+                padding: "1px 0",
+                fontWeight: 800,
+                textTransform: "uppercase"
+              }}>
+                {isRTL ? "جديد" : "NEW"}
+              </div>
+              <button type="button" onClick={() => handleDeleteNew(fileObj.id, fileObj.preview)} style={{
+                position: "absolute",
+                top: "3px",
+                right: "3px",
+                background: "#000",
+                color: "#fff",
+                border: "none",
+                borderRadius: "50%",
+                width: "18px",
+                height: "18px",
+                fontSize: "9px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.3)"
+              }} title={isRTL ? "إلغاء الاختيار" : "Cancel selection"}>
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {totalCount < 5 ? (
+        <div style={{ position: "relative" }}>
+          <label style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px",
+            borderRadius: "8px",
+            background: "var(--bg-surface)",
+            border: "1.5px solid var(--border-light)",
+            cursor: "pointer",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "var(--primary)",
+            textAlign: "center",
+            transition: "all 0.2s ease"
+          }}>
+            <span>📤 {isRTL ? "اختر صورًا للرفع..." : "Choose images to upload..."}</span>
+            <input
+              ref={fileInputRef}
+              name="images"
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleFileChange}
+              style={{
+                position: "absolute",
+                inset: 0,
+                opacity: 0,
+                cursor: "pointer"
+              }}
+            />
+          </label>
+        </div>
+      ) : (
+        <p style={{ margin: 0, fontSize: "11px", color: "var(--warning)", fontWeight: 700, textAlign: "center" }}>
+          ⚠️ {isRTL ? "تم الوصول للحد الأقصى (5 صور)" : "Maximum limit reached (5 images)"}
+        </p>
+      )}
+    </div>
+  );
+}
 
 type AdminPanelProps = {
   users: User[];
@@ -673,7 +917,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             </div>
 
             {!isReadOnly && (
-              <form action={createItemAction} className="form-grid compact-form">
+              <form action={createItemAction} className="form-grid compact-form" encType="multipart/form-data">
                 <label className="field">
                   <span>{t("admin.category")}</span>
                   <select name="categoryId" defaultValue="" required>
@@ -713,6 +957,10 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 <label className="field">
                   <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
                   <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
+                </label>
+                <label className="field field-wide" style={{ gridColumn: "1 / -1" }}>
+                  <span>{isRTL ? "معرض صور المنتج (اختياري - حتى 5 صور، بحد أقصى 5 ميجابايت لكل منها)" : "Product Gallery (Optional - up to 5 images, max 5 MB each)"}</span>
+                  <input name="images" type="file" multiple accept="image/*" style={{ border: "1.5px dashed var(--border)", padding: "10px", borderRadius: "8px", background: "var(--bg-elevated)", cursor: "pointer", width: "100%" }} />
                 </label>
                 <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
                   <button type="submit" className="button button-primary button-block">
@@ -754,7 +1002,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 filteredItems.map((item) => (
                   <div
                     key={item.id}
-                    className="inline-editor inline-editor-wide"
+                    className="inline-editor inline-editor-wide item-admin-card"
                     style={{
                       display: "flex",
                       flexWrap: "wrap",
@@ -768,8 +1016,25 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                       marginBottom: "8px"
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: "200px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: "200px" }}>
+                      {(() => {
+                        let firstThumb: string | null = null;
+                        if (item.images) {
+                          try {
+                            const parsed = JSON.parse(item.images);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                              firstThumb = parsed[0];
+                            }
+                          } catch (_) {}
+                        }
+                        return firstThumb ? (
+                          <img src={firstThumb} alt="" style={{ width: "38px", height: "38px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-medium)", flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: "38px", height: "38px", borderRadius: "6px", background: "var(--bg-elevated)", border: "1px dashed var(--border-medium)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0 }}>📦</div>
+                        );
+                      })()}
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "var(--primary)" }}>
                           {item.category_name}
                         </span>
@@ -791,7 +1056,8 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         {filterDesc(item.description) || "—"}
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "16px", flexShrink: 0 }}>
+                  </div>
+                    <div className="item-meta-block" style={{ display: "flex", alignItems: "center", gap: "16px", flexShrink: 0 }}>
                       <div style={{ textAlign: isRTL ? "left" : "right" }}>
                         <div style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase" }}>{t("admin.unit")}</div>
                         <div style={{ fontWeight: "700", fontSize: "13px", color: "var(--text-primary)" }}>{item.unit}</div>
@@ -805,7 +1071,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 ))
               ) : (
                 filteredItems.map((item, idx) => (
-                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide"
+                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide" encType="multipart/form-data"
                     style={{ position: "relative", flexDirection: "column", gap: "0", background: idx % 2 === 0 ? "var(--bg-elevated)" : "rgba(99,102,241,0.04)" }}>
                     {/* T2: Bulk select checkbox */}
                     {bulkItemMode && (
@@ -818,7 +1084,23 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                     <input type="hidden" name="id" value={item.id} />
                     
                     {/* Row 1: Item name — dedicated full-width row */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", paddingBottom: "8px", borderBottom: "1px solid var(--border-light)", marginBottom: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", paddingBottom: "8px", borderBottom: "1px solid var(--border-light)", marginBottom: "10px" }}>
+                      {(() => {
+                        let firstThumb: string | null = null;
+                        if (item.images) {
+                          try {
+                            const parsed = JSON.parse(item.images);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                              firstThumb = parsed[0];
+                            }
+                          } catch (_) {}
+                        }
+                        return firstThumb ? (
+                          <img src={firstThumb} alt="" style={{ width: "36px", height: "36px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-medium)", flexShrink: 0, marginTop: "14px" }} />
+                        ) : (
+                          <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "var(--bg-elevated)", border: "1px dashed var(--border-medium)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0, marginTop: "14px" }}>📦</div>
+                        );
+                      })()}
                       <label className="field" style={{ flex: 1, minWidth: 0, marginBottom: 0 }}>
                         <span>{t("admin.name")}</span>
                         <input name="name" defaultValue={item.name} required style={{ fontSize: "14px", fontWeight: 700 }} />
@@ -863,6 +1145,15 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         <input type="checkbox" name="active" defaultChecked={item.active === 1} />
                         <span>{t("admin.active")}</span>
                       </label>
+                      
+                      {(() => {
+                        let itemImages: string[] = [];
+                        if (item.images) {
+                          try { itemImages = JSON.parse(item.images); } catch (_) {}
+                        }
+                        return <ItemImageEditor itemImages={itemImages} isRTL={isRTL} t={t} />;
+                      })()}
+
                       <span className="mini-stat" style={{ paddingBottom: "10px", fontSize: "11px" }}>
                         {item.quote_count} {t("admin.quotes")}
                       </span>
@@ -1394,7 +1685,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             <span className="badge badge-strong">{items.length} {t("admin.itemCount")}</span>
           </div>
 
-          <form action={createItemAction} className="form-grid compact-form">
+          <form action={createItemAction} className="form-grid compact-form" encType="multipart/form-data">
             <label className="field">
               <span>{t("admin.category")}</span>
               <select name="categoryId" defaultValue="" required>
@@ -1435,6 +1726,9 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
               <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
             </label>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <ItemImageEditor itemImages={[]} isRTL={isRTL} t={t} />
+            </div>
             <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
               <button type="submit" className="button button-primary button-block">
                 {t("admin.createProductBtn")}
@@ -1472,8 +1766,24 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               <p className="muted" style={{ padding: "12px", textAlign: "center" }}>{t("admin.noItemsMatch")}</p>
             ) : (
               filteredItems.map((item) => (
-                <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide">
+                <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide" encType="multipart/form-data" style={{ alignItems: "center" }}>
                   <input type="hidden" name="id" value={item.id} />
+                  {(() => {
+                    let firstThumb: string | null = null;
+                    if (item.images) {
+                      try {
+                        const parsed = JSON.parse(item.images);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                          firstThumb = parsed[0];
+                        }
+                      } catch (_) {}
+                    }
+                    return firstThumb ? (
+                      <img src={firstThumb} alt="" style={{ width: "36px", height: "36px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-medium)", flexShrink: 0, marginTop: "12px" }} />
+                    ) : (
+                      <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "var(--bg-elevated)", border: "1px dashed var(--border-medium)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0, marginTop: "12px" }}>📦</div>
+                    );
+                  })()}
                   <label className="field">
                     <span>{t("admin.category")}</span>
                     <select name="categoryId" defaultValue={item.category_id} required>
@@ -1511,6 +1821,13 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                     <input type="checkbox" name="active" defaultChecked={item.active === 1} />
                     <span>{t("admin.active")}</span>
                   </label>
+                  {(() => {
+                    let itemImages: string[] = [];
+                    if (item.images) {
+                      try { itemImages = JSON.parse(item.images); } catch (_) {}
+                    }
+                    return <ItemImageEditor itemImages={itemImages} isRTL={isRTL} t={t} />;
+                  })()}
                   <span className="mini-stat" style={{ paddingBottom: "10px", fontSize: "11px" }}>
                     {item.quote_count} {t("admin.quotes")}
                   </span>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatMonthLabel } from "@/lib/format";
+import { formatCurrency, formatMonthLabel, roundUp5 } from "@/lib/format";
 import PricingCalculator from "@/components/pricing-calculator";
 import CategoryMarkupPanel from "@/components/category-markup-panel";
 import { useI18n } from "@/lib/i18n-context";
@@ -398,7 +398,7 @@ export default function InteractiveDashboard({
                       ? (h.markup_min === h.markup_max ? `÷ ${fmtMu(h.markup_min)}` : `÷ ${fmtMu(h.markup_min)}–${fmtMu(h.markup_max)}`)
                       : (h.markup_min === h.markup_max ? `+${fmtMu(h.markup_min)}%` : `+${fmtMu(h.markup_min)}–${fmtMu(h.markup_max)}%`);
                     return (
-                      <div key={h.month} style={{
+                      <div key={h.month} className="dashboard-sc-history-row" style={{
                         display: "grid",
                         gridTemplateColumns: "auto 1fr auto auto",
                         alignItems: "center",
@@ -520,9 +520,9 @@ export default function InteractiveDashboard({
                 {existingSell ? (
                   <>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("idash.publishedSell")}</span>
-                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(existingSell.sell_min)}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--success)" }}>{formatCurrency(roundUp5(existingSell.sell_min))}</span>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>–</span>
-                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(existingSell.sell_max)}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)" }}>{formatCurrency(roundUp5(existingSell.sell_max))}</span>
                     <span className="badge badge-success" style={{ fontSize: "10px" }}>✓ {isAr ? "منشور" : "Published"}</span>
                     <span className="badge badge-strong" style={{ fontSize: "10px" }}>{existingSell.strategy.toUpperCase()}</span>
                   </>
@@ -605,7 +605,7 @@ export default function InteractiveDashboard({
           </div>
 
           {/* ── RIGHT: Pricing Engine ─────── */}
-          <div style={{
+          <div className="pricing-calculator-container" style={{
             background: "var(--bg-surface)",
             border: "1.5px solid rgba(99,102,241,0.3)",
             borderRadius: "var(--radius-lg)",

@@ -130,16 +130,10 @@ export default function ApprovalsHistory({ requests, mode }: Props) {
             {/* ── Collapsed header row ── */}
             <div
               onClick={() => toggle(req.id)}
+              className="approvals-history-header"
               style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto auto auto",
-                gap: "12px",
-                alignItems: "center",
-                padding: "12px 16px",
-                cursor: "pointer",
                 background: isOpen ? `${style.bg}` : "transparent",
                 transition: "background 150ms",
-                userSelect: "none",
                 direction: isAr ? "rtl" : "ltr",
               }}
             >
@@ -168,32 +162,35 @@ export default function ApprovalsHistory({ requests, mode }: Props) {
                 </div>
               </div>
 
-              {/* Price change pill */}
-              <div style={{
-                padding: "3px 10px", borderRadius: "99px",
-                background: diff > 0 ? "var(--danger-light)" : "var(--success-light)",
-                border: `1px solid ${diff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
-                fontSize: "11px", fontWeight: 800, whiteSpace: "nowrap",
-                color: diff > 0 ? "var(--danger)" : "var(--success)",
-              }}>
-                {diff > 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
-                {" "}({formatCurrency(req.old_price)} → {formatCurrency(req.new_price)})
+              {/* Metadata details wrapper */}
+              <div className="approvals-history-meta-wrapper">
+                {/* Price change pill */}
+                <div style={{
+                  padding: "3px 10px", borderRadius: "99px",
+                  background: diff > 0 ? "var(--danger-light)" : "var(--success-light)",
+                  border: `1px solid ${diff > 0 ? "rgba(220,38,38,0.25)" : "rgba(16,185,129,0.25)"}`,
+                  fontSize: "11px", fontWeight: 800, whiteSpace: "nowrap",
+                  color: diff > 0 ? "var(--danger)" : "var(--success)",
+                }}>
+                  {diff > 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
+                  {" "}({formatCurrency(req.old_price)} → {formatCurrency(req.new_price)})
+                </div>
+
+                {/* Date */}
+                <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {formatDateTime(req.requested_at)}
+                </span>
+
+                {/* Status badge */}
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: "4px",
+                  padding: "3px 9px", borderRadius: "99px", fontSize: "10px", fontWeight: 700,
+                  background: style.bg, border: `1px solid ${style.border}`, color: style.color,
+                  whiteSpace: "nowrap", flexShrink: 0,
+                }}>
+                  {style.icon} {getStatusLabel(req.status)}
+                </span>
               </div>
-
-              {/* Date */}
-              <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                {formatDateTime(req.requested_at)}
-              </span>
-
-              {/* Status badge */}
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: "4px",
-                padding: "3px 9px", borderRadius: "99px", fontSize: "10px", fontWeight: 700,
-                background: style.bg, border: `1px solid ${style.border}`, color: style.color,
-                whiteSpace: "nowrap", flexShrink: 0,
-              }}>
-                {style.icon} {getStatusLabel(req.status)}
-              </span>
             </div>
 
             {/* ── Expanded detail ── */}
@@ -210,7 +207,7 @@ export default function ApprovalsHistory({ requests, mode }: Props) {
                 <div style={{ height: "12px" }} />
 
                 {/* Price comparison */}
-                <div style={{
+                <div className="approvals-history-diff" style={{
                   display: "flex", gap: "16px", alignItems: "center",
                   padding: "12px 16px",
                   background: diff > 0 ? "var(--danger-light)" : "var(--success-light)",

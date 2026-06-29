@@ -602,9 +602,9 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
   };
 
   return (
-    <div className="modal-overlay sdm-print-root" onClick={onClose}>
+    <div className="modal-overlay sdm-print-root supplier-detail-modal-overlay" onClick={onClose}>
         <div
-          className="modal-container"
+          className="modal-container supplier-detail-modal-container"
           style={{ maxWidth: "840px", maxHeight: "92vh", display: "flex", flexDirection: "column" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -684,7 +684,7 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
           </div>
 
           {/* ── Stats Strip ──────────────────────────────────── */}
-          <div style={{
+          <div className="supplier-detail-stats" style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
             backgroundColor: "var(--bg-elevated)",
@@ -740,7 +740,7 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
             {/* ═══════ OVERVIEW TAB ═══════ */}
             {activeTab === "overview" && (
               <div className="sdm-overview-section" style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className="sdm-overview-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
 
                   {/* Contact Info Card */}
                   <div style={{ backgroundColor: "var(--bg-subtle)", borderRadius: "12px", padding: "18px", border: "1px solid var(--border-light)" }}>

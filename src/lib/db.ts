@@ -282,9 +282,12 @@ function initializeSchema(db: Db) {
     "ALTER TABLE selling_prices ADD COLUMN last_approved_at TEXT",
     "ALTER TABLE selling_prices ADD COLUMN last_approved_transportation REAL",
     "ALTER TABLE selling_prices ADD COLUMN last_approved_other_expenses REAL",
+    "ALTER TABLE price_entries ADD COLUMN read_by_sc INTEGER NOT NULL DEFAULT 0",
+    "CREATE TABLE IF NOT EXISTS price_list_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, version_major INTEGER NOT NULL DEFAULT 1, version_minor INTEGER NOT NULL DEFAULT 0, approved_by TEXT NOT NULL, approved_at TEXT NOT NULL, change_type TEXT NOT NULL DEFAULT 'new', items_count INTEGER NOT NULL DEFAULT 0, notes TEXT)",
+    "ALTER TABLE items ADD COLUMN images TEXT",
   ];
   for (const sql of migrations) {
-    try { db.exec(sql); } catch (_) { /* column already exists */ }
+    try { db.exec(sql); } catch (_) { /* column/table already exists */ }
   }
 
   // Auto-populate fame_name for any supplier that doesn't have one yet
@@ -913,6 +916,7 @@ export function getItems(categoryId?: number) {
         i.transportation_per_unit,
         i.moq,
         i.recommended_supplier_id,
+        i.images,
         IFNULL(it.is_tiered, 0) as is_tiered,
         IFNULL(it.tier1_max, 100) as tier1_max,
         IFNULL(it.tier1_discount, 0.0) as tier1_discount,
@@ -939,6 +943,7 @@ export function getItems(categoryId?: number) {
       transportation_per_unit: number;
       moq: number;
       recommended_supplier_id: number | null;
+      images: string | null;
       is_tiered: number;
       tier1_max: number;
       tier1_discount: number;
@@ -1145,11 +1150,12 @@ export function createItem(input: {
   transportationPerUnit: number;
   moq: number;
   recommendedSupplierId?: number | null;
+  images?: string | null;
 }) {
   database()
     .prepare(`
-      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq, recommended_supplier_id)
-      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq, @recommended_supplier_id)
+      INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq, recommended_supplier_id, images)
+      VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq, @recommended_supplier_id, @images)
     `)
     .run({
       category_id: input.categoryId,
@@ -1158,7 +1164,8 @@ export function createItem(input: {
       description: input.description,
       transportation_per_unit: input.transportationPerUnit,
       moq: input.moq,
-      recommended_supplier_id: input.recommendedSupplierId ?? null
+      recommended_supplier_id: input.recommendedSupplierId ?? null,
+      images: input.images ?? null
     });
 }
 
@@ -1172,6 +1179,7 @@ export function updateItem(input: {
   transportationPerUnit: number;
   moq: number;
   recommendedSupplierId?: number | null;
+  images?: string | null;
 }) {
   database()
     .prepare(`
@@ -1184,7 +1192,8 @@ export function updateItem(input: {
         active = @active,
         transportation_per_unit = @transportation_per_unit,
         moq = @moq,
-        recommended_supplier_id = @recommended_supplier_id
+        recommended_supplier_id = @recommended_supplier_id,
+        images = @images
       WHERE id = @id
     `)
     .run({
@@ -1196,7 +1205,8 @@ export function updateItem(input: {
       active: input.active ? 1 : 0,
       transportation_per_unit: input.transportationPerUnit,
       moq: input.moq,
-      recommended_supplier_id: input.recommendedSupplierId ?? null
+      recommended_supplier_id: input.recommendedSupplierId ?? null,
+      images: input.images !== undefined ? input.images : null
     });
 }
 
@@ -1857,12 +1867,12 @@ export function saveSellingPrice(input: {
   // The final prices to be published to SA (rounded up to nearest 5 EGP):
   const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
   // Use client-provided sell prices when available (ensures MG sees exactly what SC submitted)
-  const sellMin = (input.sellMinOverride != null && input.sellMinOverride > 0)
+  const sellMin = roundUp5((input.sellMinOverride != null && input.sellMinOverride > 0)
     ? input.sellMinOverride
-    : roundUp5(baseSellMin + transportation + input.otherExpenses);
-  const sellMax = (input.sellMaxOverride != null && input.sellMaxOverride > 0)
+    : (baseSellMin + transportation + input.otherExpenses));
+  const sellMax = roundUp5((input.sellMaxOverride != null && input.sellMaxOverride > 0)
     ? input.sellMaxOverride
-    : roundUp5(baseSellMax + transportation + input.otherExpenses);
+    : (baseSellMax + transportation + input.otherExpenses));
 
   // ── Improvement #3: Margin floor enforcement ──────────────────────────────
   // Resolve effective floor: item-level overrides category-level
@@ -2394,8 +2404,8 @@ export function getWHCollectionOverview(month: string): {
     item_name: string;
     unit: string;
     item_id: number;
-    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null }>;
-    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null }>;
+    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; submitted_price?: number | null; submitted_transport?: number | null }>;
+    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null; submitted_price?: number | null; submitted_transport?: number | null }>;
   }>;
 } {
   const db = database();
@@ -2450,15 +2460,17 @@ export function getWHCollectionOverview(month: string): {
       s.id AS supplier_id,
       prev.price AS prev_price,
       le.status,
-      le.review_note
+      le.review_note,
+      le.price AS submitted_price,
+      le.actual_transport AS submitted_transport
     FROM items i
     JOIN categories c ON c.id = i.category_id
     JOIN supplier_categories sc ON sc.category_id = i.category_id
     JOIN suppliers s ON s.id = sc.supplier_id
     LEFT JOIN (
-      SELECT item_id, supplier_id, status, review_note
+      SELECT item_id, supplier_id, status, review_note, price, actual_transport
       FROM (
-        SELECT item_id, supplier_id, status, review_note,
+        SELECT item_id, supplier_id, status, review_note, price, actual_transport,
                ROW_NUMBER() OVER (PARTITION BY item_id, supplier_id ORDER BY recorded_at DESC, id DESC) as rn
         FROM price_entries
         WHERE month = ?
@@ -2471,6 +2483,7 @@ export function getWHCollectionOverview(month: string): {
     category_name: string; category_id: number; item_name: string; unit: string;
     item_id: number; supplier_name: string; supplier_id: number; prev_price: number | null;
     status: string | null; review_note: string | null;
+    submitted_price: number | null; submitted_transport: number | null;
   }>;
 
   // Group by item and separate submitted vs missing suppliers
@@ -2480,8 +2493,8 @@ export function getWHCollectionOverview(month: string): {
     item_name: string;
     unit: string;
     item_id: number;
-    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null }>;
-    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null }>;
+    submitted: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; submitted_price?: number | null; submitted_transport?: number | null }>;
+    missing: Array<{ supplier_id: number; supplier_name: string; prev_price: number | null; status: string | null; review_note: string | null; submitted_price?: number | null; submitted_transport?: number | null }>;
   }>();
 
   for (const row of allCombos) {
@@ -2498,9 +2511,23 @@ export function getWHCollectionOverview(month: string): {
     }
     const entry = itemMap.get(row.item_id)!;
     if (row.status === 'approved' || row.status === 'pending') {
-      entry.submitted.push({ supplier_id: row.supplier_id, supplier_name: row.supplier_name, prev_price: row.prev_price });
+      entry.submitted.push({
+        supplier_id: row.supplier_id,
+        supplier_name: row.supplier_name,
+        prev_price: row.prev_price,
+        submitted_price: row.submitted_price,
+        submitted_transport: row.submitted_transport,
+      });
     } else {
-      entry.missing.push({ supplier_id: row.supplier_id, supplier_name: row.supplier_name, prev_price: row.prev_price, status: row.status, review_note: row.review_note });
+      entry.missing.push({
+        supplier_id: row.supplier_id,
+        supplier_name: row.supplier_name,
+        prev_price: row.prev_price,
+        status: row.status,
+        review_note: row.review_note,
+        submitted_price: row.submitted_price,
+        submitted_transport: row.submitted_transport,
+      });
     }
   }
 
@@ -3155,6 +3182,7 @@ export function getItemCardData(itemId: number) {
     SELECT i.id, i.name, i.unit, i.description, i.active,
            c.name AS category_name, c.id AS category_id,
            i.transportation_per_unit, i.moq, i.recommended_supplier_id,
+           i.images,
            COALESCE(NULLIF(TRIM(rs.fame_name), ''), rs.name) AS recommended_supplier_name
     FROM items i JOIN categories c ON c.id = i.category_id
     LEFT JOIN suppliers rs ON rs.id = i.recommended_supplier_id
@@ -3164,6 +3192,7 @@ export function getItemCardData(itemId: number) {
     active: number; category_name: string; category_id: number;
     transportation_per_unit: number; moq: number;
     recommended_supplier_id: number | null;
+    images: string | null;
     recommended_supplier_name: string | null;
   } | undefined;
 
@@ -3192,14 +3221,42 @@ export function getItemCardData(itemId: number) {
 
   // Selling prices for this item
   const sellingRows = db.prepare(`
-    SELECT month, sell_min, sell_max, strategy, markup_type,
-           markup_min, markup_max, created_by, created_at
-    FROM selling_prices WHERE item_id = ?
-    ORDER BY month DESC
+    SELECT sp.month, sp.sell_min, sp.sell_max, sp.strategy, sp.markup_type,
+           sp.markup_min, sp.markup_max, sp.created_by, sp.created_at,
+           IFNULL(sp.tier_pricing_enabled, 0) as tier_pricing_enabled,
+           IFNULL(it.is_tiered, 0) as is_tiered,
+           COALESCE(sp.tier1_max, it.tier1_max, 100) as tier1_max,
+           COALESCE(sp.tier1_discount, it.tier1_discount, 0.0) as tier1_discount,
+           COALESCE(sp.tier2_max, it.tier2_max, 200) as tier2_max,
+           COALESCE(sp.tier2_discount, it.tier2_discount, 5.0) as tier2_discount,
+           COALESCE(sp.tier3_max, it.tier3_max, 300) as tier3_max,
+           COALESCE(sp.tier3_discount, it.tier3_discount, 10.0) as tier3_discount,
+           COALESCE(sp.tier4_max, it.tier4_max, 0) as tier4_max,
+           COALESCE(sp.tier4_discount, it.tier4_discount, 0.0) as tier4_discount,
+           IFNULL(sp.transportation, 0.0) as transportation,
+           IFNULL(sp.other_expenses, 0.0) as other_expenses,
+           sp.buy_min, sp.buy_max, sp.buy_avg,
+           COALESCE(sp.approval_status, 'approved') as approval_status,
+           sp.last_approved_sell_min, sp.last_approved_sell_max,
+           sp.last_approved_strategy
+    FROM selling_prices sp
+    LEFT JOIN item_tiers it ON it.item_id = sp.item_id
+    WHERE sp.item_id = ?
+    ORDER BY sp.month DESC
   `).all(itemId) as Array<{
-    month: string; sell_min: number; sell_max: number;
-    strategy: string; markup_type: string; markup_min: number;
-    markup_max: number; created_by: string; created_at: string;
+    month: string; sell_min: number | null; sell_max: number | null;
+    strategy: string | null; markup_type: string | null; markup_min: number | null;
+    markup_max: number | null; created_by: string | null; created_at: string | null;
+    tier_pricing_enabled: number; is_tiered: number;
+    tier1_max: number; tier1_discount: number;
+    tier2_max: number; tier2_discount: number;
+    tier3_max: number; tier3_discount: number;
+    tier4_max: number; tier4_discount: number;
+    transportation: number; other_expenses: number;
+    buy_min: number | null; buy_max: number | null; buy_avg: number | null;
+    approval_status: string;
+    last_approved_sell_min: number | null; last_approved_sell_max: number | null;
+    last_approved_strategy: string | null;
   }>;
 
   // Unique months and suppliers
@@ -3490,6 +3547,7 @@ export function getPriceAcknowledgments(limit = 20): Array<{
   id: number; history_id: number;
   acknowledged_by: string; acknowledged_at: string;
   item_name: string; new_sell_min: number; new_sell_max: number; month: string;
+  read_by_sc: number;
 }> {
   return database().prepare(`
     SELECT pa.*, h.new_sell_min, h.new_sell_max, h.month,
@@ -3522,11 +3580,26 @@ export function getUnreadPriceAcknowledgmentsCount(): number {
   return row?.cnt ?? 0;
 }
 
+export function getUnreadNegotiatedPricesCount(): number {
+  const row = database().prepare(`
+    SELECT COUNT(*) as cnt
+    FROM price_entries
+    WHERE negotiated_price IS NOT NULL AND read_by_sc = 0
+  `).get() as { cnt: number };
+  return row?.cnt ?? 0;
+}
+
 export function markPriceAcknowledgmentsAsRead() {
   database().prepare(`
     UPDATE price_acknowledgments
     SET read_by_sc = 1
     WHERE read_by_sc = 0
+  `).run();
+
+  database().prepare(`
+    UPDATE price_entries
+    SET read_by_sc = 1
+    WHERE negotiated_price IS NOT NULL AND read_by_sc = 0
   `).run();
 }
 
@@ -4092,7 +4165,7 @@ export function saveNegotiatedPrice(itemId: number, supplierId: number, month: s
 
   db.prepare(`
     UPDATE price_entries
-    SET negotiated_price = ?, negotiated_notes = ?
+    SET negotiated_price = ?, negotiated_notes = ?, read_by_sc = 0
     WHERE id = ?
   `).run(negotiatedPrice, notes, latestEntry.id);
 }
@@ -4110,6 +4183,7 @@ export function getNegotiatedPriceEntries(month: string): any[] {
         pe.negotiated_notes,
         pe.recorded_at,
         pe.collected_by,
+        pe.read_by_sc,
         i.name as item_name,
         c.name as category_name,
         COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
@@ -4408,29 +4482,172 @@ export function approveAllPendingSellingPrices(categoryId: number, month: string
   
   const tx = db.transaction(() => {
     for (const item of items) {
-      stmt.run(managerName, now, item.id, month);
-      
-      // Determine if this is truly an update (had a previously approved price this month)
-      // First-time approvals should NOT trigger SA alerts
-      const existingApproved = db.prepare(`
-        SELECT last_approved_sell_min FROM selling_prices
-        WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
-      `).get(item.id, month) as { last_approved_sell_min: number } | undefined;
-      const isRealUpdate = existingApproved ? 1 : 0;
+      // Query the item's current pricing record before we clear it
+      const sp = db.prepare(`
+        SELECT last_approved_sell_min, last_approved_sell_max, last_approved_strategy,
+               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg
+        FROM selling_prices
+        WHERE item_id = ? AND month = ?
+      `).get(item.id, month) as any;
 
-      // Also update history
-      db.prepare(`
-        INSERT INTO selling_price_history (
-          item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-          new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
-          changed_by, changed_at, change_reason, is_update, approval_status
-        )
-        SELECT item_id, month,
-               last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
-               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
-               ?, ?, 'Manager Approved All', ?, 'approved'
-        FROM selling_prices WHERE item_id = ? AND month = ?
-      `).run(managerName, now, isRealUpdate, item.id, month);
+      if (sp) {
+        const isRealUpdate = sp.last_approved_sell_min !== null ? 1 : 0;
+        
+        db.prepare(`
+          INSERT INTO selling_price_history (
+            item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+            new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+            changed_by, changed_at, change_reason, is_update, approval_status
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+        `).run(
+          item.id, month,
+          sp.last_approved_sell_min, sp.last_approved_sell_max, sp.markup_min, sp.markup_max, sp.last_approved_strategy || sp.strategy,
+          sp.sell_min, sp.sell_max, sp.markup_min, sp.markup_max, sp.strategy, sp.markup_type, sp.buy_avg,
+          managerName, now, 'Manager Approved All', isRealUpdate
+        );
+
+        stmt.run(managerName, now, item.id, month);
+      }
+    }
+
+    const approvedStats = db.prepare(`
+      SELECT COUNT(*) as cnt, SUM(is_update) as revised_cnt
+      FROM selling_price_history
+      WHERE month = ? AND changed_at = ? AND approval_status = 'approved'
+    `).get(month, now) as { cnt: number; revised_cnt: number | null };
+
+    if (approvedStats && approvedStats.cnt > 0) {
+      bumpPriceListVersion(month, managerName, approvedStats.cnt, (approvedStats.revised_cnt || 0) > 0);
+    }
+  });
+  tx();
+}
+
+export function approveGlobalPendingSellingPrices(month: string, managerName: string) {
+  const db = database();
+  const items = db.prepare(`
+    SELECT DISTINCT item_id as id FROM selling_prices
+    WHERE month = ? AND approval_status = 'pending'
+  `).all(month) as Array<{ id: number }>;
+  
+  const stmt = db.prepare(`
+    UPDATE selling_prices
+    SET approval_status = 'approved',
+        reconsider_note = NULL,
+        last_approved_sell_min = NULL,
+        last_approved_sell_max = NULL,
+        last_approved_strategy = NULL,
+        last_approved_at = NULL,
+        last_approved_transportation = NULL,
+        last_approved_other_expenses = NULL,
+        created_by = ?,
+        created_at = ?
+    WHERE item_id = ? AND month = ?
+  `);
+  
+  const now = new Date().toISOString();
+  
+  const tx = db.transaction(() => {
+    for (const item of items) {
+      const sp = db.prepare(`
+        SELECT last_approved_sell_min, last_approved_sell_max, last_approved_strategy,
+               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg
+        FROM selling_prices
+        WHERE item_id = ? AND month = ?
+      `).get(item.id, month) as any;
+
+      if (sp) {
+        const isRealUpdate = sp.last_approved_sell_min !== null ? 1 : 0;
+        
+        db.prepare(`
+          INSERT INTO selling_price_history (
+            item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+            new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+            changed_by, changed_at, change_reason, is_update, approval_status
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+        `).run(
+          item.id, month,
+          sp.last_approved_sell_min, sp.last_approved_sell_max, sp.markup_min, sp.markup_max, sp.last_approved_strategy || sp.strategy,
+          sp.sell_min, sp.sell_max, sp.markup_min, sp.markup_max, sp.strategy, sp.markup_type, sp.buy_avg,
+          managerName, now, 'Manager Approved Global All', isRealUpdate
+        );
+
+        stmt.run(managerName, now, item.id, month);
+      }
+    }
+
+    const approvedStats = db.prepare(`
+      SELECT COUNT(*) as cnt, SUM(is_update) as revised_cnt
+      FROM selling_price_history
+      WHERE month = ? AND changed_at = ? AND approval_status = 'approved'
+    `).get(month, now) as { cnt: number; revised_cnt: number | null };
+
+    if (approvedStats && approvedStats.cnt > 0) {
+      bumpPriceListVersion(month, managerName, approvedStats.cnt, (approvedStats.revised_cnt || 0) > 0);
+    }
+  });
+  tx();
+}
+
+export function approveMultiplePendingSellingPrices(itemIds: number[], month: string, managerName: string) {
+  const db = database();
+  const stmt = db.prepare(`
+    UPDATE selling_prices
+    SET approval_status = 'approved',
+        reconsider_note = NULL,
+        last_approved_sell_min = NULL,
+        last_approved_sell_max = NULL,
+        last_approved_strategy = NULL,
+        last_approved_at = NULL,
+        last_approved_transportation = NULL,
+        last_approved_other_expenses = NULL,
+        created_by = ?,
+        created_at = ?
+    WHERE item_id = ? AND month = ?
+  `);
+  
+  const now = new Date().toISOString();
+  
+  const tx = db.transaction(() => {
+    for (const itemId of itemIds) {
+      const sp = db.prepare(`
+        SELECT last_approved_sell_min, last_approved_sell_max, last_approved_strategy,
+               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg
+        FROM selling_prices
+        WHERE item_id = ? AND month = ?
+      `).get(itemId, month) as any;
+
+      if (sp) {
+        const isRealUpdate = sp.last_approved_sell_min !== null ? 1 : 0;
+        
+        db.prepare(`
+          INSERT INTO selling_price_history (
+            item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+            new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+            changed_by, changed_at, change_reason, is_update, approval_status
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+        `).run(
+          itemId, month,
+          sp.last_approved_sell_min, sp.last_approved_sell_max, sp.markup_min, sp.markup_max, sp.last_approved_strategy || sp.strategy,
+          sp.sell_min, sp.sell_max, sp.markup_min, sp.markup_max, sp.strategy, sp.markup_type, sp.buy_avg,
+          managerName, now, 'Manager Approved Batch', isRealUpdate
+        );
+
+        stmt.run(managerName, now, itemId, month);
+      }
+    }
+
+    const approvedStats = db.prepare(`
+      SELECT COUNT(*) as cnt, SUM(is_update) as revised_cnt
+      FROM selling_price_history
+      WHERE month = ? AND changed_at = ? AND approval_status = 'approved'
+    `).get(month, now) as { cnt: number; revised_cnt: number | null };
+
+    if (approvedStats && approvedStats.cnt > 0) {
+      bumpPriceListVersion(month, managerName, approvedStats.cnt, (approvedStats.revised_cnt || 0) > 0);
     }
   });
   tx();
@@ -4439,42 +4656,57 @@ export function approveAllPendingSellingPrices(categoryId: number, month: string
 export function approveSinglePendingSellingPrice(itemId: number, month: string, managerName: string) {
   const db = database();
   const now = new Date().toISOString();
+  
   db.transaction(() => {
-    db.prepare(`
-      UPDATE selling_prices
-      SET approval_status = 'approved',
-          reconsider_note = NULL,
-          last_approved_sell_min = NULL,
-          last_approved_sell_max = NULL,
-          last_approved_strategy = NULL,
-          last_approved_at = NULL,
-          last_approved_transportation = NULL,
-          last_approved_other_expenses = NULL,
-          created_by = ?,
-          created_at = ?
+    const sp = db.prepare(`
+      SELECT last_approved_sell_min, last_approved_sell_max, last_approved_strategy,
+             sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg
+      FROM selling_prices
       WHERE item_id = ? AND month = ?
-    `).run(managerName, now, itemId, month);
+    `).get(itemId, month) as any;
 
-    // Determine if this is truly an update (had a previously approved price this month)
-    const existingApproved = db.prepare(`
-      SELECT last_approved_sell_min FROM selling_prices
-      WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
-    `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
-    const isRealUpdate = existingApproved ? 1 : 0;
+    if (sp) {
+      const isRealUpdate = sp.last_approved_sell_min !== null ? 1 : 0;
+      
+      db.prepare(`
+        INSERT INTO selling_price_history (
+          item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+          new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+          changed_by, changed_at, change_reason, is_update, approval_status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+      `).run(
+        itemId, month,
+        sp.last_approved_sell_min, sp.last_approved_sell_max, sp.markup_min, sp.markup_max, sp.last_approved_strategy || sp.strategy,
+        sp.sell_min, sp.sell_max, sp.markup_min, sp.markup_max, sp.strategy, sp.markup_type, sp.buy_avg,
+        managerName, now, 'Manager Approved Item', isRealUpdate
+      );
 
-    // Also update history
-    db.prepare(`
-      INSERT INTO selling_price_history (
-        item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
-        new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
-        changed_by, changed_at, change_reason, is_update, approval_status
-      )
-      SELECT item_id, month,
-             last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
-             sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
-             ?, ?, 'Manager Approved Item', ?, 'approved'
-      FROM selling_prices WHERE item_id = ? AND month = ?
-    `).run(managerName, now, isRealUpdate, itemId, month);
+      db.prepare(`
+        UPDATE selling_prices
+        SET approval_status = 'approved',
+            reconsider_note = NULL,
+            last_approved_sell_min = NULL,
+            last_approved_sell_max = NULL,
+            last_approved_strategy = NULL,
+            last_approved_at = NULL,
+            last_approved_transportation = NULL,
+            last_approved_other_expenses = NULL,
+            created_by = ?,
+            created_at = ?
+        WHERE item_id = ? AND month = ?
+      `).run(managerName, now, itemId, month);
+    }
+
+    const approvedStats = db.prepare(`
+      SELECT COUNT(*) as cnt, SUM(is_update) as revised_cnt
+      FROM selling_price_history
+      WHERE item_id = ? AND month = ? AND changed_at = ? AND approval_status = 'approved'
+    `).get(itemId, month, now) as { cnt: number; revised_cnt: number | null };
+
+    if (approvedStats && approvedStats.cnt > 0) {
+      bumpPriceListVersion(month, managerName, approvedStats.cnt, (approvedStats.revised_cnt || 0) > 0);
+    }
   })();
 }
 
@@ -4752,7 +4984,7 @@ function getPastMonths(month: string, count: number = 3): string[] {
 
 export function getUnreadNotificationsForUser(role: string, username: string): Array<{
   id: number;
-  type: "acknowledgment" | "rejection";
+  type: "acknowledgment" | "rejection" | "negotiation";
   title: string;
   message: string;
   time: string;
@@ -4760,7 +4992,7 @@ export function getUnreadNotificationsForUser(role: string, username: string): A
 }> {
   const db = database();
   if (role === "SC" || role === "AD") {
-    const rows = db.prepare(`
+    const rowsAck = db.prepare(`
       SELECT pa.id, pa.acknowledged_by, pa.acknowledged_at,
              h.new_sell_min, h.new_sell_max, h.month, i.name as item_name, i.id as item_id
       FROM price_acknowledgments pa
@@ -4769,14 +5001,41 @@ export function getUnreadNotificationsForUser(role: string, username: string): A
       WHERE pa.read_by_sc = 0
       ORDER BY pa.acknowledged_at DESC
     `).all() as any[];
-    return rows.map(r => ({
+
+    const rowsNeg = db.prepare(`
+      SELECT pe.id, pe.collected_by, pe.recorded_at,
+             pe.price as original_price, pe.negotiated_price, pe.month, i.name as item_name, i.id as item_id,
+             COALESCE(NULLIF(TRIM(s.fame_name), ''), s.name) as supplier_name
+      FROM price_entries pe
+      JOIN items i ON i.id = pe.item_id
+      JOIN suppliers s ON s.id = pe.supplier_id
+      WHERE pe.negotiated_price IS NOT NULL AND pe.read_by_sc = 0
+      ORDER BY pe.recorded_at DESC
+    `).all() as any[];
+
+    const notifications: any[] = [];
+
+    notifications.push(...rowsAck.map(r => ({
       id: r.id,
-      type: "acknowledgment",
+      type: "acknowledgment" as const,
       title: "Price Acknowledged",
       message: `${r.acknowledged_by} acknowledged ${r.item_name} (EGP ${r.new_sell_min}${r.new_sell_max && r.new_sell_max !== r.new_sell_min ? ` - EGP ${r.new_sell_max}` : ""})`,
       time: r.acknowledged_at,
       itemId: r.item_id,
-    }));
+    })));
+
+    notifications.push(...rowsNeg.map(r => ({
+      id: r.id,
+      type: "negotiation" as const,
+      title: "Negotiated Price Logged",
+      message: `${r.collected_by} logged negotiation for ${r.item_name} (${r.supplier_name}): EGP ${r.negotiated_price} (was EGP ${r.original_price})`,
+      time: r.recorded_at,
+      itemId: r.item_id,
+    })));
+
+    // Sort notifications by time descending
+    notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    return notifications;
   }
   if (role === "WH") {
     const rows = db.prepare(`
@@ -4809,3 +5068,114 @@ export function markSingleAcknowledgmentAsRead(id: number) {
 export function markSingleRejectedPriceEntryAsReadForWH(quoteId: number) {
   database().prepare("UPDATE price_entries SET read_by_wh = 1 WHERE id = ?").run(quoteId);
 }
+
+export function markSingleNegotiationAsRead(id: number) {
+  database().prepare("UPDATE price_entries SET read_by_sc = 1 WHERE id = ?").run(id);
+}
+
+/**
+ * Called inside MG approval transactions to bump the monthly price list version.
+ * If any approved item was a price REVISION (is_update=1 in history), major version bumps.
+ * Otherwise, minor version bumps.
+ */
+export function bumpPriceListVersion(
+  month: string,
+  approvedBy: string,
+  itemsApproved: number,
+  hasRevision: boolean
+) {
+  const db = database();
+  const now = new Date().toISOString();
+
+  // Get the latest version for this month
+  const latest = db.prepare(`
+    SELECT version_major, version_minor
+    FROM price_list_versions
+    WHERE month = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(month) as { version_major: number; version_minor: number } | undefined;
+
+  let major: number;
+  let minor: number;
+
+  if (!latest) {
+    // First approval this month
+    major = 1;
+    minor = 0;
+  } else if (hasRevision) {
+    // A price was revised → bump major
+    major = latest.version_major + 1;
+    minor = 0;
+  } else {
+    // Only new items added → bump minor
+    major = latest.version_major;
+    minor = latest.version_minor + 1;
+  }
+
+  db.prepare(`
+    INSERT INTO price_list_versions (month, version_major, version_minor, approved_by, approved_at, change_type, items_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(month, major, minor, approvedBy, now, hasRevision ? 'revision' : 'new', itemsApproved);
+}
+
+/** Returns the latest version record for a given month, or null if none exists. */
+export function getLatestPriceListVersion(month: string): {
+  version_major: number;
+  version_minor: number;
+  version_str: string;
+  approved_by: string;
+  approved_at: string;
+  change_type: string;
+  items_count: number;
+} | null {
+  const db = database();
+  const row = db.prepare(`
+    SELECT version_major, version_minor, approved_by, approved_at, change_type, items_count
+    FROM price_list_versions
+    WHERE month = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(month) as {
+    version_major: number;
+    version_minor: number;
+    approved_by: string;
+    approved_at: string;
+    change_type: string;
+    items_count: number;
+  } | undefined;
+
+  if (!row) return null;
+  return {
+    ...row,
+    version_str: `V${row.version_major}.${row.version_minor}`,
+  };
+}
+
+/** Returns the full version history for a month, ordered oldest first. */
+export function getPriceListVersionHistory(month: string): Array<{
+  version_major: number;
+  version_minor: number;
+  version_str: string;
+  approved_by: string;
+  approved_at: string;
+  change_type: string;
+  items_count: number;
+}> {
+  const db = database();
+  const rows = db.prepare(`
+    SELECT version_major, version_minor, approved_by, approved_at, change_type, items_count
+    FROM price_list_versions
+    WHERE month = ?
+    ORDER BY id ASC
+  `).all(month) as Array<{
+    version_major: number;
+    version_minor: number;
+    approved_by: string;
+    approved_at: string;
+    change_type: string;
+    items_count: number;
+  }>;
+  return rows.map(r => ({ ...r, version_str: `V${r.version_major}.${r.version_minor}` }));
+}
+

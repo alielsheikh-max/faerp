@@ -27,10 +27,371 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
   const { item, supplierStats, monthStats, months, supplierNames, grid, sellingRows } = data;
   const visibleMonths = window === "all" ? months : months.slice(0, window as number);
 
+  // ── Gallery / Lightbox state ──────────────────────────────────────────────
+  const galleryImages: string[] = useMemo(() => {
+    const imagesStr = (item as any).images;
+    if (!imagesStr) return [];
+    try { return JSON.parse(imagesStr); } catch { return []; }
+  }, [item]);
+  
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIdx, setLightboxIdx] = useState(0);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+      if (e.key === "ArrowLeft") setLightboxIdx(i => (i - 1 + galleryImages.length) % galleryImages.length);
+      if (e.key === "ArrowRight") setLightboxIdx(i => (i + 1) % galleryImages.length);
+    };
+    globalThis.addEventListener("keydown", handler);
+    return () => globalThis.removeEventListener("keydown", handler);
+  }, [lightboxOpen, galleryImages.length]);
+
+  const renderGallery = () => {
+    if (galleryImages.length === 0) return null;
+    return (
+      <div style={{ padding: "0 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>
+          📷 {locale === "ar" ? "صور المنتج (انقر للعرض والتكبير)" : "Product Images (Click to zoom)"}
+        </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {galleryImages.map((src, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                setLightboxIdx(idx);
+                setLightboxOpen(true);
+              }}
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "8px",
+                overflow: "hidden",
+                border: "1.5px solid var(--border-medium)",
+                padding: 0,
+                cursor: "pointer",
+                background: "var(--bg-elevated)",
+                transition: "transform 0.2s ease, border-color 0.2s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "scale(1.05)";
+                e.currentTarget.style.borderColor = "var(--primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+                e.currentTarget.style.borderColor = "var(--border-medium)";
+              }}
+            >
+              <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderLightbox = () => {
+    if (!lightboxOpen) return null;
+    const lbPrev = () => setLightboxIdx(i => (i - 1 + galleryImages.length) % galleryImages.length);
+    const lbNext = () => setLightboxIdx(i => (i + 1) % galleryImages.length);
+    return (
+      <div
+        onClick={() => setLightboxOpen(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "rgba(0,0,0,0.9)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          animation: "fadeIn 0.2s ease",
+        }}
+      >
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(false)}
+          style={{
+            position: "absolute",
+            top: "20px",
+            insetInlineEnd: "24px",
+            background: "rgba(255,255,255,0.15)",
+            border: "none",
+            borderRadius: "50%",
+            width: "42px",
+            height: "42px",
+            cursor: "pointer",
+            fontSize: "20px",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backdropFilter: "blur(4px)",
+          }}
+        >✕</button>
+
+        {/* Prev */}
+        {galleryImages.length > 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); lbPrev(); }}
+            style={{
+              position: "absolute",
+              insetInlineStart: "24px",
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              borderRadius: "50%",
+              width: "48px",
+              height: "48px",
+              cursor: "pointer",
+              fontSize: "22px",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(4px)",
+            }}
+          >{locale === "ar" ? "›" : "‹"}</button>
+        )}
+
+        {/* Image */}
+        <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "85vw", maxHeight: "85vh", position: "relative" }}>
+          <img
+            src={galleryImages[lightboxIdx]}
+            alt=""
+            style={{
+              maxWidth: "85vw",
+              maxHeight: "85vh",
+              objectFit: "contain",
+              borderRadius: "12px",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
+              display: "block",
+            }}
+          />
+          {galleryImages.length > 1 && (
+            <div style={{
+              position: "absolute",
+              bottom: "-36px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              color: "rgba(255,255,255,0.7)",
+              fontSize: "13px",
+              fontWeight: 600,
+            }}>
+              {lightboxIdx + 1} / {galleryImages.length}
+            </div>
+          )}
+        </div>
+
+        {/* Next */}
+        {galleryImages.length > 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); lbNext(); }}
+            style={{
+              position: "absolute",
+              insetInlineEnd: "24px",
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              borderRadius: "50%",
+              width: "48px",
+              height: "48px",
+              cursor: "pointer",
+              fontSize: "22px",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(4px)",
+            }}
+          >{locale === "ar" ? "‹" : "›"}</button>
+        )}
+      </div>
+    );
+  };
+
+  if (role === "SA") {
+    const latestSelling = sellingRows[0];
+    const isLatestTiered = latestSelling && (latestSelling.tier_pricing_enabled || latestSelling.is_tiered);
+    const latestTiers = isLatestTiered ? (latestSelling.tierPrices || []) : [];
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {/* Item header */}
+        <div className="item-detail-header" style={{ display: "flex", alignItems: "center", gap: "14px", padding: "20px 24px", borderBottom: "1px solid var(--border-light)", background: "linear-gradient(135deg, rgba(99,102,241,0.06), transparent)" }}>
+          <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>📦</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "3px" }}>{item.category_name}</div>
+            <h2 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", margin: 0, lineHeight: 1.3 }}>{item.name}</h2>
+            <div style={{ display: "flex", gap: "8px", marginTop: "7px", flexWrap: "wrap" }}>
+              <span className="badge badge-strong">{item.unit}</span>
+              <span className={`badge ${item.active ? "badge-success" : "badge-danger"}`}>{item.active ? t("search.active") : t("search.inactive")}</span>
+              <span className="badge">{t("search.monthsCount").replace("{count}", String(sellingRows.length))}</span>
+            </div>
+          </div>
+          <Link
+            href={`/dashboard/admin/items/${item.id}`}
+            onClick={onClose}
+            className="button button-secondary"
+            style={{ fontSize: "12px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}
+          >
+            <span>{t("search.viewAll")}</span>
+          </Link>
+        </div>
+
+        {renderGallery()}
+
+        <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Approved Selling Price Card */}
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", marginBottom: "10px" }}>
+              {latestSelling ? formatMonthLabel(latestSelling.month) : t("search.latest")} — {locale === "ar" ? "أسعار البيع المعتمدة" : "Approved Selling Prices"}
+            </p>
+            {latestSelling ? (
+              <div style={{
+                padding: "16px",
+                borderRadius: "12px",
+                background: "var(--bg-elevated)",
+                border: "1.5px solid var(--border-medium)",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)"
+              }}>
+                {isLatestTiered ? (
+                  /* Tier prices layout */
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "8px" }}>
+                    {latestTiers.map((tier, idx) => {
+                      const colors = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
+                      return (
+                        <div key={tier.label} style={{
+                          padding: "10px",
+                          borderRadius: "8px",
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-light)",
+                          textAlign: "center"
+                        }}>
+                          <div style={{ fontSize: "10px", fontWeight: 800, color: colors[idx % colors.length], textTransform: "uppercase", marginBottom: "4px" }}>
+                            {tier.label}
+                          </div>
+                          <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--text-primary)" }}>
+                            {formatCurrency(tier.price)}
+                          </div>
+                          <div style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "2px" }}>
+                            {tier.range}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Single range / min-max layout */
+                  <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>MIN</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--success)", marginTop: "4px" }}>
+                        {formatCurrency(latestSelling.sell_min)}
+                      </div>
+                    </div>
+                    <div style={{ color: "var(--border-medium)", fontSize: "24px" }}>|</div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>MAX</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--primary)", marginTop: "4px" }}>
+                        {formatCurrency(latestSelling.sell_max)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ padding: "16px", borderRadius: "12px", background: "var(--bg-elevated)", border: "1px dashed var(--border)", textAlign: "center", color: "var(--text-muted)" }}>
+                {locale === "ar" ? "لا توجد أسعار بيع معتمدة لشهر البداية" : "No approved selling prices available"}
+              </div>
+            )}
+          </div>
+
+          {/* Historical selling prices table */}
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--text-secondary)", marginBottom: "10px" }}>
+              {locale === "ar" ? "سجل أسعار البيع المعتمدة" : "Approved Selling Price History"}
+            </p>
+            <div className="table-wrap" style={{ maxHeight: "260px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                <thead>
+                  <tr style={{ background: "var(--bg-elevated)" }}>
+                    <th style={{ padding: "8px 12px", textAlign: locale === "ar" ? "right" : "left", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2 }}>
+                      {locale === "ar" ? "الشهر" : "Month"}
+                    </th>
+                    <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2 }}>
+                      {locale === "ar" ? "النوع" : "Type"}
+                    </th>
+                    <th style={{ padding: "8px 12px", textAlign: locale === "ar" ? "left" : "right", fontWeight: 700, fontSize: "10px", textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 2 }}>
+                      {locale === "ar" ? "سعر البيع المعتمد" : "Approved Sell Prices"}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sellingRows.map((row) => {
+                    const isTiered = row.tier_pricing_enabled || row.is_tiered;
+                    const isApproved = row.approval_status === "approved";
+                    const sellMin = row.sell_min;
+                    const sellMax = row.sell_max;
+                    
+                    return (
+                      <tr key={row.month} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                          {formatMonthLabel(row.month)}
+                          {!isApproved && (
+                            <span className="badge" style={{ backgroundColor: "var(--warning-light)", color: "var(--warning)", fontSize: "9px", marginInlineStart: "6px" }}>
+                              {locale === "ar" ? "قيد المراجعة" : "Pending"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
+                          <span className="badge badge-strong" style={{ fontSize: "10px" }}>
+                            {isTiered ? (locale === "ar" ? "شرائح" : "TIERS") : (locale === "ar" ? "نطاق" : "RANGE")}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: locale === "ar" ? "left" : "right", whiteSpace: "nowrap" }}>
+                          {isTiered ? (
+                            /* Render summary of tiers */
+                            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                              {(row.tierPrices || []).map((t: any, ti: number) => {
+                                const colors = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)"];
+                                return (
+                                  <span key={t.label} style={{ fontSize: "11px", fontWeight: 700 }}>
+                                    <span style={{ color: colors[ti % colors.length], marginInlineEnd: "2px" }}>{t.label}:</span>
+                                    {formatCurrency(t.price)}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            /* Render Min/Max selling price */
+                            <div style={{ fontWeight: 700 }}>
+                              <span style={{ color: "var(--success)" }}>{formatCurrency(sellMin)}</span>
+                              <span style={{ color: "var(--text-muted)", margin: "0 4px" }}>–</span>
+                              <span style={{ color: "var(--primary)" }}>{formatCurrency(sellMax)}</span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {renderLightbox()}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* Item header */}
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", padding: "20px 24px", borderBottom: "1px solid var(--border-light)", background: "linear-gradient(135deg, rgba(99,102,241,0.06), transparent)" }}>
+      <div className="item-detail-header" style={{ display: "flex", alignItems: "center", gap: "14px", padding: "20px 24px", borderBottom: "1px solid var(--border-light)", background: "linear-gradient(135deg, rgba(99,102,241,0.06), transparent)" }}>
         <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>📦</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "var(--primary)", marginBottom: "3px" }}>{item.category_name}</div>
@@ -70,6 +431,8 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
           <span>{t("search.viewAll")}</span>
         </Link>
       </div>
+
+      {renderGallery()}
 
       <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
         {/* Current supplier prices */}
@@ -119,7 +482,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
                   <strong style={{ color: "var(--success)" }}>{formatCurrency(s.sell_min)}</strong>
                   <span style={{ color: "var(--text-muted)" }}>→</span>
                   <strong style={{ color: "var(--primary)" }}>{formatCurrency(s.sell_max)}</strong>
-                  <span className="badge badge-strong" style={{ fontSize: "9px", marginLeft: "auto", marginRight: "auto" }}>{s.strategy.toUpperCase()}</span>
+                  <span className="badge badge-strong" style={{ fontSize: "9px", marginLeft: "auto", marginRight: "auto" }}>{(s.strategy || "—").toUpperCase()}</span>
                 </div>
               ))}
             </div>
@@ -205,6 +568,7 @@ function ItemDetail({ data, role, onClose }: { data: NonNullable<ItemCardData>; 
               </tbody>
             </table>
           </div>
+          {renderLightbox()}
         </div>
       </div>
     </div>
@@ -226,7 +590,7 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
     <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
       {/* Header */}
       <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--border-light)", background: "linear-gradient(135deg, rgba(59,130,246,0.07), transparent)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
+        <div className="supplier-detail-header" style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
           <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🏭</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", color: "#3b82f6", marginBottom: "3px" }}>{t("search.supplierCard")}</div>
@@ -254,7 +618,7 @@ function SupplierDetail({ data, role, onClose }: { data: NonNullable<SupplierCar
         </div>
 
         {/* KPI row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px", marginTop: "14px" }}>
+        <div className="supplier-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px", marginTop: "14px" }}>
           {[
             { label: t("search.avgVsMarket"), value: `${avgDev > 0 ? "+" : ""}${avgDev.toFixed(1)}%`, color: avgDev < -1 ? "var(--success)" : avgDev > 1 ? "var(--danger)" : "var(--text-secondary)" },
             { label: t("search.bestPriceItems"), value: `${itemStats.filter(i => i.avgDeviation < 0).length} / ${itemStats.length}`, color: "var(--success)" },
@@ -459,10 +823,11 @@ export default function UniversalSearch({ index, role }: { index: SearchIndex; r
       {/* ── Full-screen modal ── */}
       {open && mounted && createPortal(
         <div
+          className="universal-search-overlay"
           onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
           style={{ position: "fixed", inset: 0, background: "rgba(6,9,15,0.75)", backdropFilter: "blur(8px)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 4000, padding: "60px 20px 20px", animation: "fadeIn 0.15s ease-out" }}
         >
-          <div style={{ width: "100%", maxWidth: card ? "860px" : "580px", transition: "max-width 300ms ease", display: "flex", flexDirection: "column", gap: "0", background: "var(--bg-surface)", border: "1px solid var(--border-medium)", borderRadius: "16px", boxShadow: "var(--shadow-xl)", maxHeight: "80vh", overflow: "hidden", animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)" }}>
+          <div className="universal-search-content" style={{ width: "100%", maxWidth: card ? "860px" : "580px", transition: "max-width 300ms ease", display: "flex", flexDirection: "column", gap: "0", background: "var(--bg-surface)", border: "1px solid var(--border-medium)", borderRadius: "16px", boxShadow: "var(--shadow-xl)", maxHeight: "80vh", overflow: "hidden", animation: "slideUp 0.22s cubic-bezier(0.16,1,0.3,1)" }}>
 
             {/* Search input bar */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 18px", borderBottom: "1px solid var(--border-light)", flexShrink: 0 }}>

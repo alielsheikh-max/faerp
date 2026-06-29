@@ -150,6 +150,8 @@ function printWindow(html: string, title: string, isRTL?: boolean) {
       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
       .highlight-row td{background:#f0f9ff}
       .pending-row td{background:#fffbeb}
+      .num-col{width:30px;text-align:center;font-weight:800;color:#1e3a8a;font-variant-numeric:tabular-nums;}
+      .moq-badge{display:inline-block;padding:2px 6px;background:#fffbeb;border:1px solid #f59e0b;border-radius:4px;font-size:9px;font-weight:700;color:#92400e;}
       @media print{body{padding:20px 28px}@page{margin:1.5cm;size:A4 landscape}}
     </style>
   </head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
@@ -297,38 +299,68 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
     }
 
     case "selling_price_list": {
-      const { catalog } = data;
+      const { catalog, version } = data;
       const byCategory: Record<string, any[]> = {};
       for (const row of catalog) {
         if (!byCategory[row.category_name]) byCategory[row.category_name] = [];
         byCategory[row.category_name].push(row);
       }
       const isSA = role === "SA";
-      const catHtml = Object.entries(byCategory).map(([cat, rows]) => {
-        const rowsHtml = rows.map((r: any) => r.sell_min !== null ? `<tr class="highlight-row">
-          <td>${r.item_name}</td><td class="muted">${r.unit}</td>
-          <td class="num best">${formatCurrency(r.sell_min)}</td>
-          <td class="num" style="color:#6366f1;font-weight:800">${formatCurrency(r.sell_max)}</td>
+      const tableRowsHtml = Object.entries(byCategory).map(([cat, rows]) => {
+        const categoryHeaderRow = `<tr>
+          <td colspan="${isSA ? 5 : 6}" style="background:#f1f5f9;font-weight:800;font-size:13px;padding:10px 12px;color:#1e293b;border-bottom:2px solid #cbd5e1;text-align:${isAr ? "right" : "left"};">
+            📁 ${cat}
+          </td>
+        </tr>`;
+
+        const rowsHtml = rows.map((r: any, idx: number) => r.sell_min !== null ? `<tr class="highlight-row">
+          <td class="num-col">${idx + 1}</td>
+          <td style="max-width:260px;font-weight:600;text-align:${isAr ? "right" : "left"};">${r.item_name}</td>
+          <td class="muted" style="text-align:center">${r.unit}</td>
+          <td style="text-align:center"><span class="moq-badge">${r.moq ?? 0} ${r.unit}</span></td>
+          <td style="text-align:left;vertical-align:middle">${rpt_tierPriceHtml(r)}</td>
           ${isSA ? "" : `<td style="text-align:center"><span class="badge">${(r.strategy || "").toUpperCase()}</span></td>`}
-        </tr>` : `<tr class="pending-row"><td>${r.item_name}</td><td class="muted">${r.unit}</td><td colspan="${isSA ? "2" : "3"}" class="muted" style="text-align:center">${isAr ? "قيد الانتظار" : "Pending"}</td></tr>`).join("");
-        const strategyHeader = isSA ? "" : `<th style="text-align:center">${isAr ? "الاستراتيجية" : "Strategy"}</th>`;
-        return `<div class="cat-header">${cat}</div><table><thead><tr><th>${isAr ? "الصنف" : "Item"}</th><th>${isAr ? "الوحدة" : "Unit"}</th><th class="num">${isAr ? "أدنى سعر بيع" : "Min Sell"}</th><th class="num">${isAr ? "أقصى سعر بيع" : "Max Sell"}</th>${strategyHeader}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+        </tr>` : `<tr class="pending-row">
+          <td class="num-col">${idx + 1}</td>
+          <td style="text-align:${isAr ? "right" : "left"};">${r.item_name}</td>
+          <td class="muted" style="text-align:center">${r.unit}</td>
+          <td style="text-align:center"><span class="moq-badge">${r.moq ?? 0} ${r.unit}</span></td>
+          <td colspan="${isSA ? "1" : "2"}" class="muted" style="text-align:center">${isAr ? "قيد الانتظار" : "Pending"}</td>
+        </tr>`).join("");
+
+        return categoryHeaderRow + rowsHtml;
       }).join("");
+
+      const strategyHeader = isSA ? "" : `<th style="text-align:center">${isAr ? "الاستراتيجية" : "Strategy"}</th>`;
+      const catHtml = `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+        <th class="num-col" style="text-align:center">#</th>
+        <th style="text-align:${isAr ? "right" : "left"}">${isAr ? "الصنف" : "Item"}</th>
+        <th style="text-align:center">${isAr ? "الوحدة" : "Unit"}</th>
+        <th style="text-align:center">${isAr ? "الحد الأدنى للطلب" : "MOQ"}</th>
+        <th style="text-align:${isAr ? "right" : "left"}">${isAr ? "الأسعار المعتمدة" : "Approved Prices"}</th>
+        ${strategyHeader}
+      </tr></thead><tbody>${tableRowsHtml}</tbody></table>`;
       const published = catalog.filter((r: any) => r.sell_min !== null).length;
       const uniqueCategories = new Set(catalog.map((r: any) => r.category_name)).size;
       const monthLabel = startMonth === endMonth ? formatMonthLabel(startMonth) : `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
+      
+      // Version — always show (empty placeholder if no approvals yet)
+      const versionStr = version ? version.version_str : (isAr ? "لا يوجد" : "—");
+      const versionBy  = version ? `${isAr ? "اعتمده" : "Approved by"}: ${version.approved_by}` : (isAr ? "لم يُعتمد بعد" : "Pending Approval");
+      const versionBadge = `<div style="margin:0 0 14px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:10px;font-weight:700;color:#0369a1">📄 ${isAr ? "إصدار التقرير" : "Report Version"}: <strong style="font-size:13px">${versionStr}</strong>&nbsp;·&nbsp;${versionBy}</div>`;
+
       const statsObj = {
         [isAr ? "الأصناف المنشورة" : "Published Items"]: published,
         [isAr ? "الإجمالي" : "Total Items"]: catalog.length,
-        [isAr ? "الفترة الزمنية" : "Period"]: monthLabel,
         [isAr ? "فئات المنتجات" : "Categories"]: uniqueCategories,
+        [isAr ? "إصدار التقرير" : "Report Version"]: versionStr,
       };
       const html = `<body${bodyClass}>${header(
         isAr ? "قائمة أسعار البيع المعتمدة" : "Approved Selling Price List",
         monthLabel,
         month,
         statsObj
-      )}${catHtml}${footer(username)}</body>`;
+      )}${versionBadge}${catHtml}${footer(username)}</body>`;
       printWindow(html, `Selling Prices - ${month}`, isAr);
       break;
     }
@@ -447,35 +479,51 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
     }
 
     case "sales_catalog": {
-      const { catalog } = data;
+      const { catalog, version } = data;
       const published = catalog.filter((r: any) => r.sell_min !== null);
       const byCategory: Record<string, any[]> = {};
       for (const row of published) {
         if (!byCategory[row.category_name]) byCategory[row.category_name] = [];
         byCategory[row.category_name].push(row);
       }
-      const catHtml = Object.entries(byCategory).map(([cat, rows]) => {
-        const rowsHtml = rows.map((r: any) => `<tr class="highlight-row">
-          <td style="max-width:260px;font-weight:600">${r.item_name}</td>
-          <td class="muted">${r.unit}</td>
+      const tableRowsHtml = Object.entries(byCategory).map(([cat, rows]) => {
+        const categoryHeaderRow = `<tr>
+          <td colspan="5" style="background:#f1f5f9;font-weight:800;font-size:13px;padding:10px 12px;color:#1e293b;border-bottom:2px solid #cbd5e1;text-align:${isAr ? "right" : "left"};">
+            📁 ${cat}
+          </td>
+        </tr>`;
+
+        const rowsHtml = rows.map((r: any, idx: number) => `<tr class="highlight-row">
+          <td class="num-col">${idx + 1}</td>
+          <td style="max-width:260px;font-weight:600;text-align:${isAr ? "right" : "left"};">${r.item_name}</td>
+          <td class="muted" style="text-align:center">${r.unit}</td>
+          <td style="text-align:center"><span class="moq-badge">${r.moq ?? 0} ${r.unit}</span></td>
           <td style="text-align:left;vertical-align:middle">${rpt_tierPriceHtml(r)}</td>
         </tr>`).join("");
-        return `<div class="cat-header">${cat}</div><table>
-          <thead><tr>
-            <th>${isAr ? "المنتج" : "Product"}</th>
-            <th>${isAr ? "الوحدة" : "Unit"}</th>
-            <th>${isAr ? "الأسعار المعتمدة" : "Approved Prices"}</th>
-          </tr></thead><tbody>${rowsHtml}</tbody></table>`;
+
+        return categoryHeaderRow + rowsHtml;
       }).join("");
+
+      const catHtml = `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+        <th class="num-col" style="text-align:center">#</th>
+        <th style="text-align:${isAr ? "right" : "left"}">${isAr ? "المنتج" : "Product"}</th>
+        <th style="text-align:center">${isAr ? "الوحدة" : "Unit"}</th>
+        <th style="text-align:center">${isAr ? "الحد الأدنى للطلب" : "MOQ"}</th>
+        <th style="text-align:${isAr ? "right" : "left"}">${isAr ? "الأسعار المعتمدة" : "Approved Prices"}</th>
+      </tr></thead><tbody>${tableRowsHtml}</tbody></table>`;
 
       const uniqueCategories = new Set(published.map((r: any) => r.category_name)).size;
       const monthLabel = startMonth === endMonth ? formatMonthLabel(startMonth) : `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
 
+      // Version — always show (empty placeholder if no approvals yet)
+      const versionStr = version ? version.version_str : (isAr ? "لا يوجد" : "—");
+      const versionBy  = version ? `${isAr ? "اعتمده" : "Approved by"}: ${version.approved_by}` : (isAr ? "لم يُعتمد بعد" : "Pending Approval");
+      const versionBadge = `<div style="margin:0 0 14px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:10px;font-weight:700;color:#0369a1">📄 ${isAr ? "إصدار التقرير" : "Report Version"}: <strong style="font-size:13px">${versionStr}</strong>&nbsp;·&nbsp;${versionBy}</div>`;
+
       const statsObj = {
         [isAr ? "الأصناف المتاحة" : "Available Items"]: published.length,
-        [isAr ? "الفترة الزمنية" : "Period"]: monthLabel,
         [isAr ? "فئات المنتجات" : "Categories"]: uniqueCategories,
-        [isAr ? "حالة الكتالوج" : "Catalog Status"]: isAr ? "معتمد" : "Approved"
+        [isAr ? "إصدار التقرير" : "Report Version"]: versionStr,
       };
 
       const html = `<body${bodyClass}>${header(
@@ -483,7 +531,7 @@ async function generateReport(presetId: string, startMonth: string, endMonth: st
         monthLabel, month,
         statsObj
       )}<p style="color:#6b7280;font-size:11px;margin-bottom:16px">${isAr ? "جميع الأسعار بالجنيه المصري · للاستخدام الداخلي فقط" : "All prices in EGP · For internal use only"}</p>
-      ${catHtml}${footer(username)}</body>`;
+      ${versionBadge}${catHtml}${footer(username)}</body>`;
       printWindow(html, `Sales Catalog - ${month}`, isAr);
       break;
     }
@@ -558,43 +606,26 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
       } else if (presetId === "selling_price_list") {
         const { catalog } = data;
         const isSA = role === "SA";
-        if (isSA) {
-          headers = [
-            isAr ? "الفئة" : "Category",
-            isAr ? "الصنف" : "Item",
-            isAr ? "الوحدة" : "Unit",
-            isAr ? "أدنى سعر بيع" : "Min Sell",
-            isAr ? "أقصى سعر بيع" : "Max Sell",
-            isAr ? "الحالة" : "Status"
-          ];
-          rows = catalog.map((r: any) => [
-            r.category_name,
-            r.item_name,
-            r.unit,
-            r.sell_min !== null ? r.sell_min : "",
-            r.sell_max !== null ? r.sell_max : "",
-            r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
-          ]);
-        } else {
-          headers = [
-            isAr ? "الفئة" : "Category",
-            isAr ? "الصنف" : "Item",
-            isAr ? "الوحدة" : "Unit",
-            isAr ? "أدنى سعر بيع" : "Min Sell",
-            isAr ? "أقصى سعر بيع" : "Max Sell",
-            isAr ? "الاستراتيجية" : "Strategy",
-            isAr ? "الحالة" : "Status"
-          ];
-          rows = catalog.map((r: any) => [
-            r.category_name,
-            r.item_name,
-            r.unit,
-            r.sell_min !== null ? r.sell_min : "",
-            r.sell_max !== null ? r.sell_max : "",
-            r.strategy || "",
-            r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
-          ]);
-        }
+        headers = [
+          "#",
+          isAr ? "الفئة" : "Category",
+          isAr ? "الصنف" : "Item",
+          isAr ? "الوحدة" : "Unit",
+          isAr ? "الحد الأدنى للطلب" : "MOQ",
+          isAr ? "الأسعار المعتمدة" : "Approved Prices",
+          ...(isSA ? [] : [isAr ? "الاستراتيجية" : "Strategy"]),
+          isAr ? "الحالة" : "Status"
+        ];
+        rows = catalog.map((r: any, idx: number) => [
+          idx + 1,
+          r.category_name,
+          r.item_name,
+          r.unit,
+          `${r.moq ?? 0} ${r.unit}`,
+          rpt_tierPriceText(r),
+          ...(isSA ? [] : [r.strategy || ""]),
+          r.sell_min !== null ? (isAr ? "منشور" : "Published") : (isAr ? "قيد الانتظار" : "Pending")
+        ]);
       } else if (presetId === "supplier_comparison") {
         const { comparisonRows, suppliers } = data;
         headers = [
@@ -670,16 +701,20 @@ export default function ReportGenerator({ role, username, dashboardMonth }: { ro
         const { catalog } = data;
         const published = catalog.filter((r: any) => r.sell_min !== null);
         headers = [
+          "#",
           isAr ? "الفئة" : "Category",
           isAr ? "المنتج" : "Product",
           isAr ? "الوحدة" : "Unit",
+          isAr ? "الحد الأدنى للطلب" : "MOQ",
           isAr ? "الأسعار المعتمدة" : "Approved Prices",
           isAr ? "نوع التسعير" : "Price Type",
         ];
-        rows = published.map((r: any) => [
+        rows = published.map((r: any, idx: number) => [
+          idx + 1,
           r.category_name,
           r.item_name,
           r.unit,
+          `${r.moq ?? 0} ${r.unit}`,
           rpt_tierPriceText(r),
           r.is_tiered === 1 && r.buy_avg
             ? (isAr ? "تسعير بالحجم" : "Volume Tier")

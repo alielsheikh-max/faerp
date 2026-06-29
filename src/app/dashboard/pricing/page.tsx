@@ -89,7 +89,7 @@ export default function ItemPricingPage({ searchParams }: { searchParams?: Searc
       />
 
       {/* ── Compact 3-chip toolbar ──────────────────────────────────────────── */}
-      <div style={{
+      <div className="pricing-toolbar" style={{
         display: "grid",
         gridTemplateColumns: "1fr 1fr 1fr",
         gap: "10px",

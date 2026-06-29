@@ -5,6 +5,7 @@ import { useState, useTransition, useEffect } from "react";
 import { formatCurrency, formatMonthLabel, shiftMonth } from "@/lib/format";
 import { applyCategoryMarkupAction, publishSellingPriceAction } from "@/app/actions/pricing";
 import { useI18n } from "@/lib/i18n-context";
+import { useRouter } from "next/navigation";
 
 type Category = { id: number; name: string };
 type Item = {
@@ -48,6 +49,7 @@ export default function CategoryMarkupPanel({
 }: Props) {
   const { t, locale } = useI18n();
   const isAr = locale === "ar";
+  const router = useRouter();
 
   const [categoryId, setCategoryId] = useState<string>(
     defaultCategoryId || (categories[0]?.id ? String(categories[0].id) : "")
@@ -68,15 +70,16 @@ export default function CategoryMarkupPanel({
   type ItemState = {
     itemId: number;
     checked: boolean;
-    transportation: number;
-    tier1_discount: number;
-    tier2_discount: number;
-    tier3_discount: number;
-    tier4_discount: number;
+    transportation: string | number;
+    tier1_discount: string | number;
+    tier2_discount: string | number;
+    tier3_discount: string | number;
+    tier4_discount: string | number;
   };
   const [itemStates, setItemStates] = useState<Record<number, ItemState>>({});
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
-  const [submitSuccessId, setSubmitSuccessId] = useState<number | null>(null);
+  const [submitSuccessItem, setSubmitSuccessItem] = useState<{ id: number; name: string } | null>(null);
+  const [noChangeItem, setNoChangeItem] = useState<{ id: number; name: string } | null>(null);
 
   const selectedCat = categories.find(c => String(c.id) === categoryId);
 
@@ -133,8 +136,8 @@ export default function CategoryMarkupPanel({
         const next = { ...prev };
         let changed = false;
         for (const itemId in next) {
-          if (next[itemId].checked && next[itemId].tier1_discount !== dVal) {
-            next[itemId] = { ...next[itemId], tier1_discount: dVal };
+          if (next[itemId].checked && parseFloat(next[itemId].tier1_discount as any) !== dVal) {
+            next[itemId] = { ...next[itemId], tier1_discount: divisor };
             changed = true;
           }
         }
@@ -147,13 +150,9 @@ export default function CategoryMarkupPanel({
     setItemStates(prev => {
       const next = { ...prev };
       if (next[itemId]) {
-        let num = parseFloat(val) || 0;
-        if (field !== "transportation") {
-          num = Math.round(num * 100) / 100;
-        }
         next[itemId] = {
           ...next[itemId],
-          [field]: num,
+          [field]: val,
         };
       }
       return next;
@@ -176,15 +175,38 @@ export default function CategoryMarkupPanel({
   const handlePublishSingleItem = async (itemId: number) => {
     const state = itemStates[itemId];
     if (!state) return;
-    
+    const itemObj = items.find(i => i.id === itemId);
+
+    // Guard: detect if nothing has changed vs saved entry
+    const existingSp = salesCatalog?.find((s: any) => s.item_id === itemId);
+    if (existingSp) {
+      const round4 = (v: any) => Math.round(parseFloat(String(v)) * 10000) / 10000;
+      const same =
+        round4(state.tier1_discount) === round4(existingSp.tier1_discount) &&
+        round4(state.tier2_discount) === round4(existingSp.tier2_discount) &&
+        round4(state.tier3_discount) === round4(existingSp.tier3_discount) &&
+        round4(state.tier4_discount) === round4(existingSp.tier4_discount) &&
+        round4(state.transportation)  === round4(existingSp.transportation);
+      if (same) {
+        setNoChangeItem({ id: itemId, name: itemObj?.name || String(itemId) });
+        return;
+      }
+    }
+
     setError(null);
     const fd = new FormData();
     fd.set("itemId", String(itemId));
     fd.set("month", month);
     fd.set("strategy", strategy);
-    fd.set("markupType", markupType === "divisor" ? "divisor" : markupType === "amount" ? "amount" : "percent");
-    fd.set("markupMin", String(state.tier1_discount));
-    fd.set("markupMax", String(state.tier2_discount));
+    const mType = markupType === "divisor" ? "divisor" : markupType === "amount" ? "amount" : "percent";
+    fd.set("markupType", mType);
+    if (mType === "divisor") {
+      fd.set("markupMin", String(state.tier2_discount));
+      fd.set("markupMax", String(state.tier1_discount));
+    } else {
+      fd.set("markupMin", String(state.tier1_discount));
+      fd.set("markupMax", String(state.tier2_discount));
+    }
     fd.set("createdBy", username || "SC Manager");
     fd.set("tierPricingEnabled", "on");
     fd.set("transportOverride", String(state.transportation));
@@ -200,7 +222,8 @@ export default function CategoryMarkupPanel({
     try {
       const res = await publishSellingPriceAction(fd);
       if (res?.ok) {
-        setSubmitSuccessId(itemId);
+        setSubmitSuccessItem({ id: itemId, name: itemObj?.name || String(itemId) });
+        router.refresh();
       } else {
         alert(res?.error || (isAr ? "فشل التقديم للاعتماد" : "Failed to submit for approval"));
       }
@@ -276,11 +299,11 @@ export default function CategoryMarkupPanel({
       const itemsData = Object.values(itemStates).map(s => ({
         itemId: s.itemId,
         checked: s.checked,
-        transportation: s.transportation,
-        tier1Discount: s.tier1_discount,
-        tier2Discount: s.tier2_discount,
-        tier3Discount: s.tier3_discount,
-        tier4Discount: s.tier4_discount,
+        transportation: parseFloat(s.transportation as string) || 0,
+        tier1Discount: parseFloat(s.tier1_discount as string) || 0,
+        tier2Discount: parseFloat(s.tier2_discount as string) || 0,
+        tier3Discount: parseFloat(s.tier3_discount as string) || 0,
+        tier4Discount: parseFloat(s.tier4_discount as string) || 0,
       }));
       fd.set("itemsData", JSON.stringify(itemsData));
 
@@ -292,6 +315,7 @@ export default function CategoryMarkupPanel({
           skipped: res.skipped ?? 0,
           errors: res.errors || [],
         });
+        router.refresh();
       } else {
         setError(res.error || (isAr ? "فشل تطبيق الهامش." : "Failed to apply markup."));
       }
@@ -325,7 +349,7 @@ export default function CategoryMarkupPanel({
       </div>
 
       {/* Form grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+      <div className="category-pricing-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
         {/* Category */}
         <label className="field" style={{ gridColumn: "1 / -1" }}>
           <span>{isAr ? "الفئة المستهدفة" : "Target Category"}</span>
@@ -456,7 +480,7 @@ export default function CategoryMarkupPanel({
         gap: "12px",
         marginTop: "-6px"
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", flexDirection: isAr ? "row-reverse" : "row" }}>
+        <div className="category-pricing-volume-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", flexDirection: isAr ? "row-reverse" : "row" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexDirection: isAr ? "row-reverse" : "row" }}>
             <span style={{ fontSize: "18px" }}>⚡</span>
             <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -479,7 +503,7 @@ export default function CategoryMarkupPanel({
           </div>
 
           {/* Search bar */}
-          <div style={{ flex: 1, maxWidth: "340px", position: "relative", margin: "0 12px" }}>
+          <div className="category-pricing-search-wrap" style={{ flex: 1, maxWidth: "340px", position: "relative", margin: "0 12px" }}>
             <span style={{ position: "absolute", left: isAr ? "auto" : "10px", right: isAr ? "10px" : "auto", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontSize: "12px", pointerEvents: "none" }}>🔍</span>
             <input
               type="text"
@@ -522,7 +546,7 @@ export default function CategoryMarkupPanel({
             )}
           </div>
 
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700 }}>
+          <div className="category-pricing-highlight-label" style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700 }}>
             {strategy === "min" ? (isAr ? "مظلل: السعر الأدنى" : "Highlighted: Min Price") : strategy === "max" ? (isAr ? "مظلل: السعر الأقصى" : "Highlighted: Max Price") : strategy === "fav" ? (isAr ? "مظلل: المورد الموصى به" : "Highlighted: Recommended Supplier") : (isAr ? "مظلل: متوسط السعر" : "Highlighted: Avg Price")}
           </div>
         </div>
@@ -578,6 +602,12 @@ export default function CategoryMarkupPanel({
                   tier3_discount: item.tier3_discount || 0.85,
                   tier4_discount: item.tier4_discount || 0.89,
                 };
+
+                const existingSp = salesCatalog?.find(s => s.item_id === item.id);
+                const hasPricingRecord = existingSp && existingSp.strategy !== null;
+                const isPendingApproval = hasPricingRecord && existingSp.approval_status === "pending";
+                const isApproved = hasPricingRecord && existingSp.approval_status === "approved";
+                const isReconsidered = hasPricingRecord && existingSp.approval_status === "reconsidered";
 
                 const itemQuotes = priceEntries
                   .filter(pe => pe.item_id === item.id && pe.month === month && pe.price > 0)
@@ -637,7 +667,9 @@ export default function CategoryMarkupPanel({
                   return Math.ceil(raw / 5) * 5;
                 };
 
-                const getTierPrice = (div: number, transport: number) => {
+                const getTierPrice = (divVal: any, transportVal: any) => {
+                  const div = parseFloat(divVal) || 0;
+                  const transport = parseFloat(transportVal) || 0;
                   if (costBase <= 0 || div <= 0) return 0;
                   const raw = div < 1 
                     ? (costBase / div) + transport
@@ -649,7 +681,7 @@ export default function CategoryMarkupPanel({
                 const t2Max = item.tier2_max ?? 200;
                 const t3Max = item.tier3_max ?? 300;
                 
-                const has4 = itemState.tier4_discount > 0 || (item.tier4_discount && item.tier4_discount > 0);
+                const has4 = (parseFloat(itemState.tier4_discount as string) || 0) > 0 || (item.tier4_discount && item.tier4_discount > 0);
 
                 const tierCells = [
                   { label: isAr ? `T1 (١-${t1Max})` : `T1 (1-${t1Max})`, val: itemState.tier1_discount, field: "tier1_discount", color: "var(--success)" },
@@ -672,7 +704,7 @@ export default function CategoryMarkupPanel({
                     position: "relative",
                   }}>
                     {/* Checkbox and header */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                    <div className="category-pricing-item-header" style={{ display: "flex", alignItems: "center", gap: "10px", flexDirection: isAr ? "row-reverse" : "row" }}>
                       <input
                         type="checkbox"
                         checked={itemState.checked}
@@ -690,6 +722,38 @@ export default function CategoryMarkupPanel({
                       >
                         {item.name}
                       </span>
+
+                      {/* Status Badges */}
+                      {isPendingApproval && (
+                        <span className="badge" style={{
+                          fontSize: "10px", padding: "2px 8px", fontWeight: 700,
+                          background: "rgba(245,158,11,0.12)", color: "var(--warning)",
+                          border: "1.5px solid rgba(245,158,11,0.3)", borderRadius: "6px",
+                          display: "inline-flex", alignItems: "center", gap: "3px"
+                        }}>
+                          ⏳ {isAr ? "مقدم للاعتماد" : "Submitted for Approval"}
+                        </span>
+                      )}
+                      {isApproved && (
+                        <span className="badge" style={{
+                          fontSize: "10px", padding: "2px 8px", fontWeight: 700,
+                          background: "rgba(16,185,129,0.12)", color: "var(--success)",
+                          border: "1.5px solid rgba(16,185,129,0.3)", borderRadius: "6px",
+                          display: "inline-flex", alignItems: "center", gap: "3px"
+                        }}>
+                          ✓ {isAr ? "منشور" : "Published"}
+                        </span>
+                      )}
+                      {isReconsidered && (
+                        <span className="badge" style={{
+                          fontSize: "10px", padding: "2px 8px", fontWeight: 700,
+                          background: "rgba(239,68,68,0.12)", color: "var(--danger)",
+                          border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: "6px",
+                          display: "inline-flex", alignItems: "center", gap: "3px"
+                        }}>
+                          ⚠️ {isAr ? "معاد للنظر" : "Reconsidered"}
+                        </span>
+                      )}
                       
                       <span className="badge badge-strong" style={{ fontSize: "9px" }}>{item.unit}</span>
                       
@@ -838,7 +902,7 @@ export default function CategoryMarkupPanel({
                     </div>
 
                     {/* Tier grid */}
-                    <div style={{ display: "grid", gridTemplateColumns: `repeat(${tierCells.length}, 1fr)`, gap: "8px" }}>
+                    <div className="category-pricing-item-tier-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${tierCells.length}, 1fr)`, gap: "8px" }}>
                       {tierCells.map((tc, idx) => {
                         const prevPrice = getPrevTierPrice(idx);
                         const newPrice = getTierPrice(tc.val, itemState.transportation);
@@ -999,8 +1063,79 @@ export default function CategoryMarkupPanel({
       >
         {pending ? (isAr ? "⏳ جاري التقديم..." : "⏳ Submitting…") : (isAr ? "⚡ تقديم جميع أصناف الفئة للاعتماد" : `⚡ Submit All Items in Category for Approval`)}
       </button>
+      {/* No-Change Notification Modal */}
+      {noChangeItem !== null && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.50)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+        }}>
+          <div className="animate-scale-in" style={{
+            background: "var(--bg-elevated)",
+            borderRadius: "16px",
+            border: "1.5px solid var(--warning, #f59e0b)",
+            boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+            padding: "36px 32px",
+            width: "100%",
+            maxWidth: "420px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+          }}>
+            {/* Icon */}
+            <div style={{
+              width: "64px", height: "64px", borderRadius: "50%",
+              background: "rgba(245,158,11,0.12)",
+              border: "2px solid var(--warning, #f59e0b)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: "18px",
+              fontSize: "30px",
+            }}>
+              ⚠️
+            </div>
+
+            <h3 style={{ fontSize: "17px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "6px" }}>
+              {isAr ? "لا يوجد تغيير في السعر" : "No Price Change Detected"}
+            </h3>
+
+            {/* Item name pill */}
+            <div style={{
+              margin: "8px auto 14px",
+              padding: "6px 14px",
+              borderRadius: "999px",
+              background: "rgba(245,158,11,0.10)",
+              border: "1.5px solid rgba(245,158,11,0.35)",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "var(--warning, #f59e0b)",
+              maxWidth: "360px",
+              lineHeight: 1.5,
+            }}>
+              📦 {noChangeItem.name}
+            </div>
+
+            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "320px", margin: "0 auto 24px", lineHeight: 1.6 }}>
+              {isAr
+                ? "الأسعار والإعدادات المدخلة مطابقة للقيم المحفوظة مسبقاً. لا يوجد ما يستدعي إعادة التقديم."
+                : "The divisors and transport for this item are identical to the currently saved values. There is nothing new to submit for approval."
+              }
+            </p>
+
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => setNoChangeItem(null)}
+              style={{ padding: "8px 32px", fontSize: "13px", cursor: "pointer", minWidth: "120px", fontWeight: 700 }}
+            >
+              {isAr ? "حسناً" : "OK"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Success Modal Overlay */}
-      {submitSuccessId !== null && (
+      {submitSuccessItem !== null && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 1000,
           background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
@@ -1011,9 +1146,9 @@ export default function CategoryMarkupPanel({
             borderRadius: "16px",
             border: "1.5px solid var(--success)",
             boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
-            padding: "40px 32px",
+            padding: "36px 32px",
             width: "100%",
-            maxWidth: "380px",
+            maxWidth: "440px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -1024,26 +1159,42 @@ export default function CategoryMarkupPanel({
               width: "64px", height: "64px", borderRadius: "50%",
               background: "var(--success-light)", border: "2px solid var(--success)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              marginBottom: "20px", boxShadow: "var(--glow-success)",
+              marginBottom: "18px", boxShadow: "var(--glow-success)",
             }}>
               <span style={{ fontSize: "32px", color: "var(--success)", fontWeight: "bold" }}>✓</span>
             </div>
 
-            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "8px" }}>
+            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "6px" }}>
               {isAr ? "تم التقديم للاعتماد" : "Submitted for Approval"}
             </h3>
 
-            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "300px", margin: "0 auto 24px", lineHeight: 1.6 }}>
+            {/* Item name pill */}
+            <div style={{
+              margin: "8px auto 16px",
+              padding: "6px 14px",
+              borderRadius: "999px",
+              background: "rgba(16,185,129,0.10)",
+              border: "1.5px solid rgba(16,185,129,0.30)",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "var(--success)",
+              maxWidth: "360px",
+              lineHeight: 1.5,
+            }}>
+              📦 {submitSuccessItem.name}
+            </div>
+
+            <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", maxWidth: "320px", margin: "0 auto 24px", lineHeight: 1.6 }}>
               {isAr
                 ? "تم تقديم سعر البيع للاعتماد بنجاح، وهو بانتظار موافقة المدير."
-                : "The selling price has been successfully submitted for approval and is now pending manager review."
+                : "The item has been submitted for approval and is now pending manager review."
               }
             </p>
 
             <button
               type="button"
               className="button button-primary"
-              onClick={() => setSubmitSuccessId(null)}
+              onClick={() => setSubmitSuccessItem(null)}
               style={{ padding: "8px 32px", fontSize: "13px", cursor: "pointer", minWidth: "120px" }}
             >
               {isAr ? "حسناً" : "OK"}

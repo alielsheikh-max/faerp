@@ -254,7 +254,7 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
 
             {/* ── Expanded rows ── */}
             {open && (
-              <div style={{ borderTop: "1px solid var(--border-light)" }}>
+              <div className="table-responsive" style={{ borderTop: "1px solid var(--border-light)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-subtle)" }}>

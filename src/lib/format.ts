@@ -127,3 +127,56 @@ export function asString(value: FormDataEntryValue | string | null | undefined) 
 
   return String(value).trim();
 }
+
+/** Round up to nearest 5 EGP — used for ALL sell price displays. */
+export const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
+
+export type TierPriceResult = {
+  label: string;
+  range: string;
+  price: number;
+};
+
+export function calcTierPricesShared(row: {
+  strategy: string | null;
+  buy_min: number | null;
+  buy_max: number | null;
+  buy_avg: number | null;
+  sell_min: number | null;
+  transportation: number;
+  other_expenses: number;
+  tier_pricing_enabled: number;
+  is_tiered: number;
+  tier1_max: number;
+  tier1_discount: number;
+  tier2_max: number;
+  tier2_discount: number;
+  tier3_max: number;
+  tier3_discount: number;
+  tier4_max: number;
+  tier4_discount: number;
+}): TierPriceResult[] {
+  const baseCost = row.strategy === "min" ? (row.buy_min ?? 0) : row.strategy === "max" ? (row.buy_max ?? 0) : (row.buy_avg ?? 0);
+  const buyAvg = baseCost;
+  const transport = row.transportation ?? 0;
+  const other = row.other_expenses ?? 0;
+  const sellMin = row.sell_min;
+  const r5 = (n: number) => Math.ceil(n / 5) * 5;
+
+  function getPriceForDiscount(discount: number) {
+    if (discount <= 0 || buyAvg <= 0) return null;
+    if (discount < 1) {
+      return r5(buyAvg / discount + transport + other);
+    }
+    const baseSellMin = sellMin !== null ? (sellMin - transport - other) : buyAvg;
+    return r5(baseSellMin * (1 - discount / 100) + transport + other);
+  }
+
+  return [
+    { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin !== null ? r5(sellMin) : getPriceForDiscount(row.tier1_discount) },
+    { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: getPriceForDiscount(row.tier2_discount) },
+    { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: getPriceForDiscount(row.tier3_discount) },
+    { label: "T4", range: `>${row.tier3_max}`,   price: getPriceForDiscount(row.tier4_discount) },
+  ].filter((t): t is TierPriceResult => t.price !== null);
+}
+

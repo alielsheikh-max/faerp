@@ -8,7 +8,8 @@ import {
   getUnreadPriceAcknowledgmentsCount,
   getUnreadRejectedPriceEntriesCountForWH,
   getMGPendingItemsCount,
-  countPendingQuotes
+  countPendingQuotes,
+  getUnreadNegotiatedPricesCount
 } from "@/lib/db";
 import { currentMonth } from "@/lib/format";
 
@@ -26,7 +27,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     0;
 
   const ackCount =
-    session.role === "SC" ? getUnreadPriceAcknowledgmentsCount() :
+    session.role === "SC" ? (getUnreadPriceAcknowledgmentsCount() + getUnreadNegotiatedPricesCount()) :
     session.role === "WH" ? getUnreadRejectedPriceEntriesCountForWH(session.displayName) :
     0;
 

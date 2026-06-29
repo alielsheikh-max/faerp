@@ -95,7 +95,10 @@ export default function LoginPageClient({ error }: { error?: string }) {
               <img src="/faerp logo.svg" alt="FAERP" className="hero-logo-img" />
             </div>
             <div className="hero-wordmark">FAERP</div>
-            <div className="hero-wordmark-tag">Enterprise Resource Platform</div>
+            <div className="hero-wordmark-tag">
+              <span className="desktop-only">Enterprise Resource Platform</span>
+              <span className="mobile-only">{t("app.tagline")}</span>
+            </div>
           </div>
 
           {/* ── Headline & Features ── */}

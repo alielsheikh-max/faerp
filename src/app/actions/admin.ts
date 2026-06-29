@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import fs from "fs";
+import path from "path";
 import {
   createCategory,
   createItem,
@@ -22,6 +24,7 @@ import {
   bulkMoveItemCategory,
   bulkDeleteItems,
   bulkDeleteCategories,
+  database,
 } from "@/lib/db";
 import { asNumber, asString } from "@/lib/format";
 import { requireRole } from "@/lib/auth";
@@ -264,6 +267,45 @@ export async function deleteSupplierAction(formData: FormData) {
   done("Supplier deleted.", "/dashboard/admin/suppliers");
 }
 
+async function processUploadedImages(files: FormDataEntryValue[], existingImages: string[] = []): Promise<string[]> {
+  const uploadDir = path.join(process.cwd(), "public", "uploads", "items");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const validFiles: File[] = [];
+  for (const entry of files) {
+    if (entry instanceof File && entry.name !== "" && entry.size > 0) {
+      validFiles.push(entry);
+    }
+  }
+
+  if (existingImages.length + validFiles.length > 5) {
+    throw new Error("You can only upload up to 5 images per product.");
+  }
+
+  const newPaths: string[] = [];
+  for (const file of validFiles) {
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error(`File "${file.name}" exceeds the 5 MB size limit.`);
+    }
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`File "${file.name}" is not a valid image format.`);
+    }
+
+    const timestamp = Date.now();
+    const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const filename = `img_${timestamp}_${Math.floor(Math.random() * 1000)}_${cleanName}`;
+    const filePath = path.join(uploadDir, filename);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+    newPaths.push(`/uploads/items/${filename}`);
+  }
+
+  return [...existingImages, ...newPaths];
+}
+
 export async function createItemAction(formData: FormData) {
   requireRole(["AD"]);
   const categoryId = asNumber(formData.get("categoryId"));
@@ -278,7 +320,17 @@ export async function createItemAction(formData: FormData) {
     fail("Item creation is incomplete.", "/dashboard/admin/items");
   }
 
-  createItem({ categoryId, name, unit, description, transportationPerUnit, moq, recommendedSupplierId });
+  let finalImagesStr: string | null = null;
+  try {
+    const uploaded = await processUploadedImages(formData.getAll("images"));
+    if (uploaded.length > 0) {
+      finalImagesStr = JSON.stringify(uploaded);
+    }
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "Image upload failed.", "/dashboard/admin/items");
+  }
+
+  createItem({ categoryId, name, unit, description, transportationPerUnit, moq, recommendedSupplierId, images: finalImagesStr });
 
   // Auto-assign category to recommended supplier so item appears in WH missing quotes
   if (recommendedSupplierId && categoryId) {
@@ -305,7 +357,47 @@ export async function updateItemAction(formData: FormData) {
     fail("Item update is incomplete.", "/dashboard/admin/items");
   }
 
-  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq, recommendedSupplierId });
+  const deletedImagesStr = asString(formData.get("deletedImages")) || "[]";
+  let deletedImages: string[] = [];
+  try {
+    deletedImages = JSON.parse(deletedImagesStr);
+  } catch (_) {}
+
+  // Fetch current images
+  const db = database();
+  const row = db.prepare("SELECT images FROM items WHERE id = ?").get(id) as { images: string | null } | undefined;
+  let existingImages: string[] = [];
+  if (row?.images) {
+    try {
+      existingImages = JSON.parse(row.images);
+    } catch (_) {}
+  }
+
+  const remainingImages = existingImages.filter(img => !deletedImages.includes(img));
+
+  // Try to delete actual files
+  for (const delImg of deletedImages) {
+    try {
+      const fullPath = path.join(process.cwd(), "public", delImg);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (err) {
+      console.error("Failed to delete file:", delImg, err);
+    }
+  }
+
+  let finalImagesStr: string | null = null;
+  try {
+    const uploaded = await processUploadedImages(formData.getAll("images"), remainingImages);
+    if (uploaded.length > 0) {
+      finalImagesStr = JSON.stringify(uploaded);
+    }
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "Image upload failed.", "/dashboard/admin/items");
+  }
+
+  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq, recommendedSupplierId, images: finalImagesStr });
 
   // Auto-assign category to recommended supplier so item appears in WH missing quotes
   if (recommendedSupplierId && categoryId) {
@@ -441,8 +533,6 @@ function parseCSV(text: string): string[][] {
   }
   return result;
 }
-
-import { database } from "@/lib/db";
 
 export async function importItemsCSVAction(formData: FormData) {
   requireRole(["AD"]);

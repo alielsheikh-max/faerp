@@ -8,10 +8,33 @@ import {
   cancelPendingSellingPrice,
   getUnreadNotificationsForUser,
   markSingleAcknowledgmentAsRead,
-  markSingleRejectedPriceEntryAsReadForWH
+  markSingleRejectedPriceEntryAsReadForWH,
+  markSingleNegotiationAsRead
 } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { asNumber, asString } from "@/lib/format";
+
+// ... [rest of functions] ...
+export async function markSingleNotificationReadAction(id: number, type: "acknowledgment" | "rejection" | "negotiation"): Promise<{ ok: boolean }> {
+  try {
+    const session = requireRole(["SC", "SA", "AD", "WH", "MG"]);
+    if (type === "acknowledgment") {
+      requireRole(["SC", "AD"]);
+      markSingleAcknowledgmentAsRead(id);
+    } else if (type === "rejection") {
+      requireRole(["WH", "AD"]);
+      markSingleRejectedPriceEntryAsReadForWH(id);
+    } else if (type === "negotiation") {
+      requireRole(["SC", "AD"]);
+      markSingleNegotiationAsRead(id);
+    }
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false };
+  }
+}
 
 /**
  * T18: SA acknowledges a price change alert.
@@ -90,23 +113,5 @@ export async function getUnreadNotificationsAction(): Promise<{ ok: boolean; not
     return { ok: true, notifications };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed" };
-  }
-}
-
-export async function markSingleNotificationReadAction(id: number, type: "acknowledgment" | "rejection"): Promise<{ ok: boolean }> {
-  try {
-    const session = requireRole(["SC", "SA", "AD", "WH", "MG"]);
-    if (type === "acknowledgment") {
-      requireRole(["SC", "AD"]);
-      markSingleAcknowledgmentAsRead(id);
-    } else if (type === "rejection") {
-      requireRole(["WH", "AD"]);
-      markSingleRejectedPriceEntryAsReadForWH(id);
-    }
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/notifications");
-    return { ok: true };
-  } catch (e) {
-    return { ok: false };
   }
 }

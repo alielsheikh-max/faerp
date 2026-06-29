@@ -7,14 +7,19 @@ import {
   getSalesCatalogForMonths,
   getAllPriceEntries,
   getMonthlyMetrics,
+  getLatestPriceListVersion,
 } from "@/lib/db";
 import { currentMonth } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  // Auth check
-  const session = requireRole();
+  let session;
+  try {
+    session = requireRole();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { searchParams } = new URL(request.url);
   const preset = searchParams.get("preset") || "";
@@ -46,7 +51,8 @@ export async function GET(request: Request) {
     case "selling_price_list":
     case "sales_catalog": {
       const catalog = getSalesCatalog(month);
-      return NextResponse.json({ catalog, metrics });
+      const version = getLatestPriceListVersion(month);
+      return NextResponse.json({ catalog, metrics, version });
     }
 
     case "published_selling_prices": {

@@ -133,6 +133,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                       const isTiered = !isPendingRevision && row.is_tiered === 1 && row.buy_avg != null;
                       const tierPrices = isTiered ? calcTierPrices(row) : [];
                       const isRevised = !!priceHistoryMap[row.item_id];
+                      const hasNoPrice = row.sell_min === null && row.last_approved_sell_min === null;
                       return (
                         <tr key={row.item_id} style={isPendingRevision ? {
                           backgroundColor: "rgba(245,158,11,0.06)",
@@ -142,34 +143,39 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                           backgroundColor: "rgba(245,158,11,0.04)",
                           borderLeft: "3px solid #f59e0b",
                         } : {}}>
-                          <td style={{ fontWeight: 700, maxWidth: "340px" }}>
-                            <ClickableDetailTrigger
-                              type="item"
-                              id={row.item_id}
-                              className="clickable-detail-trigger"
-                            >
-                              {row.item_name}
-                            </ClickableDetailTrigger>
-                            {isPendingRevision && (
-                              <span style={{
-                                display: "inline-block", marginInlineStart: "8px",
-                                fontSize: "9px", fontWeight: 800, padding: "2px 7px",
-                                borderRadius: "99px", background: "rgba(245,158,11,0.15)",
-                                border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
-                                verticalAlign: "middle",
-                              }} title={getServerLocale() === "ar" ? "السعر قيد المراجعة من المدير - العروض متوقفة مؤقتاً" : "Price is being revised and is awaiting MG approval — quoting is on hold"}>
-                                {getServerLocale() === "ar" ? "⏳ مراجعة معلقة 🔒" : "⏳ Pending Revision 🔒"}
-                              </span>
-                            )}
-                            {!isPendingRevision && isRevised && (
-                              <span style={{
-                                display: "inline-block", marginInlineStart: "8px",
-                                fontSize: "9px", fontWeight: 800, padding: "2px 7px",
-                                borderRadius: "99px", background: "rgba(245,158,11,0.15)",
-                                border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
-                                verticalAlign: "middle",
-                              }}>{getServerLocale() === "ar" ? "📝 معدل" : "📝 Revised"}</span>
-                            )}
+                          <td style={{ fontWeight: 700, maxWidth: "340px", whiteSpace: "normal" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <ClickableDetailTrigger
+                                type="item"
+                                id={row.item_id}
+                                className="clickable-detail-trigger"
+                                style={{ display: "inline", whiteSpace: "normal" }}
+                              >
+                                {row.item_name}
+                              </ClickableDetailTrigger>
+                              {isPendingRevision && (
+                                <span style={{
+                                  display: "inline-block",
+                                  fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                                  borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                                  border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                                  verticalAlign: "middle",
+                                  whiteSpace: "nowrap"
+                                }} title={getServerLocale() === "ar" ? "السعر قيد المراجعة من المدير - العروض متوقفة مؤقتاً" : "Price is being revised and is awaiting MG approval — quoting is on hold"}>
+                                  {getServerLocale() === "ar" ? "⏳ مراجعة معلقة 🔒" : "⏳ Pending Revision 🔒"}
+                                </span>
+                              )}
+                              {!isPendingRevision && isRevised && (
+                                <span style={{
+                                  display: "inline-block",
+                                  fontSize: "9px", fontWeight: 800, padding: "2px 7px",
+                                  borderRadius: "99px", background: "rgba(245,158,11,0.15)",
+                                  border: "1px solid rgba(245,158,11,0.4)", color: "#b45309",
+                                  verticalAlign: "middle",
+                                  whiteSpace: "nowrap"
+                                }}>{getServerLocale() === "ar" ? "📝 معدل" : "📝 Revised"}</span>
+                              )}
+                            </div>
                           </td>
                           <td><span className="badge">{row.unit}</span></td>
                           <td style={{ textAlign: "center" }}>
@@ -187,7 +193,13 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                             </span>
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            {isPendingRevision ? (
+                            {hasNoPrice ? (
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", padding: "4px 10px", background: "var(--bg-elevated)", borderRadius: "6px", border: "1px solid var(--border-medium)", display: "inline-block" }}>
+                                  {getServerLocale() === "ar" ? "⏳ لم تُحدَّد بعد" : "⏳ Not Yet Set"}
+                                </span>
+                              </div>
+                            ) : isPendingRevision ? (
                               /* Pending revision: show last approved price with lock */
                               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
                                 <div style={{ display: "flex", gap: "16px", justifyContent: "center", alignItems: "center", opacity: 0.7 }}>
@@ -379,7 +391,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
       {role === "SC" && (
         <>
           {/* Action Bar — 3 equal premium cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "16px" }}>
+          <div className="dashboard-action-bar" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "16px" }}>
             <UsdPricePanel catalog={salesCatalog} month={month} username={session.displayName} />
             <MonthlyReviewModal month={month} username={session.displayName} data={reviewData} variant="dashboard" />
             <ReportGenerator role={role} username={session.displayName} dashboardMonth={month} />
@@ -457,7 +469,7 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
                       .replace("{possible}", String(whOverview.totals.possible))}
                   </span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                <div className="wh-collection-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "16px" }}>
                   {[
                     { label: t("purch.submitted"), value: whOverview.totals.submitted, color: "var(--success)" },
                     { label: t("purch.remaining"), value: whOverview.totals.possible - whOverview.totals.submitted, color: "var(--danger)" },
