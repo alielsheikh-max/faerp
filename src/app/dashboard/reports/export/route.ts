@@ -120,9 +120,14 @@ export async function GET(request: Request) {
         row.created_at ?? "",
       ];
     }
+    if (row.is_tiered === 2) {
+      return [
+        row.category_name, row.item_name, row.unit ?? "", "FIXED",
+        row.sell_min ?? "", "", "", "", row.created_at ?? "",
+      ];
+    }
     return [
-      row.category_name, row.item_name, row.unit ?? "",
-      (row.strategy ?? "").toUpperCase(),
+      row.category_name, row.item_name, row.unit ?? "", "MIN/MAX",
       row.sell_min ?? "", "", "", row.sell_max ?? "", row.created_at ?? "",
     ];
   });

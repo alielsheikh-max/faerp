@@ -1,7 +1,7 @@
 import { SectionIntro, StatCard } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth";
 import { getCategories, getMonthlyReport } from "@/lib/db";
-import { currentMonth, formatCurrency, formatDateTime, formatMonthLabel } from "@/lib/format";
+import { currentMonth, formatCurrency, formatDateTime, formatMonthLabel, calcTierPricesShared } from "@/lib/format";
 import { getServerT } from "@/lib/locale-server";
 import ClickableDetailTrigger from "@/components/clickable-detail-trigger";
 
@@ -129,8 +129,7 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
                 <tr>
                   <th>{t("rep.itemCol")}</th>
                   <th>{t("rep.strategy")}</th>
-                  <th>{t("rep.sellMin")}</th>
-                  <th>{t("rep.sellMax")}</th>
+                  <th colSpan={2}>{t("rep.sellMin")} / Bracket Prices</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,9 +144,42 @@ export default function ReportsPage({ searchParams }: { searchParams?: { month?:
                         {row.item_name}
                       </ClickableDetailTrigger>
                     </td>
-                    <td>{row.strategy?.toUpperCase()}</td>
-                    <td>{formatCurrency(row.sell_min)}</td>
-                    <td>{formatCurrency(row.sell_max)}</td>
+                    <td>
+                      {row.tier_pricing_enabled === 1 && row.is_tiered === 1 ? (
+                        <span className="badge" style={{ background: "rgba(99,102,241,0.15)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.3)", fontWeight: 700 }}>
+                          ⚡ TIERS
+                        </span>
+                      ) : row.is_tiered === 2 ? (
+                        <span className="badge" style={{ background: "rgba(245,158,11,0.15)", color: "#d97706", border: "1px solid rgba(245,158,11,0.3)", fontWeight: 700 }}>
+                          🔒 FIXED
+                        </span>
+                      ) : (
+                        <span className="badge" style={{ background: "rgba(16,185,129,0.15)", color: "#059669", border: "1px solid rgba(16,185,129,0.3)", fontWeight: 700 }}>
+                          ↕ MIN/MAX
+                        </span>
+                      )}
+                    </td>
+                    <td colSpan={2}>
+                      {row.tier_pricing_enabled === 1 && row.is_tiered === 1 ? (
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                          {calcTierPricesShared(row).map(tp => (
+                            <span key={tp.label} style={{ fontSize: "11px", padding: "3px 8px", borderRadius: "6px", background: "var(--bg-subtle)", border: "1.5px solid var(--border-light)", color: "var(--text-primary)" }}>
+                              <strong>{tp.label}:</strong> {formatCurrency(tp.price)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : row.is_tiered === 2 ? (
+                        <span style={{ fontWeight: 800, color: "#d97706" }}>
+                          🔒 {formatCurrency(row.sell_min)}
+                        </span>
+                      ) : (
+                        <span>
+                          <strong style={{ color: "#10b981" }}>{formatCurrency(row.sell_min)}</strong>
+                          <span style={{ color: "var(--text-muted)", margin: "0 6px" }}>–</span>
+                          <strong style={{ color: "#6366f1" }}>{formatCurrency(row.sell_max)}</strong>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

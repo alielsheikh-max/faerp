@@ -32,6 +32,7 @@ function openDatabase() {
   initializeSchema(db);
   migrateItemTiers(db);
   migratePriceAcknowledgments(db);
+  migrateAllowPastMonthEntries(db);
   seedDatabase(db);
   return db;
 }
@@ -369,7 +370,8 @@ function initializeSchema(db: Db) {
     CREATE TABLE IF NOT EXISTS monthly_settings (
       month TEXT PRIMARY KEY,
       tier_pricing_enabled INTEGER NOT NULL DEFAULT 0,
-      sc_transport_override_enabled INTEGER NOT NULL DEFAULT 0
+      sc_transport_override_enabled INTEGER NOT NULL DEFAULT 0,
+      allow_past_month_entries INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS item_tiers (
@@ -416,6 +418,21 @@ function initializeSchema(db: Db) {
       performed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- System Alerts / Notifications for newly added suppliers and products
+    CREATE TABLE IF NOT EXISTS system_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_read_alerts (
+      username TEXT NOT NULL,
+      alert_id INTEGER NOT NULL REFERENCES system_alerts(id) ON DELETE CASCADE,
+      PRIMARY KEY (username, alert_id)
+    );
+
     -- ── Performance Indexes ──────────────────────────────────────────────────
     -- price_entries: most queried table
     CREATE INDEX IF NOT EXISTS idx_pe_month ON price_entries(month);
@@ -455,6 +472,32 @@ function migrateItemTiers(db: Db) {
     db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_max INTEGER NOT NULL DEFAULT 0").run();
   if (!cols.includes("tier4_discount"))
     db.prepare("ALTER TABLE item_tiers ADD COLUMN tier4_discount REAL NOT NULL DEFAULT 0.0").run();
+
+  // Default existing items under "صناديق" and "برانيك" to is_tiered = 0 (min_max)
+  db.prepare(`
+    INSERT OR IGNORE INTO item_tiers (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount, tier3_max, tier3_discount, tier4_max, tier4_discount)
+    SELECT id, 0, 100, 0.77, 200, 0.83, 300, 0.85, 0, 0.0 FROM items
+    WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%صناديق%' OR name LIKE '%برانيك%' OR name LIKE '%برنيك%')
+  `).run();
+  db.prepare(`
+    UPDATE item_tiers SET is_tiered = 0 WHERE item_id IN (
+      SELECT i.id FROM items i JOIN categories c ON c.id = i.category_id
+      WHERE c.name LIKE '%صناديق%' OR c.name LIKE '%برانيك%' OR c.name LIKE '%برنيك%'
+    )
+  `).run();
+
+  // Default existing items under "دعامات" to is_tiered = 2 (fixed)
+  db.prepare(`
+    INSERT OR IGNORE INTO item_tiers (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount, tier3_max, tier3_discount, tier4_max, tier4_discount)
+    SELECT id, 2, 100, 0.77, 200, 0.83, 300, 0.85, 0, 0.0 FROM items
+    WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%دعامات%')
+  `).run();
+  db.prepare(`
+    UPDATE item_tiers SET is_tiered = 2 WHERE item_id IN (
+      SELECT i.id FROM items i JOIN categories c ON c.id = i.category_id
+      WHERE c.name LIKE '%دعامات%'
+    )
+  `).run();
 }
 
 function migratePriceAcknowledgments(db: Db) {
@@ -462,6 +505,14 @@ function migratePriceAcknowledgments(db: Db) {
     .map((c) => c.name);
   if (!cols.includes("read_by_sc")) {
     db.prepare("ALTER TABLE price_acknowledgments ADD COLUMN read_by_sc INTEGER NOT NULL DEFAULT 0").run();
+  }
+}
+
+function migrateAllowPastMonthEntries(db: Db) {
+  const cols = (db.prepare("PRAGMA table_info(monthly_settings)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!cols.includes("allow_past_month_entries")) {
+    db.prepare("ALTER TABLE monthly_settings ADD COLUMN allow_past_month_entries INTEGER NOT NULL DEFAULT 0").run();
   }
 }
 
@@ -808,6 +859,22 @@ export function ensureSupplierCategory(supplierId: number, categoryId: number, a
   ).run(supplierId, categoryId, assignedBy);
 }
 
+export function setSupplierFavoriteProducts(supplierId: number, itemIds: number[]): void {
+  const db = database();
+  db.transaction(() => {
+    // 1. Clear this supplier as recommended for all items
+    db.prepare("UPDATE items SET recommended_supplier_id = NULL WHERE recommended_supplier_id = ?").run(supplierId);
+    
+    // 2. Set this supplier as recommended for the selected items
+    if (itemIds.length > 0) {
+      const stmt = db.prepare("UPDATE items SET recommended_supplier_id = ? WHERE id = ?");
+      for (const itemId of itemIds) {
+        stmt.run(supplierId, itemId);
+      }
+    }
+  })();
+}
+
 export function getUsers() {
   return database()
     .prepare(`
@@ -1062,8 +1129,8 @@ export function createSupplier(input: {
   email?: string;
   region?: string;
   address?: string;
-}) {
-  database()
+}): number {
+  const result = database()
     .prepare(`
       INSERT INTO suppliers (
         name, fame_name, contact_person, phone, code, contact_job_title, represented_products, email, region, address
@@ -1084,6 +1151,7 @@ export function createSupplier(input: {
       region: input.region || null,
       address: input.address || null
     });
+  return result.lastInsertRowid as number;
 }
 
 export function updateSupplier(input: {
@@ -1149,10 +1217,12 @@ export function createItem(input: {
   description: string;
   transportationPerUnit: number;
   moq: number;
+  isTiered?: number;
   recommendedSupplierId?: number | null;
   images?: string | null;
 }) {
-  database()
+  const db = database();
+  const result = db
     .prepare(`
       INSERT INTO items (category_id, name, unit, description, active, transportation_per_unit, moq, recommended_supplier_id, images)
       VALUES (@category_id, @name, @unit, @description, 1, @transportation_per_unit, @moq, @recommended_supplier_id, @images)
@@ -1167,6 +1237,14 @@ export function createItem(input: {
       recommended_supplier_id: input.recommendedSupplierId ?? null,
       images: input.images ?? null
     });
+  // Upsert item_tiers with chosen strategy
+  const newId = result.lastInsertRowid as number;
+  const isTiered = input.isTiered ?? 0;
+  db.prepare(`
+    INSERT INTO item_tiers (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount, tier3_max, tier3_discount, tier4_max, tier4_discount)
+    VALUES (?, ?, 100, 0.77, 200, 5.0, 300, 10.0, 0, 0.0)
+    ON CONFLICT(item_id) DO UPDATE SET is_tiered = excluded.is_tiered
+  `).run(newId, isTiered);
 }
 
 export function updateItem(input: {
@@ -1178,10 +1256,12 @@ export function updateItem(input: {
   active: boolean;
   transportationPerUnit: number;
   moq: number;
+  isTiered?: number;
   recommendedSupplierId?: number | null;
   images?: string | null;
 }) {
-  database()
+  const db = database();
+  db
     .prepare(`
       UPDATE items
       SET
@@ -1208,6 +1288,14 @@ export function updateItem(input: {
       recommended_supplier_id: input.recommendedSupplierId ?? null,
       images: input.images !== undefined ? input.images : null
     });
+  // Upsert pricing strategy into item_tiers if provided
+  if (input.isTiered !== undefined) {
+    db.prepare(`
+      INSERT INTO item_tiers (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount, tier3_max, tier3_discount, tier4_max, tier4_discount)
+      VALUES (?, ?, 100, 0.77, 200, 5.0, 300, 10.0, 0, 0.0)
+      ON CONFLICT(item_id) DO UPDATE SET is_tiered = excluded.is_tiered
+    `).run(input.id, input.isTiered);
+  }
 }
 
 export function deleteItem(id: number) {
@@ -1392,9 +1480,12 @@ export function addPriceEntry(input: {
   notes: string;
   actualTransport?: number;
 }) {
-  // Server-side month lock: only allow writes to the current month
+  // Server-side month lock: only allow writes to the current month,
+  // OR the previous month when the admin has explicitly opened past-month entries.
   const now = currentMonth();
-  if (input.month !== now) {
+  const prevMonth = shiftMonth(now, -1);
+  const pastAllowed = isPastMonthEntryAllowed(now);
+  if (input.month !== now && !(pastAllowed && input.month === prevMonth)) {
     throw new Error(`MONTH_LOCKED: Prices can only be added for the current month (${now}). Past months are locked.`);
   }
 
@@ -1866,13 +1957,19 @@ export function saveSellingPrice(input: {
 
   // The final prices to be published to SA (rounded up to nearest 5 EGP):
   const roundUp5 = (v: number) => v > 0 ? Math.ceil(v / 5) * 5 : v;
+  // Check if item has fixed pricing strategy (is_tiered = 2)
+  const itemTierRow = db.prepare("SELECT is_tiered FROM item_tiers WHERE item_id = ?").get(input.itemId) as { is_tiered: number } | undefined;
+  const isFixed = itemTierRow?.is_tiered === 2;
+
   // Use client-provided sell prices when available (ensures MG sees exactly what SC submitted)
   const sellMin = roundUp5((input.sellMinOverride != null && input.sellMinOverride > 0)
     ? input.sellMinOverride
     : (baseSellMin + transportation + input.otherExpenses));
-  const sellMax = roundUp5((input.sellMaxOverride != null && input.sellMaxOverride > 0)
-    ? input.sellMaxOverride
-    : (baseSellMax + transportation + input.otherExpenses));
+  const sellMax = isFixed
+    ? sellMin
+    : roundUp5((input.sellMaxOverride != null && input.sellMaxOverride > 0)
+        ? input.sellMaxOverride
+        : (baseSellMax + transportation + input.otherExpenses));
 
   // ── Improvement #3: Margin floor enforcement ──────────────────────────────
   // Resolve effective floor: item-level overrides category-level
@@ -2173,7 +2270,8 @@ export function getSalesCatalog(month: string, categoryId?: number) {
         sp.last_approved_sell_min,
         sp.last_approved_sell_max,
         sp.last_approved_strategy,
-        sp.last_approved_at
+        sp.last_approved_at,
+        (SELECT price FROM price_entries WHERE month = @month AND item_id = i.id AND supplier_id = COALESCE(sp.confirmed_supplier_id, i.recommended_supplier_id) AND status = 'approved' ORDER BY recorded_at DESC, id DESC LIMIT 1) AS buy_fav
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = @month
@@ -2281,7 +2379,8 @@ export function getAdminSnapshot() {
         s.represented_products, s.email, s.region, s.address,
         COUNT(pe.id) as quote_count,
         GROUP_CONCAT(DISTINCT i.name) as quoted_item_names,
-        GROUP_CONCAT(DISTINCT sc.category_id) as category_ids_str
+        GROUP_CONCAT(DISTINCT sc.category_id) as category_ids_str,
+        (SELECT GROUP_CONCAT(id) FROM items WHERE recommended_supplier_id = s.id) as fav_item_ids_str
       FROM suppliers s
       LEFT JOIN price_entries pe ON pe.supplier_id = s.id
       LEFT JOIN items i ON pe.item_id = i.id
@@ -2297,10 +2396,12 @@ export function getAdminSnapshot() {
       region: string | null; address: string | null;
       quote_count: number; quoted_item_names: string | null;
       category_ids_str: string | null;
+      fav_item_ids_str: string | null;
     }>;
     return rows.map(s => ({
       ...s,
-      category_ids: s.category_ids_str ? s.category_ids_str.split(',').map(Number) : [] as number[],
+      category_ids: s.category_ids_str ? Array.from(new Set(s.category_ids_str.split(',').map(Number))) : [] as number[],
+      fav_item_ids: s.fav_item_ids_str ? s.fav_item_ids_str.split(',').map(Number) : [] as number[],
     }));
   })();
 
@@ -2321,13 +2422,15 @@ export function getAdminSnapshot() {
       sp.sell_min,
       sp.sell_max,
       pe_avg.avg_price as buy_avg,
-      IFNULL(pcr_counts.cnt, 0) as pending_request_count
+      IFNULL(pcr_counts.cnt, 0) as pending_request_count,
+      IFNULL(it.is_tiered, 0) as is_tiered
     FROM items i
     JOIN categories c ON c.id = i.category_id
     LEFT JOIN (SELECT item_id, COUNT(*) as cnt FROM price_entries GROUP BY item_id) pe_counts ON pe_counts.item_id = i.id
     LEFT JOIN selling_prices sp ON sp.item_id = i.id AND sp.month = ?
     LEFT JOIN (SELECT item_id, AVG(price) as avg_price FROM price_entries WHERE month = ? GROUP BY item_id) pe_avg ON pe_avg.item_id = i.id
     LEFT JOIN (SELECT item_id, COUNT(*) as cnt FROM price_change_requests WHERE status = 'pending' GROUP BY item_id) pcr_counts ON pcr_counts.item_id = i.id
+    LEFT JOIN item_tiers it ON it.item_id = i.id
     ORDER BY i.active DESC, c.name, i.id
   `).all(month, month) as Array<{
     id: number;
@@ -2345,6 +2448,7 @@ export function getAdminSnapshot() {
     sell_max: number | null;
     buy_avg: number | null;
     pending_request_count: number;
+    is_tiered: number;
   }>;
 
   return {
@@ -2859,13 +2963,13 @@ export function getMonthlyReviewData(month: string) {
     tier4_discount: number;
   }>;
 
-  // Pull existing selling prices for this month
   const sellingRows = db.prepare(`
     SELECT item_id, sell_min, sell_max, strategy, markup_type,
            markup_min, markup_max, created_by, created_at,
-           tier_pricing_enabled, other_expenses
+           tier_pricing_enabled, other_expenses, confirmed_supplier_id,
+           (SELECT price FROM price_entries WHERE month = ? AND item_id = selling_prices.item_id AND supplier_id = COALESCE(selling_prices.confirmed_supplier_id, (SELECT recommended_supplier_id FROM items WHERE id = selling_prices.item_id)) AND status = 'approved' ORDER BY recorded_at DESC, id DESC LIMIT 1) AS buy_fav
     FROM selling_prices WHERE month = ?
-  `).all(month) as Array<{
+  `).all(month, month) as Array<{
     item_id: number;
     sell_min: number;
     sell_max: number;
@@ -2877,6 +2981,8 @@ export function getMonthlyReviewData(month: string) {
     created_at: string;
     tier_pricing_enabled: number;
     other_expenses: number;
+    confirmed_supplier_id: number | null;
+    buy_fav: number | null;
   }>;
   const sellingMap = new Map(sellingRows.map(r => [r.item_id, r]));
 
@@ -3762,6 +3868,7 @@ export function applyCategoryMarkup(input: {
         // Auto-detect if item is tiered from the database
         const itemTierRow = db.prepare("SELECT is_tiered, tier1_max, tier2_max, tier3_max FROM item_tiers WHERE item_id = ?").get(item.id) as { is_tiered: number, tier1_max: number, tier2_max: number, tier3_max: number } | undefined;
         const isTiered = itemTierRow?.is_tiered === 1;
+        const isFixed = itemTierRow?.is_tiered === 2;
 
         let transportOverride: number | null = null;
         if (state !== undefined) {
@@ -3774,15 +3881,19 @@ export function applyCategoryMarkup(input: {
         const t3Disc = state !== undefined ? state.tier3Discount : null;
         const t4Disc = state !== undefined ? state.tier4Discount : null;
 
+        const markupMinVal = input.markupType === "divisor" && t1Disc !== null ? t1Disc : input.markupMin;
+
         saveSellingPrice({
           itemId: item.id,
           month: input.month,
           strategy: input.strategy,
           markupType: input.markupType,
-          markupMin: input.markupType === "divisor" && t1Disc !== null ? t1Disc : input.markupMin,
-          markupMax: isTiered 
-            ? (input.markupType === "divisor" && t1Disc !== null ? t1Disc : input.markupMin) 
-            : input.markupMax,
+          markupMin: markupMinVal,
+          markupMax: isFixed 
+            ? markupMinVal
+            : (isTiered 
+                ? markupMinVal 
+                : input.markupMax),
           createdBy: input.createdBy,
           changeReason: `Bulk category markup applied by ${input.createdBy}`,
           otherExpenses,
@@ -4043,6 +4154,23 @@ export function setScTransportOverride(month: string, enabled: boolean): void {
     .run(month, enabled ? 1 : 0);
 }
 
+export function isPastMonthEntryAllowed(month: string): boolean {
+  const row = database()
+    .prepare("SELECT allow_past_month_entries FROM monthly_settings WHERE month = ?")
+    .get(month) as { allow_past_month_entries: number } | undefined;
+  return row ? row.allow_past_month_entries === 1 : false;
+}
+
+export function setPastMonthEntryAllowed(month: string, enabled: boolean): void {
+  database()
+    .prepare(`
+      INSERT INTO monthly_settings (month, allow_past_month_entries)
+      VALUES (?, ?)
+      ON CONFLICT(month) DO UPDATE SET allow_past_month_entries = excluded.allow_past_month_entries
+    `)
+    .run(month, enabled ? 1 : 0);
+}
+
 export type ItemTierConfig = {
   item_id: number;
   item_name: string;
@@ -4056,6 +4184,8 @@ export type ItemTierConfig = {
   tier3_discount: number;
   tier4_max: number;
   tier4_discount: number;
+  moq: number;
+  transportation: number;
 };
 
 export function getItemTiers(): ItemTierConfig[] {
@@ -4073,7 +4203,9 @@ export function getItemTiers(): ItemTierConfig[] {
         IFNULL(it.tier3_max, 300) as tier3_max,
         IFNULL(it.tier3_discount, 10.0) as tier3_discount,
         IFNULL(it.tier4_max, 0) as tier4_max,
-        IFNULL(it.tier4_discount, 0.0) as tier4_discount
+        IFNULL(it.tier4_discount, 0.0) as tier4_discount,
+        i.moq as moq,
+        i.transportation_per_unit as transportation
       FROM items i
       JOIN categories c ON c.id = i.category_id
       LEFT JOIN item_tiers it ON it.item_id = i.id
@@ -4114,6 +4246,61 @@ export function upsertItemTier(config: {
         tier4_discount = excluded.tier4_discount
     `)
     .run(config);
+}
+
+export function updateItemManagementDetails(input: {
+  itemId: number;
+  name: string;
+  moq: number;
+  transportation: number;
+  isTiered: number;
+  tier1Max: number;
+  tier1Discount: number;
+  tier2Max: number;
+  tier2Discount: number;
+  tier3Max: number;
+  tier3Discount: number;
+  tier4Max: number;
+  tier4Discount: number;
+}): void {
+  const db = database();
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE items
+      SET name = ?, moq = ?, transportation_per_unit = ?
+      WHERE id = ?
+    `).run(input.name, input.moq, input.transportation, input.itemId);
+
+    db.prepare(`
+      INSERT INTO item_tiers
+        (item_id, is_tiered, tier1_max, tier1_discount, tier2_max, tier2_discount,
+         tier3_max, tier3_discount, tier4_max, tier4_discount)
+      VALUES
+        (@itemId, @isTiered, @tier1Max, @tier1Discount, @tier2Max, @tier2Discount,
+         @tier3Max, @tier3Discount, @tier4Max, @tier4Discount)
+      ON CONFLICT(item_id) DO UPDATE SET
+        is_tiered = excluded.is_tiered,
+        tier1_max = excluded.tier1_max,
+        tier1_discount = excluded.tier1_discount,
+        tier2_max = excluded.tier2_max,
+        tier2_discount = excluded.tier2_discount,
+        tier3_max = excluded.tier3_max,
+        tier3_discount = excluded.tier3_discount,
+        tier4_max = excluded.tier4_max,
+        tier4_discount = excluded.tier4_discount
+    `).run({
+      itemId: input.itemId,
+      isTiered: input.isTiered,
+      tier1Max: input.tier1Max,
+      tier1Discount: input.tier1Discount,
+      tier2Max: input.tier2Max,
+      tier2Discount: input.tier2Discount,
+      tier3Max: input.tier3Max,
+      tier3Discount: input.tier3Discount,
+      tier4Max: input.tier4Max,
+      tier4Discount: input.tier4Discount
+    });
+  })();
 }
 
 export function deleteItemTier(itemId: number): void {
@@ -4653,6 +4840,45 @@ export function approveMultiplePendingSellingPrices(itemIds: number[], month: st
   tx();
 }
 
+export function reconsiderMultiplePendingSellingPrices(itemIds: number[], month: string, note: string, managerName: string) {
+  const db = database();
+  const now = new Date().toISOString();
+
+  const tx = db.transaction(() => {
+    for (const itemId of itemIds) {
+      const existingApproved = db.prepare(`
+        SELECT last_approved_sell_min FROM selling_prices
+        WHERE item_id = ? AND month = ? AND last_approved_sell_min IS NOT NULL
+      `).get(itemId, month) as { last_approved_sell_min: number } | undefined;
+      const isRealUpdate = existingApproved ? 1 : 0;
+
+      db.prepare(`
+        UPDATE selling_prices
+        SET approval_status = 'reconsidered',
+            reconsider_note = ?,
+            created_by = ?,
+            created_at = ?
+        WHERE item_id = ? AND month = ?
+      `).run(note, managerName, now, itemId, month);
+
+      db.prepare(`
+        INSERT INTO selling_price_history (
+          item_id, month, prev_sell_min, prev_sell_max, prev_markup_min, prev_markup_max, prev_strategy,
+          new_sell_min, new_sell_max, new_markup_min, new_markup_max, new_strategy, new_markup_type, new_buy_avg,
+          changed_by, changed_at, change_reason, is_update, approval_status, reconsider_note
+        )
+        SELECT item_id, month,
+               last_approved_sell_min, last_approved_sell_max, markup_min, markup_max, COALESCE(last_approved_strategy, strategy),
+               sell_min, sell_max, markup_min, markup_max, strategy, markup_type, buy_avg,
+               ?, ?, 'Manager Reconsidered Batch', ?, 'reconsidered', ?
+        FROM selling_prices WHERE item_id = ? AND month = ?
+      `).run(managerName, now, isRealUpdate, note, itemId, month);
+    }
+  });
+  tx();
+}
+
+
 export function approveSinglePendingSellingPrice(itemId: number, month: string, managerName: string) {
   const db = database();
   const now = new Date().toISOString();
@@ -4842,10 +5068,12 @@ export function getMGItemsView(month: string) {
            transportation, other_expenses,
            COALESCE(tier_pricing_enabled, 0) as tier_pricing_enabled,
            tier1_max, tier1_discount, tier2_max, tier2_discount,
-           tier3_max, tier3_discount, tier4_max, tier4_discount
+           tier3_max, tier3_discount, tier4_max, tier4_discount,
+           confirmed_supplier_id,
+           (SELECT price FROM price_entries WHERE month = ? AND item_id = selling_prices.item_id AND supplier_id = COALESCE(selling_prices.confirmed_supplier_id, (SELECT recommended_supplier_id FROM items WHERE id = selling_prices.item_id)) AND status = 'approved' ORDER BY recorded_at DESC, id DESC LIMIT 1) AS buy_fav
     FROM selling_prices
     WHERE month = ?
-  `).all(month) as Array<any>;
+  `).all(month, month) as Array<any>;
   const spMap = new Map(spRows.map((r: any) => [r.item_id, r]));
 
   // ── Bulk query 2: Past 3 months buying costs (1 query for ALL items × 3 months) ──
@@ -4982,15 +5210,51 @@ function getPastMonths(month: string, count: number = 3): string[] {
   return result;
 }
 
+export function createSystemAlert(role: string, title: string, message: string) {
+  database()
+    .prepare("INSERT INTO system_alerts (role, title, message) VALUES (?, ?, ?)")
+    .run(role, title, message);
+}
+
+export function getUnreadSystemAlerts(username: string, role: string) {
+  return database()
+    .prepare(`
+      SELECT a.id, a.title, a.message, a.created_at
+      FROM system_alerts a
+      LEFT JOIN user_read_alerts r ON r.alert_id = a.id AND r.username = ?
+      WHERE (a.role = ? OR a.role = 'ALL') AND r.alert_id IS NULL
+      ORDER BY a.created_at DESC
+    `)
+    .all(username, role) as Array<{ id: number; title: string; message: string; created_at: string }>;
+}
+
+export function markSystemAlertRead(username: string, alertId: number) {
+  database()
+    .prepare("INSERT OR IGNORE INTO user_read_alerts (username, alert_id) VALUES (?, ?)")
+    .run(username, alertId);
+}
+
 export function getUnreadNotificationsForUser(role: string, username: string): Array<{
   id: number;
-  type: "acknowledgment" | "rejection" | "negotiation";
+  type: "acknowledgment" | "rejection" | "negotiation" | "system_alert";
   title: string;
   message: string;
   time: string;
   itemId: number;
 }> {
   const db = database();
+  const alerts = getUnreadSystemAlerts(username, role);
+  const mappedAlerts = alerts.map(a => ({
+    id: a.id,
+    type: "system_alert" as const,
+    title: a.title,
+    message: a.message,
+    time: a.created_at,
+    itemId: 0,
+  }));
+
+  const notifications: any[] = [...mappedAlerts];
+
   if (role === "SC" || role === "AD") {
     const rowsAck = db.prepare(`
       SELECT pa.id, pa.acknowledged_by, pa.acknowledged_at,
@@ -5013,8 +5277,6 @@ export function getUnreadNotificationsForUser(role: string, username: string): A
       ORDER BY pe.recorded_at DESC
     `).all() as any[];
 
-    const notifications: any[] = [];
-
     notifications.push(...rowsAck.map(r => ({
       id: r.id,
       type: "acknowledgment" as const,
@@ -5032,12 +5294,7 @@ export function getUnreadNotificationsForUser(role: string, username: string): A
       time: r.recorded_at,
       itemId: r.item_id,
     })));
-
-    // Sort notifications by time descending
-    notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-    return notifications;
-  }
-  if (role === "WH") {
+  } else if (role === "WH") {
     const rows = db.prepare(`
       SELECT pe.id AS quote_id, pe.price, pe.month, pe.recorded_at,
              pe.review_note, pe.reviewed_by, pe.reviewed_at,
@@ -5049,16 +5306,20 @@ export function getUnreadNotificationsForUser(role: string, username: string): A
       WHERE pe.status = 'rejected' AND pe.collected_by = ? AND pe.read_by_wh = 0
       ORDER BY pe.reviewed_at DESC
     `).all(username) as any[];
-    return rows.map(r => ({
+
+    notifications.push(...rows.map(r => ({
       id: r.quote_id,
-      type: "rejection",
+      type: "rejection" as const,
       title: "Quote Rejected",
       message: `${r.item_name} for ${r.supplier_name} rejected: "${r.review_note || "No reason specified"}"`,
       time: r.reviewed_at || r.recorded_at,
       itemId: r.item_id,
-    }));
+    })));
   }
-  return [];
+
+  // Sort notifications by time descending
+  notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  return notifications;
 }
 
 export function markSingleAcknowledgmentAsRead(id: number) {

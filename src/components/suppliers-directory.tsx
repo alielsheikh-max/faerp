@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import SupplierDetailModal from "@/components/supplier-detail-modal";
+
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction } from "@/app/actions/admin";
 
 export type FullSupplier = {
   id: number;
@@ -18,28 +20,51 @@ export type FullSupplier = {
   represented_products: string | null;
   quote_count: number;
   quoted_item_names?: string | null;
+  category_ids?: number[];
+  fav_item_ids?: number[];
 };
 
 type Category = {
   id: number;
   name: string;
+  description?: string;
+};
+
+type Item = {
+  id: number;
+  name: string;
+  category_id: number;
 };
 
 type Props = {
   suppliers: FullSupplier[];
   categories: Category[];
+  items?: Item[];
+  role?: string;
 };
 
 type QuoteFilter = "all" | "with_quotes" | "no_quotes";
 
-export default function SuppliersDirectory({ suppliers, categories }: Props) {
-  const { locale } = useI18n();
+export default function SuppliersDirectory({ suppliers, categories, items = [], role }: Props) {
+  const { locale, t } = useI18n();
 
   // ── Search & Filter State ──
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState("all");
   const [quoteFilter, setQuoteFilter] = useState<QuoteFilter>("all");
   const [selectedSupplier, setSelectedSupplier] = useState<FullSupplier | null>(null);
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<FullSupplier | null>(null);
+  const [supplierFavSearch, setSupplierFavSearch] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const isRTL = locale === "ar";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("addSupplier") === "true") {
+      setShowAddSupplierModal(true);
+    }
+  }, []);
 
   // Derive unique regions from data
   const regions = useMemo(() => {
@@ -164,8 +189,19 @@ export default function SuppliersDirectory({ suppliers, categories }: Props) {
           </select>
         )}
 
+        {role === "AD" && (
+          <button
+            type="button"
+            onClick={() => setShowAddSupplierModal(true)}
+            className="button button-primary"
+            style={{ padding: "6px 14px", fontSize: "12px", fontWeight: "800", height: "30px", display: "inline-flex", alignItems: "center", gap: "6px", marginInlineStart: "auto" }}
+          >
+            ➕ {lbl("Onboard Supplier", "إضافة مورد جديد")}
+          </button>
+        )}
+
         {/* Result count */}
-        <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+        <span style={{ marginInlineStart: role === "AD" ? "12px" : "auto", fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
           {filtered.length} {lbl("of", "من")} {suppliers.length} {lbl("suppliers", "مورد")}
         </span>
       </div>
@@ -207,7 +243,226 @@ export default function SuppliersDirectory({ suppliers, categories }: Props) {
         <SupplierDetailModal
           supplier={selectedSupplier}
           onClose={() => setSelectedSupplier(null)}
+          role={role}
+          onEdit={() => {
+            setEditingSupplier(selectedSupplier);
+            setSelectedSupplier(null);
+          }}
         />
+      )}
+
+      {/* Add Supplier Modal */}
+      {showAddSupplierModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "900px", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button type="button" onClick={() => { setShowAddSupplierModal(false); setSupplierFavSearch(""); }} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "إضافة مورد جديد" : "Onboard New Supplier"}
+            </h2>
+            <form action={createSupplierAction} className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              {/* Left Column: Basic Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>{t("admin.commNameFull")} *</span>
+                  <input name="name" type="text" placeholder={t("admin.commNameFull")} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.fameNameShort")}</span>
+                  <input name="fameName" type="text" placeholder={t("admin.fameNamePlaceholder")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.contact")}</span>
+                  <input name="contactPerson" type="text" placeholder={t("admin.contact")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المسمى الوظيفي لجهة الاتصال" : "Contact Person Job Title"}</span>
+                  <input name="contactJobTitle" type="text" placeholder="e.g. Sales Director" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.phone")} *</span>
+                  <input name="phone" type="text" placeholder="+20..." required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "البريد الإلكتروني" : "Email Address"}</span>
+                  <input name="email" type="email" placeholder="example@supplier.com" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label className="field">
+                    <span>{isRTL ? "كود المورد" : "Supplier Code"}</span>
+                    <input name="code" type="text" placeholder="e.g. SUP-101" style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                  <label className="field">
+                    <span>{isRTL ? "المنطقة / المحافظة" : "Region / Governorate"}</span>
+                    <input name="region" type="text" placeholder="e.g. Giza" style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span>{isRTL ? "العنوان التفصيلي" : "Full Address"}</span>
+                  <input name="address" type="text" placeholder="e.g. 12 Street..." style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المنتجات الممثلة" : "Represented Products"}</span>
+                  <input name="representedProducts" type="text" placeholder="e.g. Pallets, Plastic bins..." style={{ background: "var(--bg-subtle)" }} />
+                </label>
+              </div>
+
+              {/* Right Column: Categories & Favorite Products */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+                    📁 {isRTL ? "تعيين الفئات المصرح بها" : "Assign Authorized Categories"}
+                  </span>
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "150px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {categories.map(c => (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="categoryIds" value={c.id} />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "4px" }}>
+                    ⭐ {isRTL ? "تحديد كـ مورد مفضل للمنتجات" : "Set as Favorite Supplier for Products"}
+                  </span>
+                  <input
+                    type="text"
+                    className="search-input"
+                    style={{ width: "100%", padding: "6px 10px", fontSize: "11px", marginBottom: "8px", background: "var(--bg-subtle)" }}
+                    placeholder={isRTL ? "البحث عن صنف..." : "Search items..."}
+                    value={supplierFavSearch}
+                    onChange={e => setSupplierFavSearch(e.target.value)}
+                  />
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "180px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {items.filter(item => {
+                      if (!supplierFavSearch) return true;
+                      return item.name.toLowerCase().includes(supplierFavSearch.toLowerCase());
+                    }).map(item => (
+                      <label key={item.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="favProductIds" value={item.id} />
+                        <span>{item.name} <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>({categories.find(c => c.id === item.category_id)?.name})</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.addSupplierBtn")}</button>
+                <button type="button" onClick={() => { setShowAddSupplierModal(false); setSupplierFavSearch(""); }} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Supplier Modal */}
+      {editingSupplier && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "900px", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button type="button" onClick={() => { setEditingSupplier(null); setSupplierFavSearch(""); }} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "تعديل تفاصيل المورد" : "Edit Supplier Details"}
+            </h2>
+            <form action={updateSupplierAction} className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              <input type="hidden" name="id" value={editingSupplier.id} />
+              
+              {/* Left Column: Basic Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>{t("admin.commNameFull")} *</span>
+                  <input name="name" type="text" defaultValue={editingSupplier.name} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.fameNameShort")}</span>
+                  <input name="fameName" type="text" defaultValue={editingSupplier.fame_name ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.contact")}</span>
+                  <input name="contactPerson" type="text" defaultValue={editingSupplier.contact_person ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المسمى الوظيفي لجهة الاتصال" : "Contact Person Job Title"}</span>
+                  <input name="contactJobTitle" type="text" defaultValue={editingSupplier.contact_job_title ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.phone")} *</span>
+                  <input name="phone" type="text" defaultValue={editingSupplier.phone || ""} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "البريد الإلكتروني" : "Email Address"}</span>
+                  <input name="email" type="email" defaultValue={editingSupplier.email ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label className="field">
+                    <span>{isRTL ? "كود المورد" : "Supplier Code"}</span>
+                    <input name="code" type="text" defaultValue={editingSupplier.code ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                  <label className="field">
+                    <span>{isRTL ? "المنطقة / المحافظة" : "Region / Governorate"}</span>
+                    <input name="region" type="text" defaultValue={editingSupplier.region ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span>{isRTL ? "العنوان التفصيلي" : "Full Address"}</span>
+                  <input name="address" type="text" defaultValue={editingSupplier.address ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المنتجات الممثلة" : "Represented Products"}</span>
+                  <input name="representedProducts" type="text" defaultValue={editingSupplier.represented_products ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+              </div>
+
+              {/* Right Column: Categories & Favorite Products */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+                    📁 {isRTL ? "تعيين الفئات المصرح بها" : "Assign Authorized Categories"}
+                  </span>
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "150px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {categories.map(c => (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="categoryIds" value={c.id} defaultChecked={(editingSupplier.category_ids || []).includes(c.id)} />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "4px" }}>
+                    ⭐ {isRTL ? "تحديد كـ مورد مفضل للمنتجات" : "Set as Favorite Supplier for Products"}
+                  </span>
+                  <input
+                    type="text"
+                    className="search-input"
+                    style={{ width: "100%", padding: "6px 10px", fontSize: "11px", marginBottom: "8px", background: "var(--bg-subtle)" }}
+                    placeholder={isRTL ? "البحث عن صنف..." : "Search items..."}
+                    value={supplierFavSearch}
+                    onChange={e => setSupplierFavSearch(e.target.value)}
+                  />
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "180px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {items.filter(item => {
+                      if (!supplierFavSearch) return true;
+                      return item.name.toLowerCase().includes(supplierFavSearch.toLowerCase());
+                    }).map(item => (
+                      <label key={item.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="favProductIds" value={item.id} defaultChecked={(editingSupplier.fav_item_ids || []).includes(item.id)} />
+                        <span>{item.name} <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>({categories.find(c => c.id === item.category_id)?.name})</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.save")}</button>
+                <button type="button" onClick={() => { setEditingSupplier(null); setSupplierFavSearch(""); }} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

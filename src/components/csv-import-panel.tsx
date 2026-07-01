@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useTransition, useCallback } from "react";
-import { importItemsCSVActionDirect, importSuppliersCSVActionDirect } from "@/app/actions/admin";
+import { importItemsCSVActionDirect, importSuppliersCSVActionDirect, importHistoricalPricesCSVAction } from "@/app/actions/admin";
 
 type Props = {
-  type: "items" | "suppliers";
+  type: "items" | "suppliers" | "historical_prices";
 };
 
 // ── Client-side CSV parser (handles quoted fields + BOM) ──────────────────────
@@ -73,7 +73,11 @@ export default function CsvImportPanel({ type }: Props) {
 
   const isItems = type === "items";
   const templateUrl = `/api/templates?type=${type}`;
-  const templateFileName = isItems ? "items_template.csv" : "suppliers_template.csv";
+  const templateFileName = isItems 
+    ? "items_template.csv" 
+    : type === "suppliers" 
+    ? "suppliers_template.csv" 
+    : "historical_prices_template.csv";
 
   const PREVIEW_ROWS = 8;
 
@@ -139,9 +143,11 @@ export default function CsvImportPanel({ type }: Props) {
     startTransition(async () => {
       try {
         setProgress(30);
-        const res = isItems
+        const res = type === "items"
           ? await importItemsCSVActionDirect(formData)
-          : await importSuppliersCSVActionDirect(formData);
+          : type === "suppliers"
+          ? await importSuppliersCSVActionDirect(formData)
+          : await importHistoricalPricesCSVAction(formData);
         setProgress(90);
         // Small delay so progress reaches 90 visually
         await new Promise((r) => setTimeout(r, 300));
@@ -179,22 +185,40 @@ export default function CsvImportPanel({ type }: Props) {
             Step 1 — Download Template
           </p>
           <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
-            {isItems ? "Items & Categories CSV Template" : "Suppliers CSV Template"}
+            {type === "items" 
+              ? "Items & Categories CSV Template" 
+              : type === "suppliers" 
+              ? "Suppliers CSV Template" 
+              : "Historical Price Entries CSV Template"}
           </p>
           <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
-            {isItems
+            {type === "items"
               ? "Category · MOQ · Item Name · Trans/EGP · TIER · Range 1–4 · Discount 1–4"
-              : "Supplier Name · Code · Contact Job · Contact Person · Phone · Products · Email · Region · Address"}
+              : type === "suppliers"
+              ? "Supplier Name · Code · Contact Job · Contact Person · Phone · Products · Email · Region · Address"
+              : "Month (YYYY-MM) · Item ID · Supplier ID · Price · Notes · Collected By"}
           </p>
         </div>
-        <a
-          href={templateUrl}
-          download={templateFileName}
-          className="button button-secondary"
-          style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          ⬇ Download Template
-        </a>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          {type === "historical_prices" && (
+            <a
+              href="/api/templates?type=system_ids"
+              download="system_ids_export.csv"
+              className="button button-secondary"
+              style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.2)", color: "var(--primary)" }}
+            >
+              📋 Export System IDs
+            </a>
+          )}
+          <a
+            href={templateUrl}
+            download={templateFileName}
+            className="button button-secondary"
+            style={{ padding: "9px 18px", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            ⬇ Download Template
+          </a>
+        </div>
       </div>
 
       {/* ── Step 2: Upload ────────────────────────────────────────────────────── */}

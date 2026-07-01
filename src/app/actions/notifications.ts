@@ -9,13 +9,13 @@ import {
   getUnreadNotificationsForUser,
   markSingleAcknowledgmentAsRead,
   markSingleRejectedPriceEntryAsReadForWH,
-  markSingleNegotiationAsRead
+  markSingleNegotiationAsRead,
+  markSystemAlertRead
 } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { asNumber, asString } from "@/lib/format";
 
-// ... [rest of functions] ...
-export async function markSingleNotificationReadAction(id: number, type: "acknowledgment" | "rejection" | "negotiation"): Promise<{ ok: boolean }> {
+export async function markSingleNotificationReadAction(id: number, type: "acknowledgment" | "rejection" | "negotiation" | "system_alert"): Promise<{ ok: boolean }> {
   try {
     const session = requireRole(["SC", "SA", "AD", "WH", "MG"]);
     if (type === "acknowledgment") {
@@ -27,6 +27,8 @@ export async function markSingleNotificationReadAction(id: number, type: "acknow
     } else if (type === "negotiation") {
       requireRole(["SC", "AD"]);
       markSingleNegotiationAsRead(id);
+    } else if (type === "system_alert") {
+      markSystemAlertRead(session.username, id);
     }
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/notifications");

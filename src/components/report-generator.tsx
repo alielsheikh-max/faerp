@@ -210,6 +210,11 @@ function rpt_tierPriceHtml(r: any) {
       </div>`
     ).join("")}</div>`;
   }
+  // Fixed price strategy — show single price
+  if (r.is_tiered === 2) {
+    return `<span style="color:#f59e0b;font-weight:800;font-size:14px;">&#128274; ${formatCurrency(r.sell_min)}</span>`;
+  }
+  // Min/Max range
   return `<span style="color:#10b981;font-weight:800;font-size:13px;">${formatCurrency(r.sell_min)}</span><span style="color:#9ca3af;margin:0 6px;">–</span><span style="color:#6366f1;font-weight:800;font-size:13px;">${formatCurrency(r.sell_max)}</span>`;
 }
 /** Returns plain text tier description for Excel "Approved Prices" cell */
@@ -227,6 +232,11 @@ function rpt_tierPriceText(r: any): string {
     if (r.tier4_discount > 0) parts.push(`T4 (${r.tier3_max+1}+): EGP ${rpt_getTierPrice(ba, r.tier4_discount, t, o, sm)}`);
     return parts.join(" | ");
   }
+  // Fixed price strategy — show single price
+  if (r.is_tiered === 2) {
+    return `Fixed: EGP ${r.sell_min ?? "—"}`;
+  }
+  // Min/Max range
   return `Min: EGP ${r.sell_min ?? "—"}  –  Max: EGP ${r.sell_max ?? "—"}`;
 }
 // ── Report data fetcher + renderer ────────────────────────────────────────────

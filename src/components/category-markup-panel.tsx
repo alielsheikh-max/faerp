@@ -553,22 +553,22 @@ export default function CategoryMarkupPanel({
 
         {(() => {
           const selectedCategoryIdNum = categoryId ? parseInt(categoryId, 10) : null;
-          const tieredItemsOfCategory = (items || []).filter(
-            (item) => item.category_id === selectedCategoryIdNum && item.is_tiered === 1
+          const itemsOfCategory = (items || []).filter(
+            (item) => item.category_id === selectedCategoryIdNum
           );
 
           const filteredItems = searchQuery.trim() === ""
-            ? tieredItemsOfCategory
-            : tieredItemsOfCategory.filter(item =>
+            ? itemsOfCategory
+            : itemsOfCategory.filter(item =>
                 item.name.toLowerCase().includes(searchQuery.toLowerCase())
               );
 
-          if (tieredItemsOfCategory.length === 0) {
+          if (itemsOfCategory.length === 0) {
             return (
               <div style={{ fontSize: "11.5px", color: "var(--text-muted)", fontStyle: "italic" }}>
                 {isAr 
-                  ? "لا توجد عناصر ذات تسعير حجمي مكوّنة في هذه الفئة." 
-                  : "No volume tiered items configured in this category."}
+                  ? "لا توجد عناصر في هذه الفئة." 
+                  : "No items configured in this category."}
               </div>
             );
           }
@@ -755,15 +755,36 @@ export default function CategoryMarkupPanel({
                         </span>
                       )}
                       
+                      {/* Pricing Strategy Badge */}
+                      {(() => {
+                        const strat = item.is_tiered;
+                        if (strat === 1) return <span className="badge" style={{ fontSize: "9px", background: "rgba(99,102,241,0.1)", color: "var(--primary)", border: "1px solid rgba(99,102,241,0.25)" }}>⚡ {isAr ? "شرائح" : "Tiers"}</span>;
+                        if (strat === 2) return <span className="badge" style={{ fontSize: "9px", background: "rgba(245,158,11,0.1)", color: "var(--warning)", border: "1px solid rgba(245,158,11,0.25)" }}>🔒 {isAr ? "سعر ثابت" : "Fixed"}</span>;
+                        return <span className="badge" style={{ fontSize: "9px", background: "rgba(16,185,129,0.1)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)" }}>↕ {isAr ? "أدنى/أقصى" : "Min/Max"}</span>;
+                      })()}
+
                       <span className="badge badge-strong" style={{ fontSize: "9px" }}>{item.unit}</span>
-                      
-                      {/* 3-Dots dropdown menu */}
+
+                      {/* Inline Submit for Approval button */}
+                      {!isPendingApproval && (
+                        <button
+                          type="button"
+                          onClick={() => handlePublishSingleItem(item.id)}
+                          className="button button-primary"
+                          style={{ padding: "4px 10px", fontSize: "10px", fontWeight: 800, whiteSpace: "nowrap", height: "26px" }}
+                          title={isAr ? "تقديم هذا الصنف للاعتماد" : "Submit this item for approval"}
+                        >
+                          ⚡ {isAr ? "تقديم" : "Submit"}
+                        </button>
+                      )}
+
+                      {/* 3-Dots dropdown (Reset only) */}
                       <div style={{ position: "relative" }}>
                         <button
                           type="button"
                           onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)}
                           style={{
-                            background: "none", border: "none", cursor: "pointer", fontSize: "18px", color: "var(--text-muted)", padding: "0 8px"
+                            background: "none", border: "none", cursor: "pointer", fontSize: "18px", color: "var(--text-muted)", padding: "0 4px"
                           }}
                         >⋮</button>
                         {activeMenuId === item.id && (
@@ -773,14 +794,6 @@ export default function CategoryMarkupPanel({
                             borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                             display: "flex", flexDirection: "column", minWidth: "150px", padding: "4px"
                           }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handlePublishSingleItem(item.id);
-                                setActiveMenuId(null);
-                              }}
-                              style={{ padding: "8px 12px", fontSize: "12px", border: "none", background: "none", textAlign: isAr ? "right" : "left", cursor: "pointer", borderRadius: "6px", color: "var(--primary)", fontWeight: 700 }}
-                            >⚡ {isAr ? "تقديم الصنف للاعتماد" : "Submit Item for Approval"}</button>
                             <button
                               type="button"
                               onClick={() => {
@@ -901,93 +914,121 @@ export default function CategoryMarkupPanel({
                       )}
                     </div>
 
-                    {/* Tier grid */}
-                    <div className="category-pricing-item-tier-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${tierCells.length}, 1fr)`, gap: "8px" }}>
-                      {tierCells.map((tc, idx) => {
-                        const prevPrice = getPrevTierPrice(idx);
-                        const newPrice = getTierPrice(tc.val, itemState.transportation);
-                        return (
-                          <div key={idx} style={{
-                            background: "var(--bg-subtle)",
-                            padding: "8px 10px",
-                            borderRadius: "8px",
-                            border: "1px solid var(--border-light)",
-                            borderLeft: isAr ? "none" : `4px solid ${tc.color}`,
-                            borderRight: isAr ? `4px solid ${tc.color}` : "none",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "4px",
-                          }}>
-                            <div style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: "4px",
-                              color: "var(--text-secondary)",
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              textAlign: "center"
-                            }}>
-                              <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: tc.color }}></span>
-                              {tc.label}
-                            </div>
-                            
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "4px", flexDirection: isAr ? "row-reverse" : "row" }}>
-                              {/* Prev price */}
-                              <div style={{ fontSize: "10.5px", color: "var(--text-secondary)", textAlign: isAr ? "right" : "left" }}>
-                                <div style={{ scale: "0.85", transformOrigin: isAr ? "right" : "left", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>PREV</div>
-                                <strong style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{prevPrice !== null && prevPrice > 0 ? formatCurrency(prevPrice) : "—"}</strong>
-                              </div>
+                    {/* Tier grid — only for Volume Tiers items */}
+                    {item.is_tiered === 1 && (
+                      <>
+                        <div className="category-pricing-item-tier-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${tierCells.length}, 1fr)`, gap: "8px" }}>
+                          {tierCells.map((tc, idx) => {
+                            const prevPrice = getPrevTierPrice(idx);
+                            const newPrice = getTierPrice(tc.val, itemState.transportation);
+                            return (
+                              <div key={idx} style={{
+                                background: "var(--bg-subtle)",
+                                padding: "8px 10px",
+                                borderRadius: "8px",
+                                border: "1px solid var(--border-light)",
+                                borderLeft: isAr ? "none" : `4px solid ${tc.color}`,
+                                borderRight: isAr ? `4px solid ${tc.color}` : "none",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                              }}>
+                                <div style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "4px",
+                                  color: "var(--text-secondary)",
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  textAlign: "center"
+                                }}>
+                                  <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: tc.color }}></span>
+                                  {tc.label}
+                                </div>
+                                
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "4px", flexDirection: isAr ? "row-reverse" : "row" }}>
+                                  {/* Prev price */}
+                                  <div style={{ fontSize: "10.5px", color: "var(--text-secondary)", textAlign: isAr ? "right" : "left" }}>
+                                    <div style={{ scale: "0.85", transformOrigin: isAr ? "right" : "left", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>PREV</div>
+                                    <strong style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{prevPrice !== null && prevPrice > 0 ? formatCurrency(prevPrice) : "—"}</strong>
+                                  </div>
 
-                              {/* Input divisor */}
-                              <div style={{ display: "flex", justifyContent: "center" }} title={isAr ? "اكتب المقسوم لتجاوزه لهذا الصنف (مثال: 0.77)" : "Type a divisor directly to override (e.g. 0.77)"}>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0.01"
-                                  max="1"
-                                  value={tc.val}
-                                  onChange={e => handleUpdateItemTier(item.id, tc.field, e.target.value)}
-                                  style={{
-                                    width: "52px", padding: "3px 4px", fontSize: "11.5px", fontWeight: 900,
-                                    textAlign: "center", borderRadius: "6px", border: `1.5px solid ${tc.color}75`,
-                                    background: "var(--bg-elevated)", color: tc.color,
-                                    boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)"
-                                  }}
-                                />
-                              </div>
+                                  {/* Input divisor */}
+                                  <div style={{ display: "flex", justifyContent: "center" }} title={isAr ? "اكتب المقسوم لتجاوزه لهذا الصنف (مثال: 0.77)" : "Type a divisor directly to override (e.g. 0.77)"}>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      max="1"
+                                      value={tc.val}
+                                      onChange={e => handleUpdateItemTier(item.id, tc.field, e.target.value)}
+                                      style={{
+                                        width: "52px", padding: "3px 4px", fontSize: "11.5px", fontWeight: 900,
+                                        textAlign: "center", borderRadius: "6px", border: `1.5px solid ${tc.color}75`,
+                                        background: "var(--bg-elevated)", color: tc.color,
+                                        boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)"
+                                      }}
+                                    />
+                                  </div>
 
-                              {/* New price */}
-                              <div style={{ textAlign: isAr ? "left" : "right" }}>
-                                <div style={{ scale: "0.85", transformOrigin: isAr ? "left" : "right", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>NEW</div>
-                                <strong style={{ color: tc.color, fontSize: "13.5px", fontWeight: 900 }}>{newPrice > 0 ? formatCurrency(newPrice) : "—"}</strong>
+                                  {/* New price */}
+                                  <div style={{ textAlign: isAr ? "left" : "right" }}>
+                                    <div style={{ scale: "0.85", transformOrigin: isAr ? "left" : "right", color: "var(--text-muted)", marginBottom: "2px", fontWeight: 600 }}>NEW</div>
+                                    <strong style={{ color: tc.color, fontSize: "13.5px", fontWeight: 900 }}>{newPrice > 0 ? formatCurrency(newPrice) : "—"}</strong>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </div>
 
-                    {/* Divisor/Transportation edit reminder */}
-                    <div style={{
-                      fontSize: "9.5px",
-                      color: "var(--text-muted)",
-                      textAlign: "center",
-                      display: "flex",
-                      gap: "4px",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: "2px",
-                      fontStyle: "italic",
-                      opacity: 0.85
-                    }}>
-                      <span>✏️</span>
-                      <span>
-                        {isAr 
-                          ? "يمكنك تعديل المقسوم أو تكلفة النقل مباشرةً لتجاوز القيم الافتراضية للفئة لهذا الصنف."
-                          : "Edit divisor or transportation directly to override for this item."}
-                      </span>
-                    </div>
+                        {/* Divisor/Transportation edit reminder */}
+                        <div style={{
+                          fontSize: "9.5px",
+                          color: "var(--text-muted)",
+                          textAlign: "center",
+                          display: "flex",
+                          gap: "4px",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginTop: "2px",
+                          fontStyle: "italic",
+                          opacity: 0.85
+                        }}>
+                          <span>✏️</span>
+                          <span>
+                            {isAr 
+                              ? "يمكنك تعديل المقسوم أو تكلفة النقل مباشرةً لتجاوز القيم الافتراضية للفئة لهذا الصنف."
+                              : "Edit divisor or transportation directly to override for this item."}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Preview for Min/Max items */}
+                    {item.is_tiered === 0 && costBase > 0 && (
+                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", padding: "10px 14px", background: "rgba(16,185,129,0.05)", border: "1.5px solid rgba(16,185,129,0.2)", borderRadius: "10px", fontSize: "12px", alignItems: "center" }}>
+                        <span style={{ fontWeight: 700, color: "var(--success)" }}>↕ {isAr ? "نطاق السعر" : "Price Range"}</span>
+                        <span>{isAr ? "أدنى:" : "Min:"} <strong style={{ color: "var(--success)" }}>{formatCurrency(Math.ceil((costBase * (1 + parseFloat(markupMin) / 100) + parseFloat(String(itemState.transportation))) / 5) * 5)}</strong></span>
+                        <span style={{ color: "var(--text-muted)" }}>→</span>
+                        <span>{isAr ? "أقصى:" : "Max:"} <strong style={{ color: "var(--primary)" }}>{formatCurrency(Math.ceil((costBase * (1 + parseFloat(markupMax) / 100) + parseFloat(String(itemState.transportation))) / 5) * 5)}</strong></span>
+                      </div>
+                    )}
+
+                    {/* Preview for Fixed Price items */}
+                    {item.is_tiered === 2 && (
+                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", padding: "10px 14px", background: "rgba(245,158,11,0.05)", border: "1.5px solid rgba(245,158,11,0.25)", borderRadius: "10px", fontSize: "12px", alignItems: "center" }}>
+                        <span style={{ fontWeight: 700, color: "var(--warning)" }}>🔒 {isAr ? "سعر بيع ثابت" : "Fixed Sell Price"}</span>
+                        {existingSp && existingSp.sell_min > 0 ? (
+                          <span><strong style={{ color: "var(--warning)", fontSize: "15px" }}>{formatCurrency(existingSp.sell_min)}</strong></span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                            {isAr ? "لم يُحدَّد سعر ثابت بعد. سيتم تعيينه من قِبَل المدير." : "No fixed price set yet — will be assigned by manager."}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

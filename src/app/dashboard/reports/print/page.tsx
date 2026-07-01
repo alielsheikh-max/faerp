@@ -86,8 +86,8 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
                       <td style={tdStyle}>{row.category_name}</td>
                       <td style={tdStyle}>{row.item_name}</td>
                       <td style={tdStyle}>
-                        <span style={{ fontWeight: 700, color: isTier ? "#6366f1" : "#10b981" }}>
-                          {isTier ? "⚡ TIER" : `📊 ${(row.strategy ?? "").toUpperCase()}`}
+                        <span style={{ fontWeight: 700, color: isTier ? "#6366f1" : (row.is_tiered === 2 ? "#d97706" : "#10b981") }}>
+                          {isTier ? "⚡ TIER" : (row.is_tiered === 2 ? "🔒 FIXED" : `↕ MIN/MAX`)}
                         </span>
                       </td>
                       {isTier ? (
@@ -96,6 +96,13 @@ export default function ReportPrintPage({ searchParams }: PrintPageProps) {
                           <td style={tdStyle}>{row.tier2_discount ? tp(row.tier2_discount) : "—"}</td>
                           <td style={tdStyle}>{row.tier3_discount ? tp(row.tier3_discount) : "—"}</td>
                           <td style={tdStyle}>{row.tier4_discount ? tp(row.tier4_discount) : "—"}</td>
+                        </>
+                      ) : row.is_tiered === 2 ? (
+                        <>
+                          <td style={{ ...tdStyle, color: "#d97706", fontWeight: 700 }}>🔒 {formatCurrency(row.sell_min)}</td>
+                          <td style={tdStyle}>—</td>
+                          <td style={tdStyle}>—</td>
+                          <td style={tdStyle}>—</td>
                         </>
                       ) : (
                         <>

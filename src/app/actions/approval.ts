@@ -9,6 +9,7 @@ import {
   approveMultiplePendingSellingPrices,
   approveSinglePendingSellingPrice,
   reconsiderSellingPrice,
+  reconsiderMultiplePendingSellingPrices,
   getPendingPriceEntries,
   getPendingPriceChangeRequests
 } from "@/lib/db";
@@ -126,6 +127,38 @@ export async function reconsiderSellingPriceAction(formData: FormData): Promise<
     return { ok: false, error: e instanceof Error ? e.message : "Failed to return for reconsideration." };
   }
 }
+
+export async function reconsiderMultipleSellingPricesAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = requireRole(["MG"]);
+    const month = asString(formData.get("month"));
+    const itemIdsStr = asString(formData.get("itemIds"));
+    const note = asString(formData.get("reconsiderNote")) || "";
+
+    if (!month || !itemIdsStr) {
+      return { ok: false, error: "Month and Item IDs are required." };
+    }
+
+    if (!note.trim()) {
+      return { ok: false, error: "A reconsideration note is required for batch reject." };
+    }
+
+    const itemIds = JSON.parse(itemIdsStr) as number[];
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return { ok: false, error: "No items selected." };
+    }
+
+    reconsiderMultiplePendingSellingPrices(itemIds, month, note.trim(), session.displayName);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/sales");
+    revalidatePath("/dashboard/notifications");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to return batch for reconsideration." };
+  }
+}
+
 
 export async function getPendingApprovalsAction(): Promise<{ ok: boolean; pendingQuotes?: any[]; pendingRevisions?: any[]; error?: string }> {
   try {

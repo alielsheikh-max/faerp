@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
+import { database } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,6 +42,53 @@ export async function GET(req: NextRequest) {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": "attachment; filename=\"suppliers_template.csv\"",
+      },
+    });
+  }
+
+  if (type === "historical_prices") {
+    const headers = "Month,Item ID,Supplier ID,Price,Notes,Collected By\n";
+    const sampleRow = `2026-05,1,2,350.00,Historical price entry,Admin Bulk\n`;
+    const csvContent = "\ufeff" + headers + sampleRow;
+    return new NextResponse(csvContent, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=\"historical_prices_template.csv\"",
+      },
+    });
+  }
+
+  if (type === "system_ids") {
+    const db = database();
+    const categories = db.prepare("SELECT id, name FROM categories ORDER BY id").all() as Array<{ id: number; name: string }>;
+    const suppliers = db.prepare("SELECT id, name, region FROM suppliers ORDER BY id").all() as Array<{ id: number; name: string; region: string | null }>;
+    const items = db.prepare(`
+      SELECT i.id, i.name, c.name AS category_name 
+      FROM items i 
+      JOIN categories c ON i.category_id = c.id 
+      ORDER BY i.id
+    `).all() as Array<{ id: number; name: string; category_name: string }>;
+
+    let csvContent = "\ufeffRecord Type,ID,Name,Extra Details\n";
+    
+    for (const c of categories) {
+      csvContent += `Category,${c.id},"${c.name.replace(/"/g, '""')}",\n`;
+    }
+    for (const s of suppliers) {
+      const extra = s.region ? `Region: ${s.region}` : "";
+      csvContent += `Supplier,${s.id},"${s.name.replace(/"/g, '""')}","${extra.replace(/"/g, '""')}"\n`;
+    }
+    for (const i of items) {
+      const extra = `Category: ${i.category_name}`;
+      csvContent += `Item,${i.id},"${i.name.replace(/"/g, '""')}","${extra.replace(/"/g, '""')}"\n`;
+    }
+
+    return new NextResponse(csvContent, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=\"system_ids_export.csv\"",
       },
     });
   }

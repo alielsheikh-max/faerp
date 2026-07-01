@@ -20,6 +20,8 @@ import {
   purgeAllDataExceptUsers,
   setSupplierCategories,
   ensureSupplierCategory,
+  setSupplierFavoriteProducts,
+  createSystemAlert,
   bulkSetItemActive,
   bulkMoveItemCategory,
   bulkDeleteItems,
@@ -221,7 +223,31 @@ export async function createSupplierAction(formData: FormData) {
     fail("Supplier name is required.", "/dashboard/admin/suppliers");
   }
 
-  createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
+  // 1. Create supplier and return ID
+  const supplierId = createSupplier({ name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
+
+  // 2. Parse and assign categories
+  const categoryIds = formData.getAll("categoryIds").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (categoryIds.length > 0) {
+    setSupplierCategories(supplierId, categoryIds, "admin:onboarding");
+  }
+
+  // 3. Parse and assign favorite products
+  const favProductIds = formData.getAll("favProductIds").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (favProductIds.length > 0) {
+    setSupplierFavoriteProducts(supplierId, favProductIds);
+  }
+
+  // 4. Send system alert notifications to roles WH, SC, MG
+  const displaySupplier = fameName ? `${name} (${fameName})` : name;
+  const messageEn = `New supplier "${displaySupplier}" has been onboarded.`;
+  const messageAr = `تم إضافة مورد جديد باسم "${displaySupplier}".`;
+  const alertText = `${messageEn} / ${messageAr}`;
+  
+  createSystemAlert("WH", "New Supplier Onboarded", alertText);
+  createSystemAlert("SC", "New Supplier Onboarded", alertText);
+  createSystemAlert("MG", "New Supplier Onboarded", alertText);
+
   log.supplierCreated({ username: "admin", role: "AD" }, { name });
   done("Supplier created.", "/dashboard/admin/suppliers");
 }
@@ -245,6 +271,15 @@ export async function updateSupplierAction(formData: FormData) {
   }
 
   updateSupplier({ id, name, fameName, contactPerson, phone, code, contactJobTitle, representedProducts, email, region, address });
+
+  // 2. Parse and assign categories
+  const categoryIds = formData.getAll("categoryIds").map(Number).filter(n => !isNaN(n) && n > 0);
+  setSupplierCategories(id, categoryIds, "admin:edit");
+
+  // 3. Parse and assign favorite products
+  const favProductIds = formData.getAll("favProductIds").map(Number).filter(n => !isNaN(n) && n > 0);
+  setSupplierFavoriteProducts(id, favProductIds);
+
   log.supplierUpdated({ username: "admin", role: "AD" }, { name });
   done("Supplier updated.", "/dashboard/admin/suppliers");
 }
@@ -314,6 +349,7 @@ export async function createItemAction(formData: FormData) {
   const description = asString(formData.get("description"));
   const transportationPerUnit = asNumber(formData.get("transportationPerUnit")) || 0;
   const moq = asNumber(formData.get("moq")) || 0;
+  const isTiered = asNumber(formData.get("isTiered")) ?? 0;
   const recommendedSupplierId = asNumber(formData.get("recommendedSupplierId"));
 
   if (categoryId === null || !name || !unit) {
@@ -330,12 +366,26 @@ export async function createItemAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Image upload failed.", "/dashboard/admin/items");
   }
 
-  createItem({ categoryId, name, unit, description, transportationPerUnit, moq, recommendedSupplierId, images: finalImagesStr });
+  createItem({ categoryId, name, unit, description, transportationPerUnit, moq, isTiered, recommendedSupplierId, images: finalImagesStr });
 
   // Auto-assign category to recommended supplier so item appears in WH missing quotes
   if (recommendedSupplierId && categoryId) {
     ensureSupplierCategory(recommendedSupplierId, categoryId, "system:auto");
   }
+
+  // Get category name for notifications
+  const db = database();
+  const catRow = db.prepare("SELECT name FROM categories WHERE id = ?").get(categoryId) as { name: string } | undefined;
+  const catName = catRow?.name || `Category #${categoryId}`;
+
+  // Send system alert notifications to roles WH, SC, MG
+  const messageEn = `New product "${name}" has been added under category "${catName}".`;
+  const messageAr = `تم إضافة منتج جديد باسم "${name}" في فئة "${catName}".`;
+  const alertText = `${messageEn} / ${messageAr}`;
+  
+  createSystemAlert("WH", "New Product Added", alertText);
+  createSystemAlert("SC", "New Product Added", alertText);
+  createSystemAlert("MG", "New Product Added", alertText);
 
   log.itemCreated({ username: "admin", role: "AD" }, { name, category: `Category #${categoryId}` });
   done("Item created.", "/dashboard/admin/items");
@@ -351,6 +401,7 @@ export async function updateItemAction(formData: FormData) {
   const active = asString(formData.get("active")) === "on";
   const transportationPerUnit = asNumber(formData.get("transportationPerUnit")) || 0;
   const moq = asNumber(formData.get("moq")) || 0;
+  const isTiered = asNumber(formData.get("isTiered"));
   const recommendedSupplierId = asNumber(formData.get("recommendedSupplierId"));
 
   if (id === null || categoryId === null || !name || !unit) {
@@ -397,7 +448,7 @@ export async function updateItemAction(formData: FormData) {
     fail(error instanceof Error ? error.message : "Image upload failed.", "/dashboard/admin/items");
   }
 
-  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq, recommendedSupplierId, images: finalImagesStr });
+  updateItem({ id, categoryId, name, unit, description, active, transportationPerUnit, moq, isTiered: isTiered ?? undefined, recommendedSupplierId, images: finalImagesStr });
 
   // Auto-assign category to recommended supplier so item appears in WH missing quotes
   if (recommendedSupplierId && categoryId) {
@@ -986,5 +1037,116 @@ export async function getSupplierConfirmedPricesAction(supplierId: number): Prom
     return { success: true, history };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to load supplier confirmed prices history." };
+  }
+}
+
+export async function importHistoricalPricesCSVAction(formData: FormData) {
+  try {
+    requireRole(["AD"]);
+  } catch (err) {
+    return { success: false, error: "Unauthorized. Admin role required." };
+  }
+
+  const file = formData.get("file") as File;
+  if (!file || file.size === 0) {
+    return { success: false, error: "No CSV file selected or file is empty." };
+  }
+
+  try {
+    const text = await file.text();
+    const rows = parseCSV(text);
+    if (rows.length <= 1) {
+      return { success: false, error: "CSV file has no data rows." };
+    }
+
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const dataRows = rows.slice(1);
+
+    // Headers mapping:
+    // Month, Item ID, Supplier ID, Price, Notes, Collected By
+    const monthIdx = headers.indexOf("month");
+    const itemIdIdx = headers.indexOf("item id");
+    const supplierIdIdx = headers.indexOf("supplier id");
+    const priceIdx = headers.indexOf("price");
+    const notesIdx = headers.indexOf("notes");
+    const collectedByIdx = headers.indexOf("collected by");
+
+    if (monthIdx === -1 || itemIdIdx === -1 || supplierIdIdx === -1 || priceIdx === -1) {
+      return { 
+        success: false, 
+        error: "Missing required headers: Month, Item ID, Supplier ID, Price" 
+      };
+    }
+
+    const db = database();
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    const insertEntry = db.prepare(`
+      INSERT INTO price_entries 
+        (item_id, supplier_id, month, price, collected_by, collected_role, notes, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', datetime('now'))
+    `);
+
+    // Let's check if the item and supplier exist first
+    const checkItem = db.prepare("SELECT id FROM items WHERE id = ?");
+    const checkSupplier = db.prepare("SELECT id FROM suppliers WHERE id = ?");
+
+    const runTransaction = db.transaction(() => {
+      for (const row of dataRows) {
+        if (row.length < 4) {
+          skippedCount++;
+          continue;
+        }
+
+        const month = row[monthIdx]?.trim();
+        const itemId = Number(row[itemIdIdx]);
+        const supplierId = Number(row[supplierIdIdx]);
+        const price = Number(row[priceIdx]);
+        const notes = notesIdx !== -1 ? row[notesIdx]?.trim() : "";
+        const collectedBy = collectedByIdx !== -1 ? row[collectedByIdx]?.trim() : "Admin Bulk";
+
+        // Validate basic inputs
+        if (!month || isNaN(itemId) || isNaN(supplierId) || isNaN(price) || price <= 0) {
+          skippedCount++;
+          continue;
+        }
+
+        // Validate item and supplier exist
+        const hasItem = checkItem.get(itemId);
+        const hasSupplier = checkSupplier.get(supplierId);
+        if (!hasItem || !hasSupplier) {
+          skippedCount++;
+          continue;
+        }
+
+        // Check if there's already a price entry for this item/supplier/month to avoid duplicates
+        const checkDuplicate = db.prepare(`
+          SELECT id FROM price_entries 
+          WHERE item_id = ? AND supplier_id = ? AND month = ?
+        `).get(itemId, supplierId, month);
+
+        if (checkDuplicate) {
+          skippedCount++;
+          continue;
+        }
+
+        insertEntry.run(itemId, supplierId, month, price, collectedBy, "WH", notes);
+        importedCount++;
+      }
+    });
+
+    runTransaction();
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/purchasing");
+    revalidatePath("/dashboard/manager");
+
+    return { 
+      success: true, 
+      message: `Successfully imported ${importedCount} historical prices. Skipped ${skippedCount} rows.` 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to import CSV." };
   }
 }

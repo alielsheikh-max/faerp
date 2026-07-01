@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense, useMemo, useDeferredValue } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n-context";
+import { formatCurrency } from "@/lib/format";
 import {
   createCategoryAction,
   createItemAction,
@@ -44,8 +45,15 @@ type Supplier = {
   name: string;
   fame_name: string | null;
   contact_person: string;
+  contact_job_title?: string | null;
   phone: string;
+  email?: string | null;
+  region?: string | null;
+  address?: string | null;
+  code?: string | null;
   quote_count: number;
+  category_ids?: number[];
+  fav_item_ids?: number[];
 };
 
 type Item = {
@@ -60,6 +68,9 @@ type Item = {
   pending_request_count?: number;
   recommended_supplier_id?: number | null;
   images?: string | null;
+  moq?: number | null;
+  transportation_per_unit?: number | null;
+  is_tiered?: number | null;
 };
 
 function ItemImageEditor({ itemImages, isRTL, t }: { itemImages: string[], isRTL: boolean, t: any }) {
@@ -409,6 +420,7 @@ function AdminToast() {
 
 export default function AdminPanel({ users, categories, suppliers, items, showOnly, role }: AdminPanelProps) {
   const { t, isRTL } = useI18n();
+  const searchParams = useSearchParams();
   const filterDesc = (desc: string | null | undefined) => {
     if (!desc) return "";
     if (desc === "Imported via CSV template" && role !== "AD") {
@@ -421,6 +433,23 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
   const [supplierQuery, setSupplierQuery] = useState("");
   const [itemQuery, setItemQuery] = useState("");
   const [itemCategoryFilter, setItemCategoryFilter] = useState("");
+
+  // Modals state
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
+  const [supplierFavSearch, setSupplierFavSearch] = useState("");
+
+  useEffect(() => {
+    if (searchParams.get("addCategory") === "true") {
+      setShowAddCategoryModal(true);
+    }
+    if (searchParams.get("addItem") === "true") {
+      setShowAddItemModal(true);
+    }
+  }, [searchParams]);
+
   const deferredUserQuery = useDeferredValue(userQuery);
   const deferredCategoryQuery = useDeferredValue(categoryQuery);
   const deferredSupplierQuery = useDeferredValue(supplierQuery);
@@ -781,21 +810,14 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             </div>
 
             {!isReadOnly && (
-              <form action={createCategoryAction} className="form-grid">
-                <label className="field">
-                  <span>{t("admin.categoryName")}</span>
-                  <input name="name" type="text" placeholder={t("admin.categoryPlaceholder")} required />
-                </label>
-                <label className="field">
-                  <span>{t("admin.categoryDesc")}</span>
-                  <input name="description" type="text" placeholder={t("admin.categoryDescPlaceholder")} />
-                </label>
-                <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
-                  <button type="submit" className="button button-primary button-block">
-                    {t("admin.createCategoryBtn")}
-                  </button>
-                </div>
-              </form>
+              <button
+                type="button"
+                onClick={() => setShowAddCategoryModal(true)}
+                className="button button-primary"
+                style={{ width: "100%", marginBottom: "12px", padding: "10px", fontWeight: 800 }}
+              >
+                ➕ {isRTL ? "إضافة فئة جديدة" : "Add New Category"}
+              </button>
             )}
 
             {/* Category Search Filter */}
@@ -917,57 +939,14 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             </div>
 
             {!isReadOnly && (
-              <form action={createItemAction} className="form-grid compact-form" encType="multipart/form-data">
-                <label className="field">
-                  <span>{t("admin.category")}</span>
-                  <select name="categoryId" defaultValue="" required>
-                    <option value="" disabled>
-                      {t("admin.bulkSelectCat")}
-                    </option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>{t("admin.itemName")}</span>
-                  <input name="name" type="text" placeholder={t("admin.itemName")} required />
-                </label>
-                <label className="field">
-                  <span>{t("admin.unit")}</span>
-                  <input name="unit" type="text" placeholder="Piece / Box / Roll" required />
-                </label>
-                <label className="field">
-                  <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
-                  <select name="recommendedSupplierId" defaultValue="">
-                    <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.fame_name || supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field field-wide">
-                  <span>{t("admin.spec")}</span>
-                  <input name="description" type="text" placeholder={t("admin.description")} />
-                </label>
-                <label className="field">
-                  <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
-                  <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
-                </label>
-                <label className="field field-wide" style={{ gridColumn: "1 / -1" }}>
-                  <span>{isRTL ? "معرض صور المنتج (اختياري - حتى 5 صور، بحد أقصى 5 ميجابايت لكل منها)" : "Product Gallery (Optional - up to 5 images, max 5 MB each)"}</span>
-                  <input name="images" type="file" multiple accept="image/*" style={{ border: "1.5px dashed var(--border)", padding: "10px", borderRadius: "8px", background: "var(--bg-elevated)", cursor: "pointer", width: "100%" }} />
-                </label>
-                <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
-                  <button type="submit" className="button button-primary button-block">
-                    {t("admin.createProductBtn")}
-                  </button>
-                </div>
-              </form>
+              <button
+                type="button"
+                onClick={() => setShowAddItemModal(true)}
+                className="button button-primary"
+                style={{ width: "100%", marginBottom: "12px", padding: "10px", fontWeight: 800 }}
+              >
+                ➕ {isRTL ? "إضافة صنف جديد" : "Add New Item"}
+              </button>
             )}
 
             {/* Advanced Items Multi-Filter Search */}
@@ -1055,6 +1034,27 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                       <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
                         {filterDesc(item.description) || "—"}
                       </div>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
+                        <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "var(--bg-elevated)", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}>
+                          <strong>MOQ:</strong> {item.moq ?? 0}
+                        </span>
+                        <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "var(--bg-elevated)", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}>
+                          <strong>Trans:</strong> {formatCurrency(item.transportation_per_unit ?? 0)}
+                        </span>
+                        {item.is_tiered === 1 ? (
+                          <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", color: "#6366f1", fontWeight: 700 }}>
+                            ⚡ Tiers
+                          </span>
+                        ) : item.is_tiered === 2 ? (
+                          <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#d97706", fontWeight: 700 }}>
+                            🔒 Fixed Price
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#059669", fontWeight: 700 }}>
+                            ↕ Min/Max Range
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                     <div className="item-meta-block" style={{ display: "flex", alignItems: "center", gap: "16px", flexShrink: 0 }}>
@@ -1071,7 +1071,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                 ))
               ) : (
                 filteredItems.map((item, idx) => (
-                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide" encType="multipart/form-data"
+                  <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide"
                     style={{ position: "relative", flexDirection: "column", gap: "0", background: idx % 2 === 0 ? "var(--bg-elevated)" : "rgba(99,102,241,0.04)" }}>
                     {/* T2: Bulk select checkbox */}
                     {bulkItemMode && (
@@ -1141,6 +1141,22 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
                         <span>{t("admin.description")}</span>
                         <input name="description" defaultValue={item.description} />
                       </label>
+                      <label className="field" style={{ minWidth: "70px" }}>
+                        <span>{isRTL ? "الحد الأدنى للكمية" : "MOQ"}</span>
+                        <input name="moq" type="number" min="0" defaultValue={item.moq ?? 0} step="1" />
+                      </label>
+                      <label className="field" style={{ minWidth: "90px" }}>
+                        <span>{isRTL ? "نقل/وحدة" : "Transport/Unit"}</span>
+                        <input name="transportationPerUnit" type="number" min="0" defaultValue={item.transportation_per_unit ?? 0} step="0.01" />
+                      </label>
+                      <label className="field" style={{ minWidth: "140px" }}>
+                        <span>{isRTL ? "استراتيجية التسعير" : "Pricing Strategy"}</span>
+                        <select name="isTiered" defaultValue={String(item.is_tiered ?? 0)}>
+                          <option value="0">{isRTL ? "↕ حد أدنى/أقصى" : "↕ Min/Max"}</option>
+                          <option value="1">{isRTL ? "⚡ شرائح" : "⚡ Tiers"}</option>
+                          <option value="2">{isRTL ? "🔒 سعر ثابت" : "🔒 Fixed"}</option>
+                        </select>
+                      </label>
                       <label className="checkbox-row checkbox-inline" style={{ marginTop: "24px" }}>
                         <input type="checkbox" name="active" defaultChecked={item.active === 1} />
                         <span>{t("admin.active")}</span>
@@ -1200,6 +1216,95 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             </div>
           </article>
         </section>
+
+        {/* Category Modal */}
+        {showAddCategoryModal && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+            <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "500px", position: "relative" }}>
+              <button type="button" onClick={() => setShowAddCategoryModal(false)} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+              <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+                {isRTL ? "إضافة فئة جديدة" : "Add New Category"}
+              </h2>
+              <form action={createCategoryAction} className="form-grid" style={{ gridTemplateColumns: "1fr" }}>
+                <label className="field">
+                  <span>{t("admin.categoryName")}</span>
+                  <input name="name" type="text" placeholder={t("admin.categoryPlaceholder")} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.categoryDesc")}</span>
+                  <input name="description" type="text" placeholder={t("admin.categoryDescPlaceholder")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+                  <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.createCategoryBtn")}</button>
+                  <button type="button" onClick={() => setShowAddCategoryModal(false)} className="button button-secondary">{t("admin.cancel")}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Item Modal */}
+        {showAddItemModal && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+            <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "600px", position: "relative" }}>
+              <button type="button" onClick={() => setShowAddItemModal(false)} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+              <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+                {isRTL ? "إضافة صنف جديد" : "Add New Item"}
+              </h2>
+              <form action={createItemAction} className="form-grid compact-form" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <label className="field">
+                  <span>{t("admin.category")}</span>
+                  <select name="categoryId" defaultValue="" required style={{ background: "var(--bg-subtle)" }}>
+                    <option value="" disabled>{t("admin.bulkSelectCat")}</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{t("admin.itemName")}</span>
+                  <input name="name" type="text" placeholder={t("admin.itemName")} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.unit")}</span>
+                  <input name="unit" type="text" placeholder="Piece / Box / Roll" required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+                  <select name="recommendedSupplierId" defaultValue="" style={{ background: "var(--bg-subtle)" }}>
+                    <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.fame_name || s.name}</option>)}
+                  </select>
+                </label>
+                <label className="field field-wide" style={{ gridColumn: "1 / -1" }}>
+                  <span>{t("admin.spec")}</span>
+                  <input name="description" type="text" placeholder={t("admin.description")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
+                  <input name="moq" type="number" min="0" defaultValue="0" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "تكلفة النقل للوحدة" : "Transport Cost / Unit"}</span>
+                  <input name="transportationPerUnit" type="number" min="0" defaultValue="0" step="0.01" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field" style={{ gridColumn: "1 / -1" }}>
+                  <span>{isRTL ? "استراتيجية التسعير" : "Pricing Strategy"}</span>
+                  <select name="isTiered" defaultValue="0" style={{ background: "var(--bg-subtle)" }}>
+                    <option value="0">{isRTL ? "↕ حد أدنى / حد أقصى" : "↕ Min / Max Range"}</option>
+                    <option value="1">{isRTL ? "⚡ شرائح الكمية" : "⚡ Volume Tiers"}</option>
+                    <option value="2">{isRTL ? "🔒 سعر ثابت" : "🔒 Fixed Price"}</option>
+                  </select>
+                </label>
+                <div className="field field-wide" style={{ gridColumn: "1 / -1" }}>
+                  <ItemImageEditor itemImages={[]} isRTL={isRTL} t={t} />
+                </div>
+                <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "20px" }}>
+                  <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.createProductBtn")}</button>
+                  <button type="button" onClick={() => setShowAddItemModal(false)} className="button button-secondary">{t("admin.cancel")}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1472,21 +1577,14 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             <span className="badge badge-strong">{categories.length} {t("admin.groups")}</span>
           </div>
 
-          <form action={createCategoryAction} className="form-grid">
-            <label className="field">
-              <span>{t("admin.categoryName")}</span>
-              <input name="name" type="text" placeholder={t("admin.categoryPlaceholder")} required />
-            </label>
-            <label className="field">
-              <span>{t("admin.categoryDesc")}</span>
-              <input name="description" type="text" placeholder={t("admin.categoryDescPlaceholder")} />
-            </label>
-            <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
-              <button type="submit" className="button button-primary button-block">
-                {t("admin.createCategoryBtn")}
-              </button>
-            </div>
-          </form>
+          <button
+            type="button"
+            onClick={() => setShowAddCategoryModal(true)}
+            className="button button-primary"
+            style={{ width: "100%", marginBottom: "12px", padding: "10px", fontWeight: 800 }}
+          >
+            ➕ {isRTL ? "إضافة فئة جديدة" : "Add New Category"}
+          </button>
 
           {/* Category Search Filter */}
           <div style={{ marginTop: "16px" }}>
@@ -1572,29 +1670,14 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             <span className="badge badge-strong">{suppliers.length} {t("admin.active")}</span>
           </div>
 
-          <form action={createSupplierAction} className="form-grid">
-            <label className="field">
-              <span>{t("admin.commNameFull")}</span>
-              <input name="name" type="text" placeholder={t("admin.commNameFull")} required />
-            </label>
-            <label className="field">
-              <span>{t("admin.fameNameShort")}</span>
-              <input name="fameName" type="text" placeholder={t("admin.fameNamePlaceholder")} />
-            </label>
-            <label className="field">
-              <span>{t("admin.contact")}</span>
-              <input name="contactPerson" type="text" placeholder={t("admin.contact")} />
-            </label>
-            <label className="field field-wide">
-              <span>{t("admin.phone")}</span>
-              <input name="phone" type="text" placeholder="+20..." />
-            </label>
-            <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
-              <button type="submit" className="button button-primary button-block">
-                {t("admin.addSupplierBtn")}
-              </button>
-            </div>
-          </form>
+          <button
+            type="button"
+            onClick={() => setShowAddSupplierModal(true)}
+            className="button button-primary"
+            style={{ width: "100%", marginBottom: "12px", padding: "10px", fontWeight: 800 }}
+          >
+            ➕ {isRTL ? "إضافة مورد جديد" : "Add New Supplier"}
+          </button>
 
           {/* Supplier Search Filter */}
           <div style={{ marginTop: "16px" }}>
@@ -1613,64 +1696,68 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               <p className="muted" style={{ padding: "12px", textAlign: "center" }}>{t("admin.noSuppliersMatch")}</p>
             ) : (
               filteredSuppliers.map((supplier) => (
-                <form key={supplier.id} action={updateSupplierAction} className="inline-editor">
-                  <input type="hidden" name="id" value={supplier.id} />
-                  <label className="field">
-                    <span>{t("admin.commNameFull")}</span>
-                    <input name="name" defaultValue={supplier.name} required />
-                  </label>
-                  <label className="field">
-                    <span>{t("admin.fameNameShort")} <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>({t("admin.fameNameHint")})</span></span>
-                    <input name="fameName" defaultValue={supplier.fame_name ?? ""} placeholder={t("admin.fameNameHint")} />
-                  </label>
-                  <label className="field">
-                    <span>{t("admin.contact")}</span>
-                    <input name="contactPerson" defaultValue={supplier.contact_person} />
-                  </label>
-                  <label className="field">
-                    <span>{t("admin.phone")}</span>
-                    <input name="phone" defaultValue={supplier.phone} />
-                  </label>
-                  <span className="mini-stat" style={{ paddingBottom: "10px", fontSize: "11px" }}>
-                    {supplier.quote_count} {t("admin.quotes")}
-                  </span>
-                  <div className="inline-editor-actions">
-                    <button type="submit" className="button button-primary" style={{ padding: "10px 16px" }}>
-                      {t("admin.save")}
-                    </button>
-                  </div>
-                  {confirmDeleteId?.type === "supplier" && confirmDeleteId.id === supplier.id ? (
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        type="submit"
-                        formAction={deleteSupplierAction}
-                        className="button button-danger"
-                        style={{ padding: "10px 16px" }}
-                        name="id"
-                        value={supplier.id}
-                      >
-                        {t("admin.confirm")}
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary"
-                        style={{ padding: "10px 16px" }}
-                        onClick={() => setConfirmDeleteId(null)}
-                      >
-                        {t("admin.cancel")}
-                      </button>
+                <div key={supplier.id} className="inline-editor" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "16px", background: "var(--bg-subtle)", border: "1.5px solid var(--border)", borderRadius: "12px", position: "relative" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                    <div>
+                      <h3 style={{ fontSize: "14px", fontWeight: 800, margin: 0, color: "var(--primary)" }}>
+                        {supplier.name}
+                        {supplier.fame_name && <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "12px", marginInlineStart: "6px" }}>({supplier.fame_name})</span>}
+                      </h3>
+                      <div style={{ fontSize: "11.5px", color: "var(--text-secondary)", marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <span>👤 {supplier.contact_person || "—"} {supplier.contact_job_title ? `(${supplier.contact_job_title})` : ""}</span>
+                        <span>📞 {supplier.phone || "—"}</span>
+                        {supplier.email && <span>✉️ {supplier.email}</span>}
+                        {supplier.region && <span>📍 {supplier.region} {supplier.address ? `(${supplier.address})` : ""}</span>}
+                        {supplier.code && <span style={{ fontWeight: 700 }}>Code: {supplier.code}</span>}
+                      </div>
                     </div>
-                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                      <span className="badge badge-strong" style={{ fontSize: "10px" }}>{supplier.quote_count} {t("admin.quotes")}</span>
+                      <span className="badge" style={{ fontSize: "10px", background: "rgba(99,102,241,0.08)", color: "var(--primary)", borderColor: "rgba(99,102,241,0.2)" }}>{(supplier.category_ids || []).length} Categories</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                     <button
                       type="button"
-                      className="button button-secondary button-danger"
-                      style={{ padding: "10px 16px" }}
-                      onClick={() => setConfirmDeleteId({ type: "supplier", id: supplier.id })}
+                      onClick={() => setEditingSupplier(supplier)}
+                      className="button button-secondary"
+                      style={{ padding: "6px 14px", fontSize: "11px", fontWeight: 800 }}
                     >
-                      {t("admin.delete")}
+                      ✏️ {isRTL ? "تعديل المورد" : "Edit details"}
                     </button>
-                  )}
-                </form>
+                    {confirmDeleteId?.type === "supplier" && confirmDeleteId.id === supplier.id ? (
+                      <form action={deleteSupplierAction} style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          type="submit"
+                          className="button button-danger"
+                          style={{ padding: "6px 14px", fontSize: "11px", fontWeight: 800 }}
+                          name="id"
+                          value={supplier.id}
+                        >
+                          {t("admin.confirm")}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          style={{ padding: "6px 14px", fontSize: "11px" }}
+                          onClick={() => setConfirmDeleteId(null)}
+                        >
+                          {t("admin.cancel")}
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button button-secondary button-danger"
+                        style={{ padding: "6px 14px", fontSize: "11px" }}
+                        onClick={() => setConfirmDeleteId({ type: "supplier", id: supplier.id })}
+                      >
+                        🗑️ {t("admin.delete")}
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -1685,56 +1772,14 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
             <span className="badge badge-strong">{items.length} {t("admin.itemCount")}</span>
           </div>
 
-          <form action={createItemAction} className="form-grid compact-form" encType="multipart/form-data">
-            <label className="field">
-              <span>{t("admin.category")}</span>
-              <select name="categoryId" defaultValue="" required>
-                <option value="" disabled>
-                  {t("admin.bulkSelectCat")}
-                </option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>{t("admin.itemName")}</span>
-              <input name="name" type="text" placeholder={t("admin.itemName")} required />
-            </label>
-            <label className="field">
-              <span>{t("admin.unit")}</span>
-              <input name="unit" type="text" placeholder="Piece / Box / Roll" required />
-            </label>
-            <label className="field">
-              <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
-              <select name="recommendedSupplierId" defaultValue="">
-                <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.fame_name || supplier.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field field-wide">
-              <span>{t("admin.spec")}</span>
-              <input name="description" type="text" placeholder={t("admin.description")} />
-            </label>
-            <label className="field">
-              <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
-              <input name="moq" type="number" min="0" step="1" defaultValue="0" placeholder="e.g. 100" />
-            </label>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <ItemImageEditor itemImages={[]} isRTL={isRTL} t={t} />
-            </div>
-            <div className="form-actions" style={{ gridColumn: "1 / -1" }}>
-              <button type="submit" className="button button-primary button-block">
-                {t("admin.createProductBtn")}
-              </button>
-            </div>
-          </form>
+          <button
+            type="button"
+            onClick={() => setShowAddItemModal(true)}
+            className="button button-primary"
+            style={{ width: "100%", marginBottom: "12px", padding: "10px", fontWeight: 800 }}
+          >
+            ➕ {isRTL ? "إضافة صنف جديد" : "Add New Item"}
+          </button>
 
           {/* Advanced Items Multi-Filter Search */}
           <div className="mobile-stack" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px", marginTop: "16px" }}>
@@ -1766,7 +1811,7 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
               <p className="muted" style={{ padding: "12px", textAlign: "center" }}>{t("admin.noItemsMatch")}</p>
             ) : (
               filteredItems.map((item) => (
-                <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide" encType="multipart/form-data" style={{ alignItems: "center" }}>
+                <form key={item.id} action={updateItemAction} className="inline-editor inline-editor-wide" style={{ alignItems: "center" }}>
                   <input type="hidden" name="id" value={item.id} />
                   {(() => {
                     let firstThumb: string | null = null;
@@ -1915,6 +1960,309 @@ export default function AdminPanel({ users, categories, suppliers, items, showOn
           </form>
         </article>
       </section>
+
+      {/* Category Modal */}
+      {showAddCategoryModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "500px", position: "relative" }}>
+            <button type="button" onClick={() => setShowAddCategoryModal(false)} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "إضافة فئة جديدة" : "Add New Category"}
+            </h2>
+            <form action={createCategoryAction} className="form-grid" style={{ gridTemplateColumns: "1fr" }}>
+              <label className="field">
+                <span>{t("admin.categoryName")}</span>
+                <input name="name" type="text" placeholder={t("admin.categoryPlaceholder")} required style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field">
+                <span>{t("admin.categoryDesc")}</span>
+                <input name="description" type="text" placeholder={t("admin.categoryDescPlaceholder")} style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.createCategoryBtn")}</button>
+                <button type="button" onClick={() => setShowAddCategoryModal(false)} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Item Modal */}
+      {showAddItemModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "600px", position: "relative" }}>
+            <button type="button" onClick={() => setShowAddItemModal(false)} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "إضافة صنف جديد" : "Add New Item"}
+            </h2>
+            <form action={createItemAction} className="form-grid compact-form" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <label className="field">
+                <span>{t("admin.category")}</span>
+                <select name="categoryId" defaultValue="" required style={{ background: "var(--bg-subtle)" }}>
+                  <option value="" disabled>{t("admin.bulkSelectCat")}</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t("admin.itemName")}</span>
+                <input name="name" type="text" placeholder={t("admin.itemName")} required style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field">
+                <span>{t("admin.unit")}</span>
+                <input name="unit" type="text" placeholder="Piece / Box / Roll" required style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field">
+                <span>{isRTL ? "المورد الموصى به" : "Recommended Supplier"}</span>
+                <select name="recommendedSupplierId" defaultValue="" style={{ background: "var(--bg-subtle)" }}>
+                  <option value="">{isRTL ? "بلا تحديد" : "None"}</option>
+                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.fame_name || s.name}</option>)}
+                </select>
+              </label>
+              <label className="field field-wide" style={{ gridColumn: "1 / -1" }}>
+                <span>{t("admin.spec")}</span>
+                <input name="description" type="text" placeholder={t("admin.description")} style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field">
+                <span>{isRTL ? "الحد الأدنى لكمية الطلب" : "MOQ (Min Order Qty)"}</span>
+                <input name="moq" type="number" min="0" defaultValue="0" style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field">
+                <span>{isRTL ? "تكلفة النقل للوحدة" : "Transport Cost / Unit"}</span>
+                <input name="transportationPerUnit" type="number" min="0" defaultValue="0" step="0.01" style={{ background: "var(--bg-subtle)" }} />
+              </label>
+              <label className="field" style={{ gridColumn: "1 / -1" }}>
+                <span>{isRTL ? "استراتيجية التسعير" : "Pricing Strategy"}</span>
+                <select name="isTiered" defaultValue="0" style={{ background: "var(--bg-subtle)" }}>
+                  <option value="0">{isRTL ? "↕ حد أدنى / حد أقصى" : "↕ Min / Max Range"}</option>
+                  <option value="1">{isRTL ? "⚡ شرائح الكمية" : "⚡ Volume Tiers"}</option>
+                  <option value="2">{isRTL ? "🔒 سعر ثابت" : "🔒 Fixed Price"}</option>
+                </select>
+              </label>
+              <div className="field field-wide" style={{ gridColumn: "1 / -1" }}>
+                <ItemImageEditor itemImages={[]} isRTL={isRTL} t={t} />
+              </div>
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "20px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.createProductBtn")}</button>
+                <button type="button" onClick={() => setShowAddItemModal(false)} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Supplier Modal */}
+      {showAddSupplierModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "900px", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button type="button" onClick={() => { setShowAddSupplierModal(false); setSupplierFavSearch(""); }} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "إضافة مورد جديد" : "Onboard New Supplier"}
+            </h2>
+            <form action={createSupplierAction} className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              {/* Left Column: Basic Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>{t("admin.commNameFull")} *</span>
+                  <input name="name" type="text" placeholder={t("admin.commNameFull")} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.fameNameShort")}</span>
+                  <input name="fameName" type="text" placeholder={t("admin.fameNamePlaceholder")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.contact")}</span>
+                  <input name="contactPerson" type="text" placeholder={t("admin.contact")} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المسمى الوظيفي لجهة الاتصال" : "Contact Person Job Title"}</span>
+                  <input name="contactJobTitle" type="text" placeholder="e.g. Sales Director" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.phone")} *</span>
+                  <input name="phone" type="text" placeholder="+20..." required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "البريد الإلكتروني" : "Email Address"}</span>
+                  <input name="email" type="email" placeholder="example@supplier.com" style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label className="field">
+                    <span>{isRTL ? "كود المورد" : "Supplier Code"}</span>
+                    <input name="code" type="text" placeholder="e.g. SUP-101" style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                  <label className="field">
+                    <span>{isRTL ? "المنطقة / المحافظة" : "Region / Governorate"}</span>
+                    <input name="region" type="text" placeholder="e.g. Giza" style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span>{isRTL ? "العنوان التفصيلي" : "Full Address"}</span>
+                  <input name="address" type="text" placeholder="e.g. 12 Street..." style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المنتجات الممثلة" : "Represented Products"}</span>
+                  <input name="representedProducts" type="text" placeholder="e.g. Pallets, Plastic bins..." style={{ background: "var(--bg-subtle)" }} />
+                </label>
+              </div>
+
+              {/* Right Column: Categories & Favorite Products */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+                    📁 {isRTL ? "تعيين الفئات المصرح بها" : "Assign Authorized Categories"}
+                  </span>
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "150px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {categories.map(c => (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="categoryIds" value={c.id} />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "4px" }}>
+                    ⭐ {isRTL ? "تحديد كـ مورد مفضل للمنتجات" : "Set as Favorite Supplier for Products"}
+                  </span>
+                  <input
+                    type="text"
+                    className="search-input"
+                    style={{ width: "100%", padding: "6px 10px", fontSize: "11px", marginBottom: "8px", background: "var(--bg-subtle)" }}
+                    placeholder={isRTL ? "البحث عن صنف..." : "Search items..."}
+                    value={supplierFavSearch}
+                    onChange={e => setSupplierFavSearch(e.target.value)}
+                  />
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "180px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {items.filter(item => {
+                      if (!supplierFavSearch) return true;
+                      return item.name.toLowerCase().includes(supplierFavSearch.toLowerCase());
+                    }).map(item => (
+                      <label key={item.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="favProductIds" value={item.id} />
+                        <span>{item.name} <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>({categories.find(c => c.id === item.category_id)?.name})</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.addSupplierBtn")}</button>
+                <button type="button" onClick={() => { setShowAddSupplierModal(false); setSupplierFavSearch(""); }} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Supplier Modal */}
+      {editingSupplier && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div className="animate-scale-in" style={{ background: "var(--bg-elevated)", borderRadius: "20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow-xl)", padding: "30px", width: "100%", maxWidth: "900px", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button type="button" onClick={() => { setEditingSupplier(null); setSupplierFavSearch(""); }} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            <h2 style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px", borderBottom: "2.5px solid var(--primary)", paddingBottom: "10px" }}>
+              {isRTL ? "تعديل تفاصيل المورد" : "Edit Supplier Details"}
+            </h2>
+            <form action={updateSupplierAction} className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              <input type="hidden" name="id" value={editingSupplier.id} />
+              
+              {/* Left Column: Basic Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>{t("admin.commNameFull")} *</span>
+                  <input name="name" type="text" defaultValue={editingSupplier.name} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.fameNameShort")}</span>
+                  <input name="fameName" type="text" defaultValue={editingSupplier.fame_name ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.contact")}</span>
+                  <input name="contactPerson" type="text" defaultValue={editingSupplier.contact_person ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المسمى الوظيفي لجهة الاتصال" : "Contact Person Job Title"}</span>
+                  <input name="contactJobTitle" type="text" defaultValue={editingSupplier.contact_job_title ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{t("admin.phone")} *</span>
+                  <input name="phone" type="text" defaultValue={editingSupplier.phone} required style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "البريد الإلكتروني" : "Email Address"}</span>
+                  <input name="email" type="email" defaultValue={editingSupplier.email ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label className="field">
+                    <span>{isRTL ? "كود المورد" : "Supplier Code"}</span>
+                    <input name="code" type="text" defaultValue={editingSupplier.code ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                  <label className="field">
+                    <span>{isRTL ? "المنطقة / المحافظة" : "Region / Governorate"}</span>
+                    <input name="region" type="text" defaultValue={editingSupplier.region ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span>{isRTL ? "العنوان التفصيلي" : "Full Address"}</span>
+                  <input name="address" type="text" defaultValue={editingSupplier.address ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+                <label className="field">
+                  <span>{isRTL ? "المنتجات الممثلة" : "Represented Products"}</span>
+                  <input name="representedProducts" type="text" defaultValue={editingSupplier.represented_products ?? ""} style={{ background: "var(--bg-subtle)" }} />
+                </label>
+              </div>
+
+              {/* Right Column: Categories & Favorite Products */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+                    📁 {isRTL ? "تعيين الفئات المصرح بها" : "Assign Authorized Categories"}
+                  </span>
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "150px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {categories.map(c => (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="categoryIds" value={c.id} defaultChecked={(editingSupplier.category_ids || []).includes(c.id)} />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "4px" }}>
+                    ⭐ {isRTL ? "تحديد كـ مورد مفضل للمنتجات" : "Set as Favorite Supplier for Products"}
+                  </span>
+                  <input
+                    type="text"
+                    className="search-input"
+                    style={{ width: "100%", padding: "6px 10px", fontSize: "11px", marginBottom: "8px", background: "var(--bg-subtle)" }}
+                    placeholder={isRTL ? "البحث عن صنف..." : "Search items..."}
+                    value={supplierFavSearch}
+                    onChange={e => setSupplierFavSearch(e.target.value)}
+                  />
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: "10px", padding: "12px", maxHeight: "180px", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: "8px", background: "var(--bg-subtle)" }}>
+                    {items.filter(item => {
+                      if (!supplierFavSearch) return true;
+                      return item.name.toLowerCase().includes(supplierFavSearch.toLowerCase());
+                    }).map(item => (
+                      <label key={item.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                        <input type="checkbox" name="favProductIds" value={item.id} defaultChecked={(editingSupplier.fav_item_ids || []).includes(item.id)} />
+                        <span>{item.name} <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>({categories.find(c => c.id === item.category_id)?.name})</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>{t("admin.save")}</button>
+                <button type="button" onClick={() => { setEditingSupplier(null); setSupplierFavSearch(""); }} className="button button-secondary">{t("admin.cancel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

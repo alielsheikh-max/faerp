@@ -173,7 +173,7 @@ export function calcTierPricesShared(row: {
   }
 
   return [
-    { label: "B",  range: `1–${row.tier1_max}`,  price: sellMin !== null ? r5(sellMin) : getPriceForDiscount(row.tier1_discount) },
+    { label: "B",  range: `1–${row.tier1_max}`,  price: getPriceForDiscount(row.tier1_discount) ?? (sellMin !== null ? r5(sellMin) : null) },
     { label: "T2", range: `${row.tier1_max + 1}–${row.tier2_max}`, price: getPriceForDiscount(row.tier2_discount) },
     { label: "T3", range: `${row.tier2_max + 1}–${row.tier3_max}`, price: getPriceForDiscount(row.tier3_discount) },
     { label: "T4", range: `>${row.tier3_max}`,   price: getPriceForDiscount(row.tier4_discount) },

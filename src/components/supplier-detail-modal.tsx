@@ -36,6 +36,8 @@ type QuoteRow = {
 type Props = {
   supplier: Supplier;
   onClose: () => void;
+  role?: string;
+  onEdit?: () => void;
 };
 
 // ─────────────────────────────────────────────────────
@@ -252,7 +254,7 @@ function PriceLineChart({ quotes, locale }: { quotes: QuoteRow[]; locale: string
 // ─────────────────────────────────────────────────────
 // Main Modal Export
 // ─────────────────────────────────────────────────────
-export default function SupplierDetailModal({ supplier, onClose }: Props) {
+export default function SupplierDetailModal({ supplier, onClose, role, onEdit }: Props) {
   const { locale } = useI18n();
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -660,6 +662,21 @@ export default function SupplierDetailModal({ supplier, onClose }: Props) {
               </div>
             </div>
             <div style={{ display: "flex", gap: "8px", flexShrink: 0 }} className="sdm-no-print">
+              {role === "AD" && onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  style={{
+                    padding: "8px 16px", fontSize: "12px", fontWeight: "700",
+                    borderRadius: "8px", border: "none",
+                    backgroundColor: "#f59e0b", color: "#000",
+                    cursor: "pointer", display: "flex", alignItems: "center", gap: "6px",
+                    transition: "background 150ms",
+                  }}
+                >
+                  ✏️ {locale === "ar" ? "تعديل التفاصيل" : "Edit Details"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handlePrint}

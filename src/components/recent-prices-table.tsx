@@ -217,14 +217,12 @@ export default function RecentPricesTable({ entries, suppliers, username, month:
                   {minP === maxP ? (
                     <span style={{ fontSize: "12.5px" }}>
                       <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
-                      <span style={{ color: "var(--text-muted)", margin: "0 6px", fontSize: "10px" }}>· {isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
                     </span>
                   ) : (
                     <span style={{ fontSize: "11.5px" }}>
                       <strong style={{ color: "var(--success)" }}>{formatCurrency(minP)}</strong>
                       <span style={{ color: "var(--text-muted)", margin: "0 3px" }}>–</span>
                       <strong style={{ color: "var(--danger)" }}>{formatCurrency(maxP)}</strong>
-                      <span style={{ color: "var(--text-muted)", marginInlineStart: "6px", fontSize: "10px" }}>{isAr ? "المتوسط" : "avg"} {formatCurrency(avgP)}</span>
                     </span>
                   )}
                 </div>

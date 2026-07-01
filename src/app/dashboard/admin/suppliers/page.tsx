@@ -45,6 +45,8 @@ export default function SuppliersAdminPage({
         <SuppliersDirectory
           suppliers={snapshot.suppliers}
           categories={snapshot.categories}
+          items={snapshot.items}
+          role={session.role}
         />
       </article>
 

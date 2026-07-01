@@ -90,10 +90,13 @@ export default function ItemsAdminPage({
           <CollapsiblePanel
             id="tiers"
             eyebrow="Pricing Controls"
-            title="Volume Tier Rules"
-            badgeText={`${tiers.filter(t => t.is_tiered === 1).length} active items`}
+            title={isAr ? "إدارة الأصناف والأسعار" : "Items Management"}
+            badgeText={`${tiers.length} items`}
             badgeClass="badge-indigo"
-            subtitle="Volume tiers set discount rates based on deal quantity for specific products. Discounts are applied directly to the base published price when the monthly Tier Pricing toggle is active."
+            subtitle={isAr 
+              ? "إدارة الأصناف وتحديد استراتيجيات التسعير (الشرائح، الحد الأدنى والأقصى، السعر الثابت) والحد الأدنى للطلب وتكاليف النقل." 
+              : "Manage catalog items, pricing strategies (Tiers, Min/Max, Fixed Price), MOQ, and transportation settings."
+            }
           >
             <TierPricingPanel
               tiers={tiers}

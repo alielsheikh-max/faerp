@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database, saveNegotiatedPrice, approvePriceEntry, rejectPriceEntry } from "@/lib/db";
-import { asNumber, asString } from "@/lib/format";
+import { addPriceEntry, updatePriceEntry, saveSellingPrice, getRecommendation, database, saveNegotiatedPrice, approvePriceEntry, rejectPriceEntry, isPastMonthEntryAllowed } from "@/lib/db";
+import { asNumber, asString, shiftMonth, currentMonth } from "@/lib/format";
 import { log } from "@/lib/activity";
 
 export async function createBatchPriceEntries(formData: FormData) {
@@ -14,6 +14,14 @@ export async function createBatchPriceEntries(formData: FormData) {
 
   if (itemId === null || !month) {
     redirect(`/dashboard/purchasing?error=missing`);
+  }
+
+  const curMonth = currentMonth();
+  const prevMonth = shiftMonth(curMonth, -1);
+  const allowPast = isPastMonthEntryAllowed(curMonth);
+  const isValidMonth = month === curMonth || (allowPast && month === prevMonth);
+  if (!isValidMonth) {
+    redirect(`/dashboard/purchasing?error=locked`);
   }
 
   const entries: { supplierId: number; price: number; notes: string; actualTransport?: number }[] = [];
@@ -87,6 +95,14 @@ export async function addPriceEntrySilent(input: {
   actualTransport?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
+    const curMonth = currentMonth();
+    const prevMonth = shiftMonth(curMonth, -1);
+    const allowPast = isPastMonthEntryAllowed(curMonth);
+    const isValidMonth = input.month === curMonth || (allowPast && input.month === prevMonth);
+    if (!isValidMonth) {
+      return { ok: false, error: "Selected month is locked." };
+    }
+
     addPriceEntry({ ...input, collectedRole: "WH" });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/purchasing");
@@ -109,6 +125,14 @@ export async function saveBatchPriceEntriesSilent(formData: FormData): Promise<{
     const collectedRole = asString(formData.get("collectedRole")) || "WH";
 
     if (itemId === null || !month) return { ok: false, error: "Missing item or month." };
+
+    const curMonth = currentMonth();
+    const prevMonth = shiftMonth(curMonth, -1);
+    const allowPast = isPastMonthEntryAllowed(curMonth);
+    const isValidMonth = month === curMonth || (allowPast && month === prevMonth);
+    if (!isValidMonth) {
+      return { ok: false, error: "Selected month is locked." };
+    }
 
     const entries: { supplierId: number; price: number; notes: string; actualTransport?: number }[] = [];
     for (const [key, value] of formData.entries()) {
@@ -377,7 +401,6 @@ import {
   rejectPriceChangeRequest,
   hasConfirmedPrice,
 } from "@/lib/db";
-import { currentMonth } from "@/lib/format";
 
 export async function applyCategoryMarkupAction(formData: FormData): Promise<{
   ok: boolean;
@@ -454,9 +477,13 @@ export async function submitPriceChangeRequestAction(formData: FormData): Promis
     }
     if (newPrice <= 0) return { ok: false, error: "New price must be greater than zero." };
 
-    // Enforce: change requests only allowed for current month
-    if (month !== currentMonth()) {
-      return { ok: false, error: "Price change requests can only be submitted for the current month. Past months are locked." };
+    // Enforce: change requests only allowed for current month or allowed past month
+    const curMonth = currentMonth();
+    const prevMonth = shiftMonth(curMonth, -1);
+    const allowPast = isPastMonthEntryAllowed(curMonth);
+    const isValidMonth = month === curMonth || (allowPast && month === prevMonth);
+    if (!isValidMonth) {
+      return { ok: false, error: "Price change requests can only be submitted for active months. Past months are locked." };
     }
 
     if (!hasConfirmedPrice(itemId, supplierId, month)) {
@@ -638,7 +665,7 @@ export async function publishSellingPriceAction(formData: FormData): Promise<{ o
   }
 }
 
-import { setMonthlyTierPricing, setScTransportOverride, upsertItemTier, deleteItemTier } from "@/lib/db";
+import { setMonthlyTierPricing, setScTransportOverride, setPastMonthEntryAllowed, upsertItemTier, deleteItemTier, updateItemManagementDetails } from "@/lib/db";
 
 export async function toggleMonthlyTierPricingAction(formData: FormData): Promise<void> {
   requireRole(["AD"]);
@@ -662,22 +689,40 @@ export async function toggleScTransportOverrideAction(formData: FormData): Promi
   revalidatePath("/dashboard/pricing");
 }
 
+export async function togglePastMonthEntryAction(formData: FormData): Promise<void> {
+  requireRole(["AD"]);
+  const month   = asString(formData.get("month"));
+  const enabled = asString(formData.get("allowPastMonthEntries")) === "on";
+  if (!month) return;
+  setPastMonthEntryAllowed(month, enabled);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/purchasing");
+}
+
 export async function saveItemTierConfigAction(formData: FormData): Promise<void> {
   requireRole(["AD", "SC"]);
-  const itemId       = asNumber(formData.get("itemId"));
-  const isTiered     = asString(formData.get("isTiered")) === "on" ? 1 : 0;
-  const tier1Max     = asNumber(formData.get("tier1Max"))     ?? 100;
+  const itemId        = asNumber(formData.get("itemId"));
+  const name          = asString(formData.get("name"));
+  const moq           = asNumber(formData.get("moq")) ?? 0;
+  const transportation = asNumber(formData.get("transportation")) ?? 0;
+  const strategyStr   = asString(formData.get("strategy")) || "min_max";
+  const isTiered      = strategyStr === "tiers" ? 1 : strategyStr === "fixed" ? 2 : 0;
+
+  const tier1Max      = asNumber(formData.get("tier1Max"))     ?? 100;
   const tier1Discount = asNumber(formData.get("tier1Discount")) ?? 0;
-  const tier2Max     = asNumber(formData.get("tier2Max"))     ?? 200;
+  const tier2Max      = asNumber(formData.get("tier2Max"))     ?? 200;
   const tier2Discount = asNumber(formData.get("tier2Discount")) ?? 5;
-  const tier3Max     = asNumber(formData.get("tier3Max"))     ?? 300;
+  const tier3Max      = asNumber(formData.get("tier3Max"))     ?? 300;
   const tier3Discount = asNumber(formData.get("tier3Discount")) ?? 10;
-  const tier4Max     = asNumber(formData.get("tier4Max"))     ?? 0;
+  const tier4Max      = asNumber(formData.get("tier4Max"))     ?? 0;
   const tier4Discount = asNumber(formData.get("tier4Discount")) ?? 0;
 
-  if (itemId === null) return;
-  upsertItemTier({
+  if (itemId === null || !name) return;
+  updateItemManagementDetails({
     itemId,
+    name,
+    moq,
+    transportation,
     isTiered,
     tier1Max,
     tier1Discount,
@@ -691,6 +736,7 @@ export async function saveItemTierConfigAction(formData: FormData): Promise<void
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard/admin/items");
 }
 
 export async function deleteItemTierConfigAction(formData: FormData): Promise<void> {

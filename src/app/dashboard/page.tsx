@@ -361,24 +361,6 @@ export default function DashboardPage({ searchParams }: { searchParams?: SearchP
           ) : (
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <span className="badge badge-strong">{session.displayName}</span>
-              {role === "WH" && (
-                <a
-                  href={searchParams?.simulate === "true" ? "/dashboard" : "/dashboard?simulate=true"}
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    background: searchParams?.simulate === "true" ? "var(--warning)" : "var(--bg-elevated)",
-                    color: searchParams?.simulate === "true" ? "#000" : "var(--text-secondary)",
-                    border: "1px solid var(--border-medium)",
-                    textDecoration: "none",
-                    transition: "all 150ms",
-                  }}
-                >
-                  {searchParams?.simulate === "true" ? t("dash.stopSimulation") : t("dash.simulateDate")}
-                </a>
-              )}
             </div>
           )
         }

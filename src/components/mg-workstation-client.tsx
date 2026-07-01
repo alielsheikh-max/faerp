@@ -8,7 +8,8 @@ import {
   approveGlobalSellingPricesAction,
   approveMultipleSellingPricesAction,
   approveSingleSellingPriceAction,
-  reconsiderSellingPriceAction
+  reconsiderSellingPriceAction,
+  reconsiderMultipleSellingPricesAction
 } from "@/app/actions/approval";
 
 const roundUp5 = (n: number | null | undefined) => n != null ? Math.ceil(n / 5) * 5 : n;
@@ -100,6 +101,8 @@ export default function MGWorkstationClient({ items, categories, month, username
   const [searchFocused, setSearchFocused] = useState(false);
   const [reconsiderItemId, setReconsiderItemId] = useState<number | null>(null);
   const [reconsiderNote, setReconsiderNote] = useState("");
+  const [showBulkReconsiderModal, setShowBulkReconsiderModal] = useState(false);
+  const [bulkReconsiderNote, setBulkReconsiderNote] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved" | "reconsidered" | "none">("all");
 
@@ -194,6 +197,30 @@ export default function MGWorkstationClient({ items, categories, month, username
       });
     }
   };
+
+  const handleBulkReconsider = () => {
+    if (selectedItemIds.size === 0) return;
+    if (!bulkReconsiderNote.trim()) {
+      alert(isAr ? "يرجى كتابة سبب إعادة النظر للمجموعة" : "Please write a reconsideration note.");
+      return;
+    }
+    setActionError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("month", month);
+      fd.set("itemIds", JSON.stringify(Array.from(selectedItemIds)));
+      fd.set("reconsiderNote", bulkReconsiderNote.trim());
+      const res = await reconsiderMultipleSellingPricesAction(fd);
+      if (res.ok) {
+        setSelectedItemIds(new Set());
+        setShowBulkReconsiderModal(false);
+        setBulkReconsiderNote("");
+      } else {
+        setActionError(res.error || "Failed to return batch for reconsideration.");
+      }
+    });
+  };
+
 
   const handleApproveGlobal = () => {
     if (confirm(isAr ? "هل أنت متأكد من اعتماد جميع الأسعار المعلقة عبر كافة الفئات في هذا الشهر؟" : "Are you sure you want to approve all pending prices across ALL categories for this month?")) {
@@ -434,6 +461,24 @@ export default function MGWorkstationClient({ items, categories, month, username
               >
                 <span>✅</span>
                 <span>{isAr ? `اعتماد المحدد (${selectedItemIds.size})` : `Approve Selected (${selectedItemIds.size})`}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBulkReconsiderModal(true)}
+                disabled={pending}
+                style={{
+                  padding: "7px 18px", borderRadius: "8px",
+                  background: "linear-gradient(135deg,#ef4444 0%,#dc2626 100%)",
+                  boxShadow: "0 4px 12px rgba(239,68,68,0.25)",
+                  border: "none", color: "#fff", fontSize: "12px", fontWeight: 800,
+                  cursor: pending ? "not-allowed" : "pointer",
+                  opacity: pending ? 0.7 : 1,
+                  display: "inline-flex", alignItems: "center", gap: "6px"
+                }}
+              >
+                <span>❌</span>
+                <span>{isAr ? `إرجاع المحدد (${selectedItemIds.size})` : `Reject Selected (${selectedItemIds.size})`}</span>
               </button>
             </>
           )}
@@ -1129,6 +1174,57 @@ export default function MGWorkstationClient({ items, categories, month, username
                 style={{ padding: "6px 18px", fontSize: "12.5px", fontWeight: 700 }}
               >
                 {isAr ? "إرجاع للتعديل" : "Return for Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Reconsider Note Dialog/Modal */}
+      {showBulkReconsiderModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+        }}>
+          <div className="panel animate-scale-in" style={{ width: "100%", maxWidth: "460px", padding: "20px 24px" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "12px" }}>
+              {isAr ? "إرجاع الأصناف المحددة للمراجعة" : "Return Selected Items for Review"}
+            </h3>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
+              {isAr ? `يرجى كتابة ملاحظة توضح سبب إرجاع الأصناف الـ ${selectedItemIds.size} المحددة للتعديل.`
+                    : `Please explain why you are returning the ${selectedItemIds.size} selected items for review.`}
+            </p>
+            <textarea
+              rows={4}
+              value={bulkReconsiderNote}
+              onChange={e => setBulkReconsiderNote(e.target.value)}
+              placeholder={isAr ? "اكتب الملاحظة هنا..." : "Type review reason here..."}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border)",
+                background: "var(--bg-subtle)", color: "var(--text-primary)", fontSize: "13px", resize: "none",
+                outline: "none", fontFamily: "inherit"
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px", flexDirection: isAr ? "row-reverse" : "row" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkReconsiderModal(false);
+                  setBulkReconsiderNote("");
+                }}
+                className="button button-secondary"
+                style={{ padding: "6px 14px", fontSize: "12.5px" }}
+              >
+                {isAr ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkReconsider}
+                className="button button-danger"
+                style={{ padding: "6px 18px", fontSize: "12.5px", fontWeight: 700 }}
+              >
+                {isAr ? "إرجاع الكل للتعديل" : "Return All Selected"}
               </button>
             </div>
           </div>
